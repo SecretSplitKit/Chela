@@ -170,7 +170,7 @@ fn draw_menu(screen: &Screen, items: &[MenuItem], cursor: usize) {
             screen.write_at(
                 row,
                 6,
-                &format!("  {DIM}{}){RESET}  {}", item.key_hint, item.label,),
+                &format!("  {DIM}{}){RESET}  {}", item.key_hint, item.label),
             );
         }
     }

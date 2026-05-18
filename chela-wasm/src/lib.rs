@@ -104,11 +104,18 @@ pub unsafe extern "C" fn chela_dealloc(ptr: u32, len: u32) {
     // Drop both clears any secret-bearing content (request inputs, response JSON) and
     // frees the buffer. The wipe is unconditional since this function can't tell secret
     // and non-secret payloads apart.
-    unsafe {
-        let mut v = Vec::from_raw_parts(ptr as *mut u8, len as usize, len as usize);
-        chela_primitives::zeroize::volatile_set(&mut v);
-        drop(v);
-    }
+    let len = len as usize;
+    // SAFETY (clippy lint allow): length == capacity here is intentional —
+    // `chela_alloc` does `vec![0u8; len]`, which Vec promises produces
+    // capacity == length. The action exports use `shrink_to_fit` before
+    // forgetting, so their response buffers also satisfy length == capacity.
+    #[allow(clippy::same_length_and_capacity)]
+    // SAFETY: per the function contract above, `ptr` originated from `chela_alloc`
+    // (or a `shrink_to_fit`'d response Vec) with exactly `len` bytes; reconstructing
+    // and Dropping is sound.
+    let mut v = unsafe { Vec::from_raw_parts(ptr as *mut u8, len, len) };
+    chela_primitives::zeroize::volatile_set(&mut v);
+    drop(v);
 }
 
 // =========================================================================================

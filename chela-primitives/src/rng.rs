@@ -115,8 +115,10 @@ mod linux {
                     // in non-interactive contexts.
                     return Err(RngError::SyscallFailed);
                 }
-                // SAFETY: rc ≥ 0; cast to usize is the documented kernel return convention.
-                filled += rc as usize;
+                // rc ≥ 0 (checked above); `cast_unsigned` is the lint-clean isize→usize
+                // for non-negative values. The kernel's getrandom contract guarantees
+                // 0 ≤ rc ≤ buf.len, which is also bounded by chunk_len ≤ 256.
+                filled += rc.cast_unsigned();
             }
         }
         Ok(())

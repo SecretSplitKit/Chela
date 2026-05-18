@@ -82,7 +82,7 @@ fn main() {
 
     println!(
         "cargo:warning=embedded {} bytes of WASM from {}",
-        fs::metadata(&wasm_dst).map(|m| m.len()).unwrap_or(0),
+        fs::metadata(&wasm_dst).map_or(0, |m| m.len()),
         wasm_src.display()
     );
 

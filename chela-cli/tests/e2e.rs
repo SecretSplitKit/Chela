@@ -200,7 +200,7 @@ fn recover_with_files(file_paths: &[&str]) -> (std::process::ExitStatus, String,
 fn recover_imports_shares_from_paper_html_files() {
     // Split a real secret with --paper-dir so chela-cli writes per-share HTML
     // files. Then recover by passing 3 of the 5 HTML files as positional args.
-    let tmpdir = std::env::temp_dir().join(format!("chela-e2e-import-{}", std::process::id(),));
+    let tmpdir = std::env::temp_dir().join(format!("chela-e2e-import-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmpdir);
     std::fs::create_dir_all(&tmpdir).unwrap();
 
@@ -251,7 +251,7 @@ fn recover_imports_from_combined_paper_html_file() {
     // --paper writes a single HTML doc containing every share's <article>.
     // Passing that one file should yield every share in one shot.
     let tmpdir =
-        std::env::temp_dir().join(format!("chela-e2e-import-combined-{}", std::process::id(),));
+        std::env::temp_dir().join(format!("chela-e2e-import-combined-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmpdir);
     std::fs::create_dir_all(&tmpdir).unwrap();
     let combined = tmpdir.join("combined.html");
@@ -287,7 +287,7 @@ fn recover_mixed_html_and_text_files() {
     // Realistic flow: some shareholders sent in HTML files, others typed in
     // their words on paper and the recovering party saved both as text and HTML.
     let tmpdir =
-        std::env::temp_dir().join(format!("chela-e2e-import-mixed-{}", std::process::id(),));
+        std::env::temp_dir().join(format!("chela-e2e-import-mixed-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmpdir);
     std::fs::create_dir_all(&tmpdir).unwrap();
 
@@ -326,7 +326,7 @@ fn recover_mixed_html_and_text_files() {
 #[test]
 fn recover_html_with_corrupt_block_reports_per_block_error() {
     let tmpdir =
-        std::env::temp_dir().join(format!("chela-e2e-import-corrupt-{}", std::process::id(),));
+        std::env::temp_dir().join(format!("chela-e2e-import-corrupt-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmpdir);
     std::fs::create_dir_all(&tmpdir).unwrap();
     let bad = tmpdir.join("corrupt.html");
@@ -352,7 +352,7 @@ fn recover_html_with_corrupt_block_reports_per_block_error() {
 #[test]
 fn recover_html_file_with_no_chela_blocks_errors_clearly() {
     let tmpdir =
-        std::env::temp_dir().join(format!("chela-e2e-import-empty-{}", std::process::id(),));
+        std::env::temp_dir().join(format!("chela-e2e-import-empty-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmpdir);
     std::fs::create_dir_all(&tmpdir).unwrap();
     let empty = tmpdir.join("not-a-chela-page.html");

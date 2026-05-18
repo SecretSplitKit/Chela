@@ -109,7 +109,7 @@ mod tests {
         for len in 0..32 {
             let bytes = vec![0xa5u8; len];
             let out = base64_encode(&bytes);
-            assert_eq!(out.len() % 4, 0, "len {len} encodes to non-quartet `{out}`",);
+            assert_eq!(out.len() % 4, 0, "len {len} encodes to non-quartet `{out}`");
         }
     }
 

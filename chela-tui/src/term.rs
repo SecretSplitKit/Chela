@@ -238,15 +238,11 @@ fn raw_line_editor(p: &str, prefill: &str, empty_default: &str) -> io::Result<Op
                 println!();
                 return Ok(None);
             }
-            crate::screen::Key::Left => {
-                if cursor > 0 {
-                    cursor = prev_char_boundary(&buf, cursor);
-                }
+            crate::screen::Key::Left if cursor > 0 => {
+                cursor = prev_char_boundary(&buf, cursor);
             }
-            crate::screen::Key::Right => {
-                if cursor < buf.len() {
-                    cursor = next_char_boundary(&buf, cursor);
-                }
+            crate::screen::Key::Right if cursor < buf.len() => {
+                cursor = next_char_boundary(&buf, cursor);
             }
             crate::screen::Key::Home => {
                 cursor = 0;
@@ -254,18 +250,14 @@ fn raw_line_editor(p: &str, prefill: &str, empty_default: &str) -> io::Result<Op
             crate::screen::Key::End => {
                 cursor = buf.len();
             }
-            crate::screen::Key::Backspace => {
-                if cursor > 0 {
-                    let new_cursor = prev_char_boundary(&buf, cursor);
-                    buf.drain(new_cursor..cursor);
-                    cursor = new_cursor;
-                }
+            crate::screen::Key::Backspace if cursor > 0 => {
+                let new_cursor = prev_char_boundary(&buf, cursor);
+                buf.drain(new_cursor..cursor);
+                cursor = new_cursor;
             }
-            crate::screen::Key::Delete => {
-                if cursor < buf.len() {
-                    let end = next_char_boundary(&buf, cursor);
-                    buf.drain(cursor..end);
-                }
+            crate::screen::Key::Delete if cursor < buf.len() => {
+                let end = next_char_boundary(&buf, cursor);
+                buf.drain(cursor..end);
             }
             crate::screen::Key::Char(c) => {
                 let mut bytes = [0u8; 4];
