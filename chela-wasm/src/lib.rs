@@ -43,7 +43,10 @@ mod request;
 use chela_engine::{
     recover_secret, split_secret, EngineError, OutputMode, RecoveredSecret, SplitInput,
 };
-use chela_share::{format_share, parse_share, render_paper_html, BackupMeta, FormatError};
+use chela_share::{
+    extract_shares_from_html, extract_shares_from_json, format_share, parse_share,
+    render_paper_html, render_shares_json, BackupMeta, FormatError, ImportError,
+};
 
 /// Pack a `(ptr, len)` pair into a single `u64` for the FFI return value. High 32 bits
 /// hold the pointer, low 32 bits hold the length.
@@ -289,6 +292,153 @@ pub(crate) fn do_render_paper(input: &[u8]) -> Result<Vec<u8>, String> {
     Ok(render_paper_html(&shares, &meta).into_bytes())
 }
 
+/// Render a `chela.shares.v1` JSON bundle covering every share in `req.shares`.
+/// Mirrors what the CLI's `--json FILE` flag writes. Input is the same
+/// [`request::RenderPaperRequest`] format as [`chela_render_paper_html`];
+/// output is the bundle text as raw bytes (UTF-8), suitable for the JS side
+/// to wrap in a Blob and offer for download.
+///
+/// # Safety
+/// Same input contract as the other exports.
+#[no_mangle]
+pub unsafe extern "C" fn chela_render_shares_json(input_ptr: u32, input_len: u32) -> u64 {
+    // SAFETY: caller's contract.
+    let input = unsafe { core::slice::from_raw_parts(input_ptr as *const u8, input_len as usize) };
+    let bytes = match do_render_shares_json(input) {
+        Ok(b) => b,
+        Err(e) => error_response(&e).into_bytes(),
+    };
+    leak_to_packed(bytes)
+}
+
+pub(crate) fn do_render_shares_json(input: &[u8]) -> Result<Vec<u8>, String> {
+    let req =
+        request::RenderPaperRequest::decode(input).map_err(|e| format!("bad request: {e}"))?;
+    let mut shares = Vec::with_capacity(req.shares.len());
+    for (i, raw) in req.shares.iter().enumerate() {
+        let share = parse_share(&raw.header, &raw.words)
+            .map_err(|e| format!("share #{}: {}", i + 1, format_error_to_string(&e)))?;
+        shares.push(share);
+    }
+    let meta = BackupMeta {
+        backup_name: req.backup_name.as_deref(),
+        description: req.description.as_deref(),
+        shareholder_names: req.shareholder_names.as_deref(),
+    };
+    Ok(render_shares_json(&shares, &meta).into_bytes())
+}
+
+/// Extract chela share data from an imported file. Input is the raw file bytes
+/// (UTF-8); the function auto-detects format:
+///
+/// - **HTML** (chela paper-backup): contains `class="chela-share"` script blocks
+/// - **JSON** (`chela.share.v1` single or `chela.shares.v1` bundle): first
+///   non-whitespace byte is `{`
+///
+/// Output is a JSON object describing each share found:
+///
+/// ```json
+/// {
+///   "ok": true,
+///   "shares": [
+///     {"ok": true, "x": 1, "threshold": 3, "total": 5,
+///      "identifier": "3058", "card_code": "CHELA-3058-1-3-5-40",
+///      "words": ["security", "moment", ...]},
+///     {"ok": false, "error": "embedded JSON did not parse: …"}
+///   ]
+/// }
+/// ```
+///
+/// Each block reports its own success/error so the UI can show "imported 2 of
+/// 3 blocks; one was corrupt: …". If no `<script class="chela-share">` block
+/// is present at all, the top-level returns `{"ok": false, "error": "…"}`.
+///
+/// # Safety
+/// Same input contract as the other exports.
+#[no_mangle]
+pub unsafe extern "C" fn chela_extract_shares(input_ptr: u32, input_len: u32) -> u64 {
+    // SAFETY: caller's contract.
+    let input = unsafe { core::slice::from_raw_parts(input_ptr as *const u8, input_len as usize) };
+    let json = match do_extract_shares(input) {
+        Ok(j) => j,
+        Err(e) => error_response(&e),
+    };
+    leak_to_packed(json.into_bytes())
+}
+
+pub(crate) fn do_extract_shares(input: &[u8]) -> Result<String, String> {
+    use std::fmt::Write as _;
+    let text = core::str::from_utf8(input).map_err(|_| "input is not valid UTF-8".to_string())?;
+    let trimmed = text.trim_start();
+    // Route by detection: chela-HTML or HTML-shaped → HTML extractor (it owns
+    // the NoChelaSharesFound error); JSON-shaped → JSON extractor; else flag
+    // as unrecognised.
+    let looks_html = text.contains(r#"class="chela-share""#)
+        || text.contains("class='chela-share'")
+        || trimmed.starts_with('<');
+    let blocks = if looks_html {
+        match extract_shares_from_html(text) {
+            Ok(b) => b,
+            Err(ImportError::NoChelaSharesFound) => {
+                return Err("no chela share data found in this HTML file".to_string());
+            }
+            Err(e) => return Err(format!("{e}")),
+        }
+    } else if trimmed.starts_with('{') {
+        match extract_shares_from_json(text) {
+            Ok(b) => b,
+            Err(e) => return Err(format!("{e}")),
+        }
+    } else {
+        return Err(
+            "file is not a chela paper-backup HTML or a chela.share/chela.shares JSON file"
+                .to_string(),
+        );
+    };
+
+    let mut out = String::from("{\"ok\":true,\"shares\":[");
+    for (i, result) in blocks.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        match result {
+            Ok(share) => {
+                out.push_str("{\"ok\":true");
+                let _ = write!(
+                    out,
+                    ",\"x\":{},\"threshold\":{},\"total\":{}",
+                    share.x, share.threshold, share.total,
+                );
+                let id_hex = format!("{:02X}{:02X}", share.identifier[0], share.identifier[1]);
+                let _ = write!(out, ",\"identifier\":{}", json::str(&id_hex));
+                let card_text = format_share(share);
+                let mut lines = card_text.lines();
+                let header = lines.next().unwrap_or("");
+                let words_line = lines.next().unwrap_or("");
+                let _ = write!(out, ",\"card_code\":{}", json::str(header));
+                out.push_str(",\"words\":[");
+                for (j, w) in words_line.split_whitespace().enumerate() {
+                    if j > 0 {
+                        out.push(',');
+                    }
+                    out.push_str(&json::str(w));
+                }
+                out.push(']');
+                out.push('}');
+            }
+            Err(e) => {
+                let _ = write!(
+                    out,
+                    "{{\"ok\":false,\"error\":{}}}",
+                    json::str(&format!("{e}"))
+                );
+            }
+        }
+    }
+    out.push_str("]}");
+    Ok(out)
+}
+
 /// Cheap real-time check: is the given word in the BIP-39 English wordlist? Returns 1
 /// if yes, 0 if no (or on invalid UTF-8 / empty input). Used by the web UI to mark
 /// per-word inputs valid/invalid as the user types, so typos surface immediately
@@ -519,6 +669,158 @@ mod tests {
         let rec_req = build_recover(&mixed);
         let err = do_recover(&rec_req).unwrap_err();
         assert!(err.contains("different splits"), "got: {err}");
+    }
+
+    #[test]
+    fn extract_html_shares_round_trips_rendered_paper_doc() {
+        // Split → render paper HTML → extract every embedded share.
+        let split_req = build_split_bip39(3, 5, ABANDON_MNEMONIC, "test passphrase");
+        let cards = parse_split_cards(&do_split(&split_req).unwrap());
+
+        let mut buf = vec![0x04u8];
+        buf.extend_from_slice(&u16::try_from(cards.len()).unwrap().to_le_bytes());
+        for (h, w) in &cards {
+            push_lp(&mut buf, h);
+            push_lp(&mut buf, w);
+        }
+        buf.push(1);
+        push_lp(&mut buf, "Round-trip test wallet");
+        buf.push(0);
+        buf.push(0);
+
+        let html_bytes = do_render_paper(&buf).unwrap();
+        let extracted = do_extract_shares(&html_bytes).expect("extract ok");
+
+        // Top-level reports success and lists exactly 5 entries.
+        assert!(extracted.contains("\"ok\":true"));
+        let block_count = extracted.matches("\"x\":").count();
+        assert_eq!(block_count, 5, "all 5 shares should be extracted");
+
+        // Every extracted card_code appears in the original split output too.
+        for (h, _) in &cards {
+            assert!(
+                extracted.contains(h),
+                "extracted JSON missing card_code {h}:\n{extracted}",
+            );
+        }
+    }
+
+    #[test]
+    fn extract_html_shares_returns_top_level_error_when_no_blocks() {
+        let html = b"<!doctype html><html><body><p>no chela here</p></body></html>";
+        let err = do_extract_shares(html).unwrap_err();
+        assert!(err.contains("no chela share data"), "got: {err}");
+    }
+
+    #[test]
+    fn extract_html_shares_reports_per_block_errors_alongside_successes() {
+        // Build a doc with one valid block + one corrupt block.
+        let split_req = build_split_text(2, 3, "mix");
+        let cards = parse_split_cards(&do_split(&split_req).unwrap());
+        let mut buf = vec![0x04u8];
+        buf.extend_from_slice(&u16::try_from(cards.len()).unwrap().to_le_bytes());
+        for (h, w) in &cards {
+            push_lp(&mut buf, h);
+            push_lp(&mut buf, w);
+        }
+        buf.push(0);
+        buf.push(0);
+        buf.push(0);
+        let valid_html_bytes = do_render_paper(&buf).unwrap();
+        let valid_html = String::from_utf8(valid_html_bytes).unwrap();
+        let corrupt_block =
+            r#"<script type="application/json" class="chela-share">{not valid}</script>"#;
+        let mixed = format!("{valid_html}{corrupt_block}");
+
+        let extracted = do_extract_shares(mixed.as_bytes()).unwrap();
+        // Three valid + one corrupt = 4 entries in the shares array.
+        assert!(extracted.contains("\"ok\":true"));
+        let ok_entries = extracted.matches(r#""ok":true,"x""#).count();
+        let err_entries = extracted.matches(r#""ok":false,"error""#).count();
+        assert_eq!(ok_entries, 3, "three valid shares");
+        assert_eq!(err_entries, 1, "one corrupt block reported");
+    }
+
+    #[test]
+    fn extract_html_shares_rejects_invalid_utf8() {
+        let bad = [0xff, 0xfe, 0xfd];
+        let err = do_extract_shares(&bad).unwrap_err();
+        assert!(err.contains("UTF-8"), "got: {err}");
+    }
+
+    #[test]
+    fn render_shares_json_produces_chela_shares_v1_bundle() {
+        let split_req = build_split_bip39(2, 3, ABANDON_MNEMONIC, "");
+        let cards = parse_split_cards(&do_split(&split_req).unwrap());
+
+        let mut buf = vec![0x04u8];
+        buf.extend_from_slice(&u16::try_from(cards.len()).unwrap().to_le_bytes());
+        for (h, w) in &cards {
+            push_lp(&mut buf, h);
+            push_lp(&mut buf, w);
+        }
+        buf.push(1);
+        push_lp(&mut buf, "Test wallet");
+        buf.push(0);
+        buf.push(0);
+
+        let bytes = do_render_shares_json(&buf).expect("render ok");
+        let text = String::from_utf8(bytes).unwrap();
+        assert!(text.contains(r#""type":"chela.shares.v1""#));
+        assert!(text.contains(r#""backup_name":"Test wallet""#));
+        // The bundle round-trips through chela_extract_shares.
+        let extracted = do_extract_shares(text.as_bytes()).expect("extract ok");
+        let block_count = extracted.matches("\"x\":").count();
+        assert_eq!(block_count, 3);
+    }
+
+    #[test]
+    fn extract_shares_auto_detects_json_single_share() {
+        // chela.share.v1 file (single object) → one extracted share.
+        let split_req = build_split_bip39(2, 3, ABANDON_MNEMONIC, "");
+        let cards = parse_split_cards(&do_split(&split_req).unwrap());
+        let mut buf = vec![0x04u8];
+        buf.extend_from_slice(&u16::try_from(cards.len()).unwrap().to_le_bytes());
+        for (h, w) in &cards {
+            push_lp(&mut buf, h);
+            push_lp(&mut buf, w);
+        }
+        buf.push(0);
+        buf.push(0);
+        buf.push(0);
+        let bundle_text = String::from_utf8(do_render_shares_json(&buf).unwrap()).unwrap();
+
+        // Pull one share object out of the bundle to construct a single-share file.
+        let start = bundle_text.find(r#"{"type":"chela.share.v1""#).unwrap();
+        // Walk to its matching brace (depth counting).
+        let mut depth = 0i32;
+        let mut end = start;
+        for (i, c) in bundle_text[start..].char_indices() {
+            match c {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = start + i + 1;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let single = &bundle_text[start..end];
+
+        let extracted = do_extract_shares(single.as_bytes()).expect("extract ok");
+        assert!(extracted.contains("\"x\":1"));
+        let block_count = extracted.matches("\"x\":").count();
+        assert_eq!(block_count, 1);
+    }
+
+    #[test]
+    fn extract_shares_rejects_unrecognised_file() {
+        // Plain text that isn't HTML and doesn't start with '{'.
+        let err = do_extract_shares(b"hello world").unwrap_err();
+        assert!(err.contains("not a chela"), "got: {err}");
     }
 
     #[test]

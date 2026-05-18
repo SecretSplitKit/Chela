@@ -136,6 +136,26 @@
   .back-btn:hover { background: var(--accent-bg); }
   .back-btn[disabled] { color: var(--muted); cursor: not-allowed; background: transparent; }
 
+  /* --- HTML import block (recover-header first card) ----------------------------------- */
+  .import-block {
+    border: 1px dashed var(--soft); border-radius: 6px;
+    padding: 0.9rem 1.1rem; margin-bottom: 0.9rem;
+    background: var(--accent-bg);
+  }
+  .import-block .import-heading {
+    margin: 0 0 0.35rem 0; font-size: 1rem; color: var(--ink);
+  }
+  .import-block input[type="file"] {
+    /* Hide the default control; the styled <label> below acts as the click surface. */
+    position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px;
+  }
+  .import-btn { cursor: pointer; }
+  .import-divider {
+    text-align: center; color: var(--muted); font-size: 0.85rem;
+    margin: 0.6rem 0 0.9rem 0; letter-spacing: 0.05em;
+  }
+  .downloads { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
+
   /* --- Menu screen --------------------------------------------------------------------- */
   .menu-grid { display: grid; gap: 0.7rem; }
   .menu-btn {
@@ -933,6 +953,30 @@ const phases = {
       const exp = state.data.expected;
 
       if (have === 0) {
+        // Import-from-HTML pathway. Sits above the manual-entry form so users
+        // with the chela-bundle-generated HTML files see it before typing any
+        // words. After import, the wizard either advances straight to recovery
+        // (if threshold is met) or returns here with most fields pre-filled.
+        const importBlock = E("div", { class: "import-block" });
+        const importHeading = E("h3", { class: "import-heading", text: "Have backup files saved on this computer?" });
+        importBlock.appendChild(importHeading);
+        const importP = E("p", { class: "small muted", text: "Import chela paper-backup HTML files or chela.share / chela.shares JSON files to skip typing words by hand." });
+        importBlock.appendChild(importP);
+        // E() doesn't know about `multiple` / `accept` / `change` / `htmlFor`;
+        // set those directly on the elements after construction.
+        const picker = E("input", { type: "file", id: "import-picker" });
+        picker.multiple = true;
+        // chela paper-backup HTML (`*.html`), chela.share.v1 single (`*.share.json`),
+        // and chela.shares.v1 bundle (`*.json`) all parse via chela_extract_shares.
+        picker.accept = ".html,.htm,text/html,.json,.share.json,application/json";
+        picker.addEventListener("change", handleHtmlImport);
+        const pickerLabel = E("label", { class: "primary import-btn", text: "Choose backup files…" });
+        pickerLabel.htmlFor = "import-picker";
+        importBlock.appendChild(picker);
+        importBlock.appendChild(pickerLabel);
+        body.appendChild(importBlock);
+        body.appendChild(E("div", { class: "import-divider", text: "— or type the card by hand —" }));
+
         appendAll(body,
           E("p", { text: "Find \"Card code\" on the printed card — it's the dashed line near the top, e.g. CHELA-9DA3-1-3-5-25. Type each part into the matching box below." }),
         );
@@ -1313,18 +1357,29 @@ function runSplit() {
   const shareholderNames = state.data.useShareholderNames
     ? state.data.shareholderNames.map((n, i) => (n && n.trim()) ? n.trim() : `Shareholder ${i + 1}`)
     : null;
+  // Render both output formats — HTML (printable) and JSON bundle (machine-
+  // readable). The user picks which to download on the success screen; we just
+  // do the work up front since both take the same input.
   let paperHtml;
+  let sharesJson;
   try {
-    const paperBytes = callBytes("chela_render_paper_html", encRenderPaper(sharesForRender, {
+    const renderReq = encRenderPaper(sharesForRender, {
       backupName: state.data.backupName,
       description: state.data.description,
       shareholderNames,
-    }));
+    });
+    const paperBytes = callBytes("chela_render_paper_html", renderReq);
     paperHtml = new TextDecoder().decode(paperBytes);
+    const jsonBytes = callBytes("chela_render_shares_json", renderReq);
+    sharesJson = new TextDecoder().decode(jsonBytes);
   } catch (e) { showFlash("Render error: " + e.message, "err"); console.error(e); return; }
   if (paperHtml.startsWith('{"ok":false')) {
     let msg = paperHtml; try { msg = JSON.parse(paperHtml).error; } catch (e) {}
-    showFlash("Render failed: " + msg, "err"); return;
+    showFlash("HTML render failed: " + msg, "err"); return;
+  }
+  if (sharesJson.startsWith('{"ok":false')) {
+    let msg = sharesJson; try { msg = JSON.parse(sharesJson).error; } catch (e) {}
+    showFlash("JSON render failed: " + msg, "err"); return;
   }
 
   state.result = {
@@ -1332,6 +1387,7 @@ function runSplit() {
     total: resp.shares.length,
     threshold: resp.shares[0].threshold,
     paperHtml,
+    sharesJson,
   };
   state.history.push(state.phase);
   state.phase = "complete";
@@ -1355,6 +1411,118 @@ function runRecover() {
   state.history.push(state.phase);
   state.phase = "recovered";
   render();
+}
+
+// =========================================================================================
+// HTML import flow
+//
+// Bound to the file picker on the first card-code screen. For each selected
+// file:
+//   - read as text (FileReader)
+//   - hand off to chela_extract_shares via WASM
+//   - for each successful share, push {header, words} into state.data.collected
+//   - mirror the import sub-flow from chela-cli / chela-tui: reject shares from
+//     a different recovery set, skip duplicates, accumulate everything else
+//
+// After all files processed: if we have ≥ threshold shares, jump straight to
+// runRecover(). Otherwise re-render the current phase so the user can either
+// import more files or fall back to typing the remaining cards.
+// =========================================================================================
+async function handleHtmlImport(ev) {
+  const files = Array.from(ev.target.files || []);
+  if (files.length === 0) return;
+  let imported = 0;
+  let duplicates = 0;
+  let mismatched = 0;
+  const errors = [];
+  for (const file of files) {
+    let text;
+    try {
+      text = await file.text();
+    } catch (e) {
+      errors.push(`${file.name}: couldn't read file (${e.message})`);
+      continue;
+    }
+    let resp;
+    try {
+      resp = callJson("chela_extract_shares", new TextEncoder().encode(text));
+    } catch (e) {
+      errors.push(`${file.name}: WASM error (${e.message})`);
+      continue;
+    }
+    if (!resp.ok) {
+      errors.push(`${file.name}: ${resp.error}`);
+      continue;
+    }
+    for (const block of resp.shares) {
+      if (!block.ok) {
+        errors.push(`${file.name}: ${block.error}`);
+        continue;
+      }
+      // Mismatched-set guard: every accumulated share must share the same set ID
+      // (and threshold/total) — otherwise recovery would mix unrelated splits.
+      if (state.data.expected) {
+        const e = state.data.expected;
+        if (block.identifier !== e.id || block.threshold !== e.threshold || block.total !== e.total) {
+          mismatched++;
+          continue;
+        }
+      } else {
+        state.data.expected = {
+          id: block.identifier,
+          threshold: block.threshold,
+          total: block.total,
+          wordCount: block.words.length,
+        };
+      }
+      // Duplicate guard: skip cards we already have (same card number).
+      const cardNum = block.x;
+      const alreadyHave = state.data.collected.some(s => {
+        const m = s.header.match(/^CHELA-([0-9A-F]{4})-(\d+)-/);
+        return m && parseInt(m[2], 10) === cardNum;
+      });
+      if (alreadyHave) {
+        duplicates++;
+        continue;
+      }
+      state.data.collected.push({
+        header: block.card_code,
+        words: block.words.join(" "),
+      });
+      imported++;
+    }
+  }
+
+  // Build a status message and post it as a flash (success / warning / error).
+  const parts = [];
+  if (imported > 0) parts.push(`imported ${imported} share${imported === 1 ? "" : "s"}`);
+  if (duplicates > 0) parts.push(`skipped ${duplicates} duplicate${duplicates === 1 ? "" : "s"}`);
+  if (mismatched > 0) parts.push(`skipped ${mismatched} from a different set`);
+  if (errors.length > 0) parts.push(`${errors.length} error${errors.length === 1 ? "" : "s"}`);
+  if (parts.length > 0) {
+    const kind = errors.length > 0 ? "warn" : (imported > 0 ? "ok" : "err");
+    let msg = parts.join("; ");
+    if (errors.length > 0) {
+      // Show the first error inline so the user knows what was wrong; the rest
+      // appear in the console for debugging.
+      msg += ` — first error: ${errors[0]}`;
+      console.warn("chela import errors:", errors);
+    }
+    showFlash(msg, kind);
+  }
+
+  // Reset the file picker so the same files can be re-imported if the user
+  // changes their mind.
+  ev.target.value = "";
+
+  // If we crossed threshold during this import, recover immediately. Otherwise
+  // re-render the current phase so the freshly-imported shares appear in the
+  // counter and the user can keep going.
+  if (state.data.expected && state.data.collected.length >= state.data.expected.threshold) {
+    runRecover();
+  } else {
+    render();
+  }
 }
 
 function renderComplete(root) {
@@ -1383,18 +1551,31 @@ function renderComplete(root) {
   okAlert.appendChild(okP);
   body.appendChild(okAlert);
 
-  const blob = new Blob([r.paperHtml], { type: "text/html" });
-  const url = URL.createObjectURL(blob);
-  const dlWrap = E("p");
-  const dl = E("a", { class: "primary", href: url, download: `chela-backup-${r.setId}.html`, text: "⬇  Download printable backup (HTML)" });
-  dlWrap.appendChild(dl);
+  const htmlBlob = new Blob([r.paperHtml], { type: "text/html" });
+  const htmlUrl = URL.createObjectURL(htmlBlob);
+  const jsonBlob = r.sharesJson ? new Blob([r.sharesJson], { type: "application/json" }) : null;
+  const jsonUrl = jsonBlob ? URL.createObjectURL(jsonBlob) : null;
+
+  const dlWrap = E("p", { class: "downloads" });
+  const dlHtml = E("a", { class: "primary", href: htmlUrl, download: `chela-backup-${r.setId}.html`, text: "⬇  Download printable backup (HTML)" });
+  dlWrap.appendChild(dlHtml);
+  if (jsonUrl) {
+    dlWrap.appendChild(document.createTextNode(" "));
+    const dlJson = E("a", { class: "secondary", href: jsonUrl, download: `chela-${r.setId}-shares.json`, text: "⬇  Download machine-readable JSON" });
+    dlWrap.appendChild(dlJson);
+  }
   body.appendChild(dlWrap);
 
   const hint = E("p", { class: "muted small" });
   appendAll(hint,
-    document.createTextNode("Open the downloaded file in your browser and use "),
+    E("strong", { text: "HTML" }),
+    document.createTextNode(": open in any browser and use "),
     E("strong", { text: "File → Print" }),
-    document.createTextNode(" (or “Save as PDF”) to put it on paper. One share per page."),
+    document.createTextNode(" (or “Save as PDF”) — one share per page. "),
+    E("strong", { text: "JSON" }),
+    document.createTextNode(": machine-readable backup for programmatic recovery (import with "),
+    E("code", { text: "chela-cli recover *.share.json" }),
+    document.createTextNode(" or the recovery wizard's file picker)."),
   );
   body.appendChild(hint);
 

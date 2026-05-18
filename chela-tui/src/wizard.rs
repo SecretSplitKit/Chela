@@ -7,7 +7,9 @@ use std::fmt::Write as _;
 use std::io;
 
 use chela_engine::{recover_secret, split_secret, OutputMode, RecoveredSecret, Share, SplitInput};
-use chela_share::{parse_share, FormatError};
+use chela_share::{
+    extract_shares_from_html, extract_shares_from_json, parse_share, parse_shares, FormatError,
+};
 
 use crate::term::{
     banner, error, info, prompt, prompt_line_or_default, prompt_line_prefilled, prompt_nonempty,
@@ -346,24 +348,30 @@ pub(crate) fn run_split(kind: SplitKind) -> io::Result<()> {
     println!();
 
     println!();
-    println!("{BOLD}Save a printable copy of these shares to a folder on this computer?{RESET}");
+    println!("{BOLD}What would you like to save to this computer?{RESET}");
     println!();
-    println!("This writes one HTML file per share plus a README. Open each file in a");
-    println!("browser to print it. You can keep the digital copies as a backup or delete");
-    println!("the folder once everything is on paper.");
+    println!("Two formats are available — pick whichever suits how you plan to recover:");
+    println!();
+    println!("  {BOLD}HTML cards{RESET}    — one printable page per share. Open in a browser,");
+    println!("                  Print → Save as PDF, then print to paper.");
+    println!("  {BOLD}JSON files{RESET}    — one structured `.share.json` per share + a combined");
+    println!("                  bundle. For machine-readable backup or programmatic recovery.");
     println!();
     let Some(save_choice) = select(
         &[
-            "Yes — write the folder",
-            "No — I've already recorded the shares; skip the folder",
+            "Both — printable HTML cards AND machine-readable JSON files",
+            "HTML cards only (printable)",
+            "JSON files only (machine-readable)",
+            "Nothing — I've recorded the shares by hand",
         ],
         None,
     )?
     else {
         return Ok(());
     };
-    let save_paper = save_choice == 0;
-    if save_paper {
+    let want_html = matches!(save_choice, 0 | 1);
+    let want_json = matches!(save_choice, 0 | 2);
+    if want_html || want_json {
         let id_hex = format!(
             "{:02X}{:02X}",
             shares[0].identifier[0], shares[0].identifier[1]
@@ -373,7 +381,7 @@ pub(crate) fn run_split(kind: SplitKind) -> io::Result<()> {
         println!("Where to save the folder?");
         info("Edit the path below (Backspace + typing); Enter to commit, Escape to cancel.");
         let Some(raw_path) = prompt_line_prefilled("folder ❯ ", &default_dir)? else {
-            info("Paper backup cancelled.");
+            info("Backup save cancelled.");
             println!();
             // Shares are already generated/recorded — still show completion.
             wait_for_exit_or_menu()?;
@@ -387,16 +395,34 @@ pub(crate) fn run_split(kind: SplitKind) -> io::Result<()> {
                 description: description.as_deref(),
                 shareholder_names: shareholder_names.as_deref(),
             };
-            let folder = chela_share::render_paper_folder(&shares, &meta);
-            match write_paper_folder(&dir, &folder) {
-                Ok(()) => {
-                    success(&format!(
-                        "Wrote {} files to {dir}.",
-                        folder.shares.len() + 1
-                    ));
-                    info("Open each share-N.html in a browser and choose Print → Save as PDF.");
+
+            if want_html {
+                let folder = chela_share::render_paper_folder(&shares, &meta);
+                match write_paper_folder(&dir, &folder) {
+                    Ok(()) => {
+                        success(&format!(
+                            "Wrote {} HTML file(s) + README to {dir}.",
+                            folder.shares.len(),
+                        ));
+                        info("Open each share-N.html in a browser and choose Print → Save as PDF.");
+                    }
+                    Err(e) => error(&format!("Couldn't write HTML folder: {e}")),
                 }
-                Err(e) => error(&format!("Couldn't write folder: {e}")),
+            }
+
+            if want_json {
+                let folder = chela_share::render_json_folder(&shares, &meta);
+                match write_json_folder(&dir, &folder) {
+                    Ok(()) => {
+                        success(&format!(
+                            "Wrote {} JSON share file(s) + {} bundle to {dir}.",
+                            folder.shares.len(),
+                            folder.bundle.0,
+                        ));
+                        info("Recipients can import these files via `chela-cli recover share-N.share.json` or the web UI's \"Choose HTML files\" picker.");
+                    }
+                    Err(e) => error(&format!("Couldn't write JSON folder: {e}")),
+                }
             }
             println!();
         }
@@ -642,6 +668,16 @@ fn write_paper_folder(dir: &str, folder: &chela_share::PaperFolder) -> io::Resul
     Ok(())
 }
 
+fn write_json_folder(dir: &str, folder: &chela_share::JsonFolder) -> io::Result<()> {
+    let path = std::path::Path::new(dir);
+    std::fs::create_dir_all(path)?;
+    std::fs::write(path.join(&folder.bundle.0), &folder.bundle.1)?;
+    for (filename, contents) in &folder.shares {
+        std::fs::write(path.join(filename), contents)?;
+    }
+    Ok(())
+}
+
 fn expand_home(p: &str) -> String {
     if let Some(stripped) = p.strip_prefix("~/") {
         if let Some(home) = std::env::var_os("HOME") {
@@ -689,24 +725,64 @@ fn display_share(share: &Share) {
 
 pub(crate) fn run_recover() -> io::Result<()> {
     banner("chela — Recover from shares");
-    info("Enter each card by typing its card code, then its words one at a time.");
+    println!("How would you like to enter the shares?");
     println!();
-    println!("The card code is the dashed line near the top of each card (e.g.");
-    println!("CHELA-9DA3-1-3-5-34) — it identifies the recovery set, which card this is,");
-    println!("how many are needed, and how many words to expect. The wizard will then");
-    println!("prompt for each word in turn.");
-    println!();
-    info(
-        "While typing words: enter '<' to revise the previous word, or 'abort' to cancel this share.",
-    );
-    println!();
+    let Some(input_mode) = select(
+        &[
+            "Import HTML files saved on this computer",
+            "Type each card by hand from the printed paper",
+        ],
+        None,
+    )?
+    else {
+        return Ok(());
+    };
 
     let mut shares: Vec<Share> = Vec::new();
     // First share establishes set ID / threshold / total / word count; later shares only
     // need the new card's `x`.
     let mut expected: Option<ParsedHeader> = None;
 
+    if input_mode == 0 {
+        // Import phase — load shares from HTML files first, then fall through
+        // to the manual loop if we still need more cards.
+        match import_html_phase()? {
+            Some(imported) => {
+                if !imported.is_empty() {
+                    expected = Some(parsed_header_from_share(&imported[0]));
+                    shares = imported;
+                }
+            }
+            None => return Ok(()),
+        }
+    }
+
+    if input_mode == 1
+        || expected
+            .as_ref()
+            .is_none_or(|e| shares.len() < usize::from(e.threshold))
+    {
+        banner("chela — Recover from shares");
+        info("Enter each card by typing its card code, then its words one at a time.");
+        println!();
+        println!("The card code is the dashed line near the top of each card (e.g.");
+        println!("CHELA-9DA3-1-3-5-34) — it identifies the recovery set, which card this is,");
+        println!("how many are needed, and how many words to expect. The wizard will then");
+        println!("prompt for each word in turn.");
+        println!();
+        info(
+            "While typing words: enter '<' to revise the previous word, or 'abort' to cancel this share.",
+        );
+        println!();
+    }
+
     loop {
+        // If imports alone already met the threshold, skip the prompting and proceed.
+        if let Some(first) = expected {
+            if shares.len() >= usize::from(first.threshold) {
+                break;
+            }
+        }
         let (header_line, meta) = match expected {
             None => {
                 let Some(raw) = prompt_nonempty("Card code from card #1: ")? else {
@@ -902,6 +978,169 @@ pub(crate) fn run_recover() -> io::Result<()> {
         crate::term::clear_with_scrollback();
     }
     Ok(())
+}
+
+/// Build a [`ParsedHeader`] from a fully-parsed [`Share`]. Used after import to
+/// pre-populate the wizard's "expected" state so the manual-entry phase only
+/// asks for the remaining card numbers.
+fn parsed_header_from_share(share: &Share) -> ParsedHeader {
+    ParsedHeader {
+        id: share.identifier,
+        x: share.x,
+        threshold: share.threshold,
+        total: share.total,
+        word_count: share.word_indices.len(),
+    }
+}
+
+/// Interactive sub-flow: prompt for HTML / text file paths one at a time,
+/// parse each, accumulate shares.
+///
+/// Returns:
+///   - `Ok(Some(vec))` — shares the user successfully loaded (possibly empty if
+///     they finished without typing any paths; the caller still falls through
+///     to manual entry in that case).
+///   - `Ok(None)` — the user cancelled (Ctrl-D / Esc); the caller returns to
+///     the main menu without recovering anything.
+fn import_html_phase() -> io::Result<Option<Vec<Share>>> {
+    info("Type the path to each chela paper-backup file (HTML or text), one per line.");
+    info("Press Enter on an empty line when you're done. Tab-completion isn't available; paste full paths.");
+    println!();
+
+    let mut shares: Vec<Share> = Vec::new();
+    let mut expected_first_share: Option<Share> = None;
+
+    loop {
+        let prompt_msg = if shares.is_empty() {
+            "file path ❯ ".to_owned()
+        } else {
+            format!(
+                "file path (or Enter to finish; have {} share(s)) ❯ ",
+                shares.len()
+            )
+        };
+        let Some(raw) = prompt(&prompt_msg)? else {
+            // EOF / Ctrl-D — treat as cancel only if nothing was imported.
+            return if shares.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(shares))
+            };
+        };
+        let path = raw.trim();
+        if path.is_empty() {
+            return Ok(Some(shares));
+        }
+
+        let contents = match std::fs::read_to_string(path) {
+            Ok(s) => s,
+            Err(e) => {
+                error(&format!("Couldn't read {path}: {e}. Try another path."));
+                continue;
+            }
+        };
+
+        let from_file = match decode_file(&contents) {
+            Ok(s) => s,
+            Err(msg) => {
+                error(&format!("{path}: {msg}. Try another file."));
+                continue;
+            }
+        };
+
+        if from_file.is_empty() {
+            warn(&format!("{path}: no shares found in this file. Skipped."));
+            continue;
+        }
+
+        // Sanity: every share in the batch (and across files) must agree on the
+        // recovery set / scheme / kind / threshold / total. Catch mismatched
+        // sets BEFORE recovery so the user gets a clear file-level error.
+        for s in &from_file {
+            let bad = if let Some(first) = expected_first_share.as_ref() {
+                first.identifier != s.identifier
+                    || first.scheme != s.scheme
+                    || first.kind != s.kind
+                    || first.threshold != s.threshold
+                    || first.total != s.total
+            } else {
+                false
+            };
+            if bad {
+                error(&format!(
+                    "{path}: share belongs to a different recovery set (set {:02X}{:02X} vs the {:02X}{:02X} we're recovering). Skipped this file.",
+                    s.identifier[0], s.identifier[1],
+                    expected_first_share.as_ref().unwrap().identifier[0],
+                    expected_first_share.as_ref().unwrap().identifier[1],
+                ));
+                // Skip the whole file — don't partially import a mismatched set.
+                continue;
+            }
+            if shares.iter().any(|existing| existing.x == s.x) {
+                warn(&format!(
+                    "{path}: card #{} already loaded — skipped duplicate.",
+                    s.x,
+                ));
+                continue;
+            }
+            if expected_first_share.is_none() {
+                expected_first_share = Some(s.clone());
+            }
+            success(&format!(
+                "Imported card #{} from set {:02X}{:02X} ({} of {} required).",
+                s.x, s.identifier[0], s.identifier[1], s.threshold, s.total,
+            ));
+            shares.push(s.clone());
+        }
+
+        if let Some(first) = expected_first_share.as_ref() {
+            let need = usize::from(first.threshold);
+            let have = shares.len();
+            if have >= need {
+                println!();
+                success(&format!(
+                    "Have {have} of {need} cards — enough to recover. (Add more files or press Enter to proceed.)"
+                ));
+            } else {
+                println!();
+                info(&format!(
+                    "Have {have} of {need} cards from set {:02X}{:02X}. Add another file, or press Enter to switch to typing the rest by hand.",
+                    first.identifier[0], first.identifier[1],
+                ));
+            }
+        }
+    }
+}
+
+/// Auto-detect HTML / JSON / share-text and decode accordingly. Mirrors
+/// `chela-cli::read_one_file` — kept duplicated rather than shared because the
+/// two binaries have very different error surfaces and the helper is tiny.
+fn decode_file(contents: &str) -> Result<Vec<Share>, String> {
+    let trimmed = contents.trim_start();
+    let looks_html = contents.contains(r#"class="chela-share""#)
+        || contents.contains("class='chela-share'")
+        || trimmed.starts_with('<');
+    if looks_html {
+        let results = extract_shares_from_html(contents).map_err(|e| format!("{e}"))?;
+        collect_strict(results, "block")
+    } else if trimmed.starts_with('{') {
+        let results = extract_shares_from_json(contents).map_err(|e| format!("{e}"))?;
+        collect_strict(results, "share")
+    } else {
+        parse_shares(contents).map_err(|e| format!("doesn't look like chela share text: {e:?}"))
+    }
+}
+
+fn collect_strict(
+    results: Vec<Result<Share, chela_share::ImportError>>,
+    label: &str,
+) -> Result<Vec<Share>, String> {
+    let mut out = Vec::with_capacity(results.len());
+    for (idx, r) in results.into_iter().enumerate() {
+        let share = r.map_err(|e| format!("{label} #{}: {e}", idx + 1))?;
+        out.push(share);
+    }
+    Ok(out)
 }
 
 fn wipe_recovered(r: &mut RecoveredSecret) {

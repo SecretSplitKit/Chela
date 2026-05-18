@@ -3,9 +3,23 @@
 For non-trivial changes, open an issue first so we can align on approach before you
 write code.
 
+## One-time setup — install the pre-push hook
+
+```sh
+./scripts/install-hooks.sh
+```
+
+This installs a git pre-push hook that runs the same checks
+[`.github/workflows/ci.yml`](./.github/workflows/ci.yml) runs on every push —
+`cargo fmt --check`, `cargo clippy -D warnings`, `cargo test --workspace`, the
+wasm32 library build, and `cargo doc` with `RUSTDOCFLAGS=-D warnings`. Catches CI
+failures locally so you don't push red. Skip in a pinch with
+`git push --no-verify`.
+
 ## Pull requests
 
-One change per PR. Before opening, run:
+One change per PR. The pre-push hook covers the basics; the canonical command set
+if you want to run things by hand:
 
 ```sh
 cargo fmt --all

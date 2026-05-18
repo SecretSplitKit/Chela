@@ -10,7 +10,9 @@ use chela_engine::{
     recover_secret, split_secret, EngineError, OutputMode, RecoveredSecret, SplitInput,
 };
 use chela_share::{
-    format_share, parse_shares, render_paper_folder, render_paper_html, BackupMeta, PaperFolder,
+    extract_shares_from_html, extract_shares_from_json, format_share, parse_shares,
+    render_json_folder, render_paper_folder, render_paper_html, render_shares_json, BackupMeta,
+    ImportError, JsonFolder, PaperFolder,
 };
 
 fn main() -> ExitCode {
@@ -18,7 +20,7 @@ fn main() -> ExitCode {
     let cmd = args.next().unwrap_or_default();
     let result = match cmd.as_str() {
         "split" => cmd_split(args.collect()),
-        "recover" => cmd_recover(),
+        "recover" => cmd_recover(&args.collect::<Vec<_>>()),
         "-h" | "--help" | "" => {
             print_usage();
             return ExitCode::SUCCESS;
@@ -43,13 +45,25 @@ fn print_usage() {
     println!("chela — Shamir's Secret Sharing for BIP-39 seeds and short passwords");
     println!();
     println!("USAGE:");
-    println!("  {exe} split  --mnemonic \"<12-24 words>\" [--passphrase \"...\"] -m N -n M [paper flags]");
-    println!("  {exe} split  --text \"<utf-8 text up to 255 bytes>\" -m N -n M [paper flags]");
-    println!("  {exe} recover                                    # reads shares from stdin");
+    println!("  {exe} split    --mnemonic \"<12-24 words>\" [--passphrase \"...\"] -m N -n M [paper flags]");
+    println!("  {exe} split    --text \"<utf-8 text up to 255 bytes>\" -m N -n M [paper flags]");
+    println!("  {exe} recover                                  # reads share text from stdin");
+    println!(
+        "  {exe} recover  share-1.html share-2.html ...   # imports from chela paper-backup HTML"
+    );
     println!();
-    println!("PAPER FLAGS:");
+    println!("OUTPUT FLAGS (any combination; can be used together):");
     println!("  --paper FILE              Write a combined HTML backup (one page per share).");
     println!("  --paper-dir DIR           Write a folder of one HTML file per share plus README.");
+    println!("  --json FILE               Write a single chela.shares.v1 JSON bundle.");
+    println!(
+        "  --json-dir DIR            Write a folder of one chela.share.v1 JSON file per share"
+    );
+    println!(
+        "                            (filename: share-<x>.share.json) plus the combined bundle."
+    );
+    println!();
+    println!("PAPER METADATA (apply to both HTML cards and JSON output):");
     println!("  --name \"TEXT\"             Title rendered at the top of each card.");
     println!("  --description \"TEXT\"      Free-form note rendered at the top of each card.");
     println!("  --shareholders \"A,B,...\"  Comma-separated names (must equal N) listed on every");
@@ -65,6 +79,8 @@ fn cmd_split(args: Vec<String>) -> Result<(), String> {
     let mut total: Option<u8> = None;
     let mut paper_path: Option<String> = None;
     let mut paper_dir: Option<String> = None;
+    let mut json_path: Option<String> = None;
+    let mut json_dir: Option<String> = None;
     let mut backup_name: Option<String> = None;
     let mut description_override: Option<String> = None;
     let mut shareholders_csv: Option<String> = None;
@@ -77,6 +93,8 @@ fn cmd_split(args: Vec<String>) -> Result<(), String> {
             "--text" => text = Some(needs_value(it.next(), "--text")?),
             "--paper" => paper_path = Some(needs_value(it.next(), "--paper")?),
             "--paper-dir" => paper_dir = Some(needs_value(it.next(), "--paper-dir")?),
+            "--json" => json_path = Some(needs_value(it.next(), "--json")?),
+            "--json-dir" => json_dir = Some(needs_value(it.next(), "--json-dir")?),
             "--name" => backup_name = Some(needs_value(it.next(), "--name")?),
             "--description" => {
                 description_override = Some(needs_value(it.next(), "--description")?);
@@ -135,6 +153,8 @@ fn cmd_split(args: Vec<String>) -> Result<(), String> {
         PaperFlags {
             paper_path: paper_path.as_deref(),
             paper_dir: paper_dir.as_deref(),
+            json_path: json_path.as_deref(),
+            json_dir: json_dir.as_deref(),
             backup_name: backup_name.as_deref(),
             description_override,
             shareholders_csv,
@@ -156,12 +176,16 @@ fn cmd_split(args: Vec<String>) -> Result<(), String> {
 struct PaperFlags<'a> {
     paper_path: Option<&'a str>,
     paper_dir: Option<&'a str>,
+    json_path: Option<&'a str>,
+    json_dir: Option<&'a str>,
     backup_name: Option<&'a str>,
     description_override: Option<String>,
     shareholders_csv: Option<String>,
 }
 
-/// Build a [`BackupMeta`] from the paper flags and write `--paper` / `--paper-dir`.
+/// Build a [`BackupMeta`] and dispatch every requested output flag. Any
+/// combination of `--paper` / `--paper-dir` / `--json` / `--json-dir` may be
+/// supplied; they're independent.
 fn write_paper_outputs(
     shares: &[chela_engine::Share],
     total: u8,
@@ -206,6 +230,22 @@ fn write_paper_outputs(
         eprintln!("Wrote paper backup folder to {dir}");
     }
 
+    if let Some(path) = flags.json_path {
+        let json = render_shares_json(shares, &meta);
+        std::fs::write(path, json).map_err(|e| format!("writing {path}: {e}"))?;
+        eprintln!("Wrote JSON share bundle to {path}");
+    }
+
+    if let Some(dir) = flags.json_dir {
+        let folder = render_json_folder(shares, &meta);
+        write_json_folder(Path::new(dir), &folder)?;
+        eprintln!(
+            "Wrote {} JSON share file(s) + {} to {dir}",
+            folder.shares.len(),
+            folder.bundle.0,
+        );
+    }
+
     Ok(())
 }
 
@@ -222,18 +262,55 @@ fn write_paper_folder(dir: &Path, folder: &PaperFolder) -> Result<(), String> {
     Ok(())
 }
 
-fn cmd_recover() -> Result<(), String> {
-    let mut buf = String::new();
-    io::stdin()
-        .read_to_string(&mut buf)
-        .map_err(|e| format!("read stdin: {e}"))?;
-
-    let shares = parse_shares(&buf).map_err(|e| format!("parse: {e:?}"))?;
-    if shares.is_empty() {
-        chela_primitives::zeroize::Zeroize::zeroize(&mut buf);
-        return Err("no shares found on stdin".into());
+/// Write a [`JsonFolder`] to `dir`: one `share-<x>.share.json` per share +
+/// the combined `chela-<setID>-shares.json` bundle. Mirrors `write_paper_folder`.
+fn write_json_folder(dir: &Path, folder: &JsonFolder) -> Result<(), String> {
+    std::fs::create_dir_all(dir).map_err(|e| format!("creating {}: {e}", dir.display()))?;
+    let bundle_path = dir.join(&folder.bundle.0);
+    std::fs::write(&bundle_path, &folder.bundle.1)
+        .map_err(|e| format!("writing {}: {e}", bundle_path.display()))?;
+    for (filename, contents) in &folder.shares {
+        let path = dir.join(filename);
+        std::fs::write(&path, contents).map_err(|e| format!("writing {}: {e}", path.display()))?;
     }
-    chela_primitives::zeroize::Zeroize::zeroize(&mut buf);
+    Ok(())
+}
+
+fn cmd_recover(file_paths: &[String]) -> Result<(), String> {
+    let shares = if file_paths.is_empty() {
+        // No positional args → read share text from stdin (legacy / piped flow).
+        let mut buf = String::new();
+        io::stdin()
+            .read_to_string(&mut buf)
+            .map_err(|e| format!("read stdin: {e}"))?;
+        let parsed = parse_shares(&buf).map_err(|e| format!("parse: {e:?}"))?;
+        chela_primitives::zeroize::Zeroize::zeroize(&mut buf);
+        if parsed.is_empty() {
+            return Err("no shares found on stdin".into());
+        }
+        parsed
+    } else {
+        // Positional args → treat each as a path. Auto-detect HTML vs text.
+        // HTML files contain the embedded `<script class="chela-share">` block;
+        // text files are the two-line CHELA-…/words format `parse_shares` reads.
+        let mut accumulated = Vec::new();
+        for path in file_paths {
+            let contents =
+                std::fs::read_to_string(path).map_err(|e| format!("read {path}: {e}"))?;
+            let extracted = read_one_file(&contents).map_err(|e| format!("{path}: {e}"))?;
+            accumulated.extend(extracted);
+        }
+        if accumulated.is_empty() {
+            return Err("no shares found in any input file".into());
+        }
+        eprintln!(
+            "Imported {} share(s) from {} file(s).",
+            accumulated.len(),
+            file_paths.len(),
+        );
+        accumulated
+    };
+
     let mut secret = recover_secret(&shares).map_err(|e| engine_err(&e))?;
 
     let stdout = io::stdout();
@@ -286,6 +363,53 @@ fn cmd_recover() -> Result<(), String> {
 
 fn needs_value(v: Option<String>, flag: &str) -> Result<String, String> {
     v.ok_or_else(|| format!("{flag} needs a value"))
+}
+
+/// Decode a single file's contents into a list of shares.
+///
+/// Auto-detects three formats:
+///   - **HTML** (chela paper-backup): contains `class="chela-share"`
+///   - **JSON** (single `chela.share.v1` or bundle `chela.shares.v1`): first
+///     non-whitespace char is `{`
+///   - **Share text** (canonical `CHELA-…` two-line cards): everything else
+///
+/// Strict on import: any single bad block in a multi-share file fails the whole
+/// file. The user's job is to fix the corrupted card, not to silently skip it.
+fn read_one_file(contents: &str) -> Result<Vec<chela_engine::Share>, String> {
+    let trimmed = contents.trim_start();
+    let looks_html = contents.contains(r#"class="chela-share""#)
+        || contents.contains("class='chela-share'")
+        || trimmed.starts_with('<');
+    if looks_html {
+        let results = extract_shares_from_html(contents).map_err(|e| import_err_to_string(&e))?;
+        collect_strict(results, "block")
+    } else if trimmed.starts_with('{') {
+        let results = extract_shares_from_json(contents).map_err(|e| import_err_to_string(&e))?;
+        collect_strict(results, "share")
+    } else {
+        // Fall through to text-share parser. Empty / unrecognized input surfaces
+        // as a parse error from `parse_shares`.
+        parse_shares(contents).map_err(|e| format!("parse share text: {e:?}"))
+    }
+}
+
+/// Reduce a `Vec<Result<Share, ImportError>>` to `Vec<Share>` or the first
+/// per-item error, prefixed with `<label> #N:` so the user knows which entry
+/// inside the file failed.
+fn collect_strict(
+    results: Vec<Result<chela_engine::Share, ImportError>>,
+    label: &str,
+) -> Result<Vec<chela_engine::Share>, String> {
+    let mut out = Vec::with_capacity(results.len());
+    for (idx, r) in results.into_iter().enumerate() {
+        let share = r.map_err(|e| format!("{label} #{}: {}", idx + 1, import_err_to_string(&e)))?;
+        out.push(share);
+    }
+    Ok(out)
+}
+
+fn import_err_to_string(e: &ImportError) -> String {
+    format!("{e}")
 }
 
 /// Replace control bytes (C0 < 0x20 except `\n`/`\t`, DEL, and C1 0x80–0x9F) with a

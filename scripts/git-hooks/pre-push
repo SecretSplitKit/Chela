@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+#
+# chela pre-push hook — runs the same checks GitHub Actions runs on every
+# push, locally, before letting you push. The goal is to never push something
+# that CI will reject. Mirrors `.github/workflows/ci.yml` step-for-step.
+#
+# Install via `scripts/install-hooks.sh`.
+#
+# Skip in a pinch with `git push --no-verify`, but don't make a habit of it.
+
+set -euo pipefail
+
+# Bail out on the no-op push (e.g. `git push` with nothing to push) without
+# running the whole CI matrix.
+remote="$1"
+url="$2"
+read -r _local_ref _local_sha _remote_ref _remote_sha < <(cat) || true
+
+# Colours that are noticeable in the typical terminal but cheap to grep out.
+if [ -t 1 ]; then
+  G=$'\033[32m'
+  R=$'\033[31m'
+  Y=$'\033[33m'
+  D=$'\033[2m'
+  N=$'\033[0m'
+else
+  G=""; R=""; Y=""; D=""; N=""
+fi
+
+step() {
+  printf "%s▸%s %s\n" "$Y" "$N" "$1"
+}
+
+ok() {
+  printf "  %s✓%s %s\n" "$G" "$N" "$1"
+}
+
+fail() {
+  printf "  %s✗%s %s\n" "$R" "$N" "$1"
+  printf "\n%spre-push aborted.%s Fix the failure above (or %sgit push --no-verify%s to skip).\n" \
+    "$R" "$N" "$D" "$N"
+  exit 1
+}
+
+# cd to repo root so we always run from a consistent location.
+cd "$(git rev-parse --show-toplevel)"
+
+printf "%schela pre-push check%s — running the same matrix as .github/workflows/ci.yml\n\n" "$Y" "$N"
+
+step "rustfmt"
+if ! cargo fmt --all -- --check; then
+  fail "rustfmt: run \`cargo fmt --all\` and re-push"
+fi
+ok "rustfmt clean"
+
+step "clippy (-D warnings)"
+if ! cargo clippy --all-targets --all-features --workspace -- -D warnings; then
+  fail "clippy: fix the warnings above"
+fi
+ok "clippy clean"
+
+step "cargo test --workspace"
+if ! cargo test --all-features --workspace; then
+  fail "cargo test: failures above"
+fi
+ok "all tests pass"
+
+step "wasm32-unknown-unknown — library crates build"
+for crate in chela-primitives chela-field chela-sss chela-bip39 chela-share chela-engine; do
+  if ! cargo build --target wasm32-unknown-unknown -p "$crate" >/dev/null 2>&1; then
+    fail "wasm: $crate failed to build for wasm32-unknown-unknown"
+  fi
+done
+ok "wasm32 libs build clean"
+
+step "cargo doc (RUSTDOCFLAGS=-D warnings)"
+if ! RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items --all-features --workspace --examples >/dev/null 2>&1; then
+  fail "cargo doc: lint failure"
+fi
+ok "docs clean"
+
+printf "\n%spre-push OK%s — pushing to %s%s%s\n" "$G" "$N" "$D" "$remote ($url)" "$N"

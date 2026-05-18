@@ -10,6 +10,15 @@ pub mod html;
 pub use html::render_paper_html;
 use html::render_share_card_html;
 
+pub mod export;
+pub mod import;
+pub mod json;
+pub use export::{
+    render_combined_folder, render_json_folder, render_share_json, render_shares_json,
+    share_json_filename, shares_bundle_filename, CombinedFolder, JsonFolder,
+};
+pub use import::{extract_shares_from_html, extract_shares_from_json, ImportError};
+
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;

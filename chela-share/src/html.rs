@@ -65,6 +65,12 @@ fn render_share_page(
 
     out.push_str("<article class=\"share-page\">\n");
 
+    // Machine-readable mirror of everything on this card. Sits inside the article so a
+    // multi-share document can carry one block per page; tools extract via
+    // `querySelectorAll('script.chela-share')`. type="application/json" is non-executable,
+    // so it costs nothing CSP-wise. See the JSON schema in `json` mod docs below.
+    render_json_block(out, share, meta);
+
     // Header: backup name doubles as page title; falls back to "chela" wordmark.
     let header_title = meta
         .backup_name
@@ -175,28 +181,19 @@ fn render_share_page(
         out.push_str("  </section>\n");
     }
 
+    // Recovery pointer: deliberately minimal. Detailed step-by-step instructions live
+    // in the repo's RECOVERY.md so they can be improved over time without re-printing
+    // every card; the printed sheet only needs to tell the holder where to go.
     out.push_str("  <footer class=\"recovery\">\n");
     out.push_str("    <h2>How to recover the secret</h2>\n");
-    out.push_str("    <ol>\n");
     write!(
         out,
-        "      <li>Gather <strong>{}</strong> of the <strong>{}</strong> cards from this recovery set (set ID <code>{id_esc}</code>).</li>\n",
+        "    <p>Gather <strong>{}</strong> of the <strong>{}</strong> cards from set <code>{id_esc}</code>, then follow the recovery guide:</p>\n",
         share.threshold, share.total,
     )
     .expect("write to String");
-    out.push_str("      <li>Get chela from <strong>https://github.com/SecretSplitKit/Chela</strong>. Two options:\n");
-    out.push_str("        <ul>\n");
-    out.push_str("          <li><strong>Easier:</strong> download <code>chela.html</code> from the releases page and double-click it to open in any browser. No install needed; works offline; nothing leaves your computer.</li>\n");
-    out.push_str("          <li><strong>Command line:</strong> install the <code>chela</code> program for your operating system and run it in a terminal.</li>\n");
-    out.push_str("        </ul>\n");
-    out.push_str("      </li>\n");
-    out.push_str("      <li>Choose <strong>Recover from shares</strong>.</li>\n");
-    out.push_str("      <li>Type each card's words, starting with the card code (e.g. <code>CHELA-XXXX-1-3-5-25</code>) then each numbered word.</li>\n");
-    out.push_str(
-        "      <li>Once enough cards are entered, the secret will be shown on screen.</li>\n",
-    );
-    out.push_str("    </ol>\n");
-    out.push_str("    <p class=\"reassurance\">If something doesn't work, the cards aren't damaged — just try a different combination of cards, or double-check the spelling of each word.</p>\n");
+    out.push_str("    <p class=\"recovery-url\"><strong>https://github.com/SecretSplitKit/Chela</strong> &rarr; <code>RECOVERY.md</code></p>\n");
+    out.push_str("    <p class=\"reassurance\">If that link doesn't work years from now, search the web for <em>&ldquo;chela paper backup recovery&rdquo;</em>. Embedded structured data on this page (in the &lt;script&gt; tag at the top) preserves the share for future tools.</p>\n");
     out.push_str("  </footer>\n");
 
     // Plain-text form: copy-paste alternative for digital users.
@@ -208,6 +205,40 @@ fn render_share_page(
 
     let _ = (page_num, total_pages);
     out.push_str("</article>\n");
+}
+
+/// Emit a `<script type="application/json" class="chela-share">…</script>` block
+/// holding a machine-readable mirror of everything on this card. Schema:
+///
+/// ```json
+/// {
+///   "type": "chela.share.v1",      // bump when fields change incompatibly
+///   "card_code": "CHELA-3058-1-3-5-40",
+///   "set_id": "3058",              // 4-hex-char identifier
+///   "card_number": 1,              // 1..=total
+///   "threshold": 3,
+///   "total": 5,
+///   "word_count": 40,
+///   "scheme": "bip39-wordlist",
+///   "payload_kind": "bip39",        // or "text"
+///   "words": ["security", "moment", …],
+///   "backup_name": "Alice's Ethereum wallet",   // optional
+///   "description": "…",                         // optional
+///   "shareholder_names": ["Alice", …]           // optional
+/// }
+/// ```
+///
+/// The `card_code` + `words` pair round-trips through `chela_share::parse_share`,
+/// so a tool can reconstruct a `Share` from the JSON without re-implementing the
+/// share-text format.
+///
+/// `<` is escaped to `<` inside strings so a user-supplied `</script>` in
+/// `description` / `backup_name` / `shareholder_names` can't break out of the tag.
+fn render_json_block(out: &mut String, share: &Share, meta: &BackupMeta<'_>) {
+    out.push_str("  <script type=\"application/json\" class=\"chela-share\">\n");
+    crate::export::write_share_json_object(out, share, meta);
+    out.push('\n');
+    out.push_str("  </script>\n");
 }
 
 /// HTML-escape a string.
@@ -436,6 +467,23 @@ const STYLE: &str = r#"<style>
     border-radius: 2pt;
     font-size: 9.5pt;
   }
+  .recovery p {
+    margin: 0.25em 0;
+  }
+  .recovery .recovery-url {
+    margin: 0.5em 0;
+    padding: 0.4em 0.6em;
+    background: var(--chip);
+    border: 1pt solid var(--soft);
+    font-family: var(--mono);
+    font-size: 10pt;
+    text-align: center;
+    word-break: break-all;
+  }
+  .recovery .recovery-url code {
+    background: none;
+    padding: 0;
+  }
   .recovery .reassurance {
     margin: 0.35em 0 0 0;
     color: var(--muted);
@@ -526,6 +574,109 @@ mod tests {
         let html = super::render_share_card_html(&s, &BackupMeta::default());
         assert!(!html.contains("class=\"intro\""));
         assert!(html.contains("How to recover the secret"));
+    }
+
+    #[test]
+    fn recovery_section_points_to_repo_not_inline_instructions() {
+        let s = sample();
+        let html = super::render_share_card_html(&s, &BackupMeta::default());
+        // The "where to go" URL is on the card.
+        assert!(html.contains("https://github.com/SecretSplitKit/Chela"));
+        assert!(html.contains("RECOVERY.md"));
+        // The detailed step-by-step list that used to be printed is GONE — those
+        // instructions live in the repo now so they can be improved over time.
+        assert!(
+            !html.contains("Choose <strong>Recover from shares</strong>"),
+            "removed: per-step instructions on the card",
+        );
+        assert!(
+            !html.contains("Command line:"),
+            "removed: command-line option on the card",
+        );
+    }
+
+    #[test]
+    fn embeds_json_block_with_expected_schema() {
+        let s = sample();
+        let html = super::render_share_card_html(&s, &BackupMeta::default());
+        // The JSON block is in the document, well-formed, and marked for tooling.
+        assert!(html.contains(r#"<script type="application/json" class="chela-share">"#));
+        let json = extract_json_block(&html);
+        assert!(json.contains(r#""type":"chela.share.v1""#));
+        assert!(json.contains(r#""card_code":"CHELA-A4F7-2-3-5-12""#));
+        assert!(json.contains(r#""set_id":"A4F7""#));
+        assert!(json.contains(r#""card_number":2"#));
+        assert!(json.contains(r#""threshold":3"#));
+        assert!(json.contains(r#""total":5"#));
+        assert!(json.contains(r#""word_count":12"#));
+        assert!(json.contains(r#""scheme":"bip39-wordlist""#));
+        assert!(json.contains(r#""payload_kind":"bip39""#));
+        // First and last words from the sample
+        assert!(json.contains(r#""abandon""#));
+        assert!(json.contains(r#""access""#));
+    }
+
+    #[test]
+    fn json_block_includes_optional_metadata_when_present() {
+        let names = alloc::vec![
+            "Alice".to_owned(),
+            "Bob".to_owned(),
+            "Carol".to_owned(),
+            "Dan".to_owned(),
+            "Eve".to_owned()
+        ];
+        let meta = BackupMeta {
+            backup_name: Some("Alice's wallet"),
+            description: Some("A note for the family."),
+            shareholder_names: Some(&names),
+        };
+        let html = super::render_share_card_html(&sample(), &meta);
+        let json = extract_json_block(&html);
+        assert!(json.contains(r#""backup_name":"Alice's wallet""#));
+        assert!(json.contains(r#""description":"A note for the family.""#));
+        assert!(json.contains(r#""shareholder_names":["Alice","Bob","Carol","Dan","Eve"]"#));
+    }
+
+    #[test]
+    fn json_block_escapes_script_close_tag_in_user_strings() {
+        // An attacker who controls backup_name / description / shareholder_names must
+        // not be able to break out of the surrounding <script> tag.
+        let meta = BackupMeta {
+            backup_name: Some("oops </script><script>alert(1)</script>"),
+            description: Some("desc with </script> in it"),
+            ..BackupMeta::default()
+        };
+        let html = super::render_share_card_html(&sample(), &meta);
+        // The injected </script> must be escaped (no second <script> ever appears).
+        let script_open_count = html.matches("<script").count();
+        assert_eq!(
+            script_open_count, 1,
+            "exactly one <script> tag should be present; second one indicates JSON tag broke out"
+        );
+        // The escape form ` < ` (lowercase) is what we emit.
+        assert!(html.contains(r"</script>"));
+    }
+
+    #[test]
+    fn json_block_is_present_per_article_in_multi_page_doc() {
+        let s1 = sample();
+        let mut s2 = sample();
+        s2.x = 3;
+        let html = render_paper_html(&[s1, s2], &BackupMeta::default());
+        // One JSON block per share — tools iterate via querySelectorAll('script.chela-share').
+        let blocks = html.matches(r#"class="chela-share""#).count();
+        assert_eq!(blocks, 2);
+    }
+
+    /// Pull the contents of the first `<script type="application/json" class="chela-share">`
+    /// block out of an HTML document. Test-only helper.
+    fn extract_json_block(html: &str) -> &str {
+        let needle = r#"<script type="application/json" class="chela-share">"#;
+        let after_open = html.split_once(needle).expect("script open tag").1;
+        after_open
+            .split_once("</script>")
+            .expect("script close tag")
+            .0
     }
 
     #[test]
