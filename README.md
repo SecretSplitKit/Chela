@@ -122,6 +122,10 @@ word1 word2 ... wordW
 - `<W>` — word count on line 2 (printed for hand-typing).
 - words — drawn from the BIP-39 English wordlist; count depends on payload size.
 
+Full wire-format spec for a re-implementation in another language:
+[SPEC.md](./SPEC.md). To recover from cards if chela itself is unavailable:
+[MANUAL_RECOVERY.md](./MANUAL_RECOVERY.md).
+
 A single share alone reveals nothing about the secret.
 
 ## Verifying a release

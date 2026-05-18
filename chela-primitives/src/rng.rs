@@ -198,8 +198,19 @@ mod wasm {
 
 #[cfg(test)]
 mod tests {
+    // Imports gated to match the actual test cfgs below:
+    // - fill_bytes is used by every test in this module, but no tests compile
+    //   on wasm32 (the wasm32 path needs a host import not available in unit
+    //   tests).
+    // - RngError is only used by the unsupported-target test.
+    #[cfg(not(target_arch = "wasm32"))]
     use super::fill_bytes;
-    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    #[cfg(not(any(
+        target_os = "macos",
+        target_os = "linux",
+        target_os = "windows",
+        target_arch = "wasm32"
+    )))]
     use super::RngError;
 
     #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]

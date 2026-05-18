@@ -53,11 +53,33 @@ if ! cargo fmt --all -- --check; then
 fi
 ok "rustfmt clean"
 
-step "clippy (-D warnings)"
+step "clippy (-D warnings) — host target"
 if ! cargo clippy --all-targets --all-features --workspace -- -D warnings; then
   fail "clippy: fix the warnings above"
 fi
-ok "clippy clean"
+ok "clippy clean (host)"
+
+# Clippy on every installed cross-target. chela has platform-conditional code
+# under `#[cfg(target_os = …)]` — on macOS, the Linux branch isn't compiled, so
+# clippy on the host target alone misses lints in it (and vice versa). CI runs
+# on Linux and catches those; this loop catches them here first.
+#
+# We only run targets the user has already installed via `rustup target add`,
+# so this is fast for laptops with the default toolchain and thorough for
+# anyone who's set up cross-targets.
+host_target=$(rustc -vV | awk '/host:/ {print $2}')
+cross_targets=$(rustup target list --installed | grep -v "^${host_target}\$" || true)
+if [ -n "$cross_targets" ]; then
+  for tgt in $cross_targets; do
+    step "clippy (-D warnings) — ${tgt}"
+    if ! cargo clippy --target "$tgt" --all-targets --all-features --workspace -- -D warnings; then
+      fail "clippy on $tgt: fix the warnings above (CI runs on Linux; lints in platform-conditional code only surface for that target)"
+    fi
+    ok "clippy clean (${tgt})"
+  done
+else
+  printf "  %s↷%s no cross-targets installed — install one with \`rustup target add x86_64-unknown-linux-gnu\` to mirror CI more thoroughly\n" "$D" "$N"
+fi
 
 step "cargo test --workspace"
 if ! cargo test --all-features --workspace; then

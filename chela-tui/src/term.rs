@@ -730,7 +730,7 @@ pub(crate) mod raw_termios {
         use core::ffi::c_int;
         use core::mem::MaybeUninit;
 
-        /// Linux asm-generic `struct termios` (x86_64, aarch64, arm, riscv64):
+        /// Linux asm-generic `struct termios` (`x86_64`, `aarch64`, `arm`, `riscv64`):
         /// `tcflag_t` is 4-byte `unsigned int`, `cc_t` is `unsigned char`, `NCCS == 32`,
         /// plus the `c_line` byte that Darwin lacks. MIPS/SPARC/Alpha/PowerPC differ —
         /// the size assertion below will fail there and force an arch-specific port.
