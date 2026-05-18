@@ -1,0 +1,15 @@
+[package]
+name = "chela-share"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Share container types and serialization for chela: text card, plain-text file, and print-ready HTML paper backup."
+
+[dependencies]
+chela-engine = { path = "../chela-engine" }
+chela-bip39 = { path = "../chela-bip39" }
+chela-primitives = { path = "../chela-primitives" }
+
+[lints]
+workspace = true

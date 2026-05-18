@@ -1,0 +1,31 @@
+[package]
+name = "chela-serve"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Localhost-only static webserver that hosts the chela WebAssembly UI. Single binary, cross-platform via std::net, embeds the WASM + HTML at compile time."
+# build.rs compiles chela-wasm for wasm32-unknown-unknown and stages the artefact
+# in OUT_DIR for `include_bytes!` to pick up. Required — there's no fallback path.
+build = "build.rs"
+
+[[bin]]
+name = "chela-serve"
+path = "src/main.rs"
+
+[dependencies]
+# Only used at startup to compute and print SHA-256 of the embedded chela.html and
+# chela.wasm so the operator can cross-check against the values published on the
+# GitHub release page. No third-party crypto; this is the same in-tree SHA-256 the
+# engine uses.
+chela-primitives = { path = "../chela-primitives" }
+
+[build-dependencies]
+# build.rs computes the SHA-256 of each inline <script> block in chela.html and
+# pins those hashes in the served CSP, so we can disallow inline scripts in
+# general while still letting our exact known-good script run. Same in-tree
+# SHA-256 as the runtime crypto.
+chela-primitives = { path = "../chela-primitives" }
+
+[lints]
+workspace = true

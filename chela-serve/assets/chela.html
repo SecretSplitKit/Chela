@@ -1,0 +1,1481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>chela — Shamir's Secret Sharing for inheritance &amp; recovery</title>
+<style>
+  :root {
+    --bg: #f6f6f2;
+    --card: #ffffff;
+    --ink: #111;
+    --muted: #6a6a6a;
+    --soft: #d6d6d6;
+    --hr: #e2e2dc;
+    --accent: #0066cc;
+    --accent-bg: #e8f1fb;
+    --accent-bold: #0052a3;
+    --warn: #b35900;
+    --warn-bg: #fff4d9;
+    --ok: #1b6e2b;
+    --ok-bg: #e6f5ea;
+    --err: #a3210f;
+    --err-bg: #fbe9e6;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 1.5rem 1rem 3rem 1rem; }
+
+  .app-header { margin-bottom: 1.5rem; }
+  .app-title {
+    font-family: var(--mono);
+    font-size: 1.6rem;
+    letter-spacing: 0.04em;
+    margin: 0 0 0.2rem 0;
+  }
+  .app-tagline { color: var(--muted); margin: 0; font-size: 0.95rem; }
+
+  /* --- Card layout --------------------------------------------------------------------- */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--soft);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  }
+  .card-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.7rem 1rem;
+    background: #fafaf6;
+    border-bottom: 1px solid var(--hr);
+    gap: 0.8rem;
+  }
+  .card-toolbar .step-counter {
+    font-family: var(--mono);
+    color: var(--muted);
+    font-size: 0.82rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .card-body { padding: 1.5rem 1.75rem; }
+  .card-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    padding: 0.9rem 1.25rem;
+    background: #fafaf6;
+    border-top: 1px solid var(--hr);
+  }
+
+  .step-title {
+    font-family: var(--sans);
+    font-size: 1.5rem;
+    line-height: 1.2;
+    font-weight: 700;
+    color: var(--accent-bold);
+    margin: 0 0 1rem 0;
+  }
+
+  /* --- Form controls ------------------------------------------------------------------- */
+  label {
+    display: block; font-weight: 600;
+    margin: 0.8rem 0 0.3rem 0; font-size: 0.95rem;
+  }
+  label .hint { font-weight: 400; color: var(--muted); font-size: 0.85rem; margin-left: 0.4rem; }
+  input[type="text"], input[type="password"], input[type="number"], textarea {
+    width: 100%; padding: 0.6rem 0.75rem;
+    border: 1px solid var(--soft); border-radius: 4px;
+    font-family: inherit; font-size: 0.95rem; background: #fff;
+    color: var(--ink);
+  }
+  input:focus, textarea:focus {
+    outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent);
+  }
+  textarea { font-family: var(--mono); min-height: 5rem; resize: vertical; line-height: 1.4; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  .field-with-toggle { display: flex; gap: 0.5rem; align-items: stretch; }
+  .field-with-toggle input { flex: 1; }
+  .reveal-btn {
+    background: #fff; border: 1px solid var(--soft); border-radius: 4px;
+    padding: 0 0.85rem; cursor: pointer; font: inherit; font-size: 0.85rem;
+    color: var(--muted); white-space: nowrap;
+  }
+  .reveal-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+  /* --- Buttons ------------------------------------------------------------------------- */
+  button.primary, a.primary {
+    background: var(--accent); color: #fff; border: 0;
+    padding: 0.65rem 1.3rem; border-radius: 4px;
+    font: inherit; font-weight: 600; cursor: pointer;
+    text-decoration: none; display: inline-block;
+  }
+  button.primary:hover, a.primary:hover { background: var(--accent-bold); }
+  button.primary:disabled { background: var(--soft); cursor: not-allowed; }
+  button.secondary {
+    background: #fff; color: var(--ink); border: 1px solid var(--soft);
+    padding: 0.55rem 1.1rem; border-radius: 4px;
+    font: inherit; cursor: pointer;
+  }
+  button.secondary:hover { border-color: var(--accent); color: var(--accent); }
+  .back-btn {
+    background: transparent; border: 0; color: var(--accent);
+    padding: 0.35rem 0.6rem; margin-left: -0.6rem; border-radius: 4px;
+    font: inherit; font-size: 0.95rem; cursor: pointer; font-weight: 600;
+  }
+  .back-btn:hover { background: var(--accent-bg); }
+  .back-btn[disabled] { color: var(--muted); cursor: not-allowed; background: transparent; }
+
+  /* --- Menu screen --------------------------------------------------------------------- */
+  .menu-grid { display: grid; gap: 0.7rem; }
+  .menu-btn {
+    background: #fff; border: 1px solid var(--soft); border-radius: 6px;
+    padding: 1.1rem 1.3rem; text-align: left; cursor: pointer;
+    font: inherit; color: var(--ink);
+    display: block; width: 100%;
+  }
+  .menu-btn:hover { border-color: var(--accent); background: var(--accent-bg); }
+  .menu-btn-title {
+    display: block; font-weight: 700; font-size: 1.05rem;
+    color: var(--ink); line-height: 1.3;
+  }
+  .menu-btn-desc {
+    display: block; color: var(--muted); font-size: 0.9rem;
+    margin-top: 0.2rem; line-height: 1.4;
+  }
+
+  /* --- Trade-off / explanation blocks -------------------------------------------------- */
+  .explainer { margin: 1rem 0; }
+  .explainer p { margin: 0 0 0.6rem 0; }
+  .explainer p:last-child { margin-bottom: 0; }
+
+  .tradeoffs {
+    margin: 1rem 0; padding: 0.75rem 1rem;
+    background: #fbf7ef; border-left: 3px solid #d4b572;
+    border-radius: 0 4px 4px 0; font-size: 0.92rem;
+  }
+  .tradeoffs strong { color: var(--ink); }
+  .tradeoffs ul { margin: 0.35rem 0 0 1.2rem; padding: 0; }
+  .tradeoffs li { margin: 0.25rem 0; }
+  .tradeoffs p { margin: 0.3rem 0 0 0; }
+
+  .examples-block { margin: 1rem 0; }
+  .examples-block strong { display: block; margin-bottom: 0.3rem; }
+  .examples-block ul { list-style: none; padding: 0; margin: 0; }
+  .examples-block li {
+    color: var(--muted); font-style: italic; margin: 0.25rem 0; padding-left: 1rem;
+    position: relative;
+  }
+  .examples-block li::before { content: "·"; position: absolute; left: 0.3rem; color: var(--soft); }
+
+  .common-configs {
+    margin: 1rem 0; font-family: var(--mono); font-size: 0.85rem;
+    background: #f4f4ef; padding: 0.7rem 0.9rem; border-radius: 4px;
+  }
+  .common-configs strong { font-family: -apple-system, sans-serif; display: block; margin-bottom: 0.3rem; }
+  .common-configs div { padding: 0.1rem 0; }
+  .common-configs .cfg { color: var(--accent-bold); font-weight: 600; margin-right: 0.5rem; }
+
+  /* --- Alerts -------------------------------------------------------------------------- */
+  .alert {
+    padding: 0.65rem 0.9rem; border-radius: 4px;
+    margin: 0.8rem 0; border-left: 3px solid;
+    font-size: 0.92rem;
+  }
+  .alert.warn { background: var(--warn-bg); border-color: var(--warn); color: var(--warn); }
+  .alert.err  { background: var(--err-bg);  border-color: var(--err);  color: var(--err); }
+  .alert.ok   { background: var(--ok-bg);   border-color: var(--ok);   color: var(--ok); }
+  .alert p { margin: 0.25em 0; }
+  .alert p:first-child { margin-top: 0; }
+  .alert p:last-child { margin-bottom: 0; }
+
+  pre {
+    font-family: var(--mono); font-size: 0.85rem;
+    background: #f4f4ef; padding: 0.7rem; border-radius: 4px;
+    overflow-x: auto; word-break: break-all; white-space: pre-wrap;
+  }
+  iframe.preview {
+    width: 100%; height: 540px;
+    border: 1px solid var(--soft); border-radius: 4px;
+    margin-top: 1rem; background: #fff;
+  }
+
+  /* --- Yes/no select widget ----------------------------------------------------------- */
+  .yesno {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem;
+    margin-top: 0.6rem;
+  }
+  .yesno button {
+    padding: 0.95rem 1rem; background: #fff;
+    border: 1.5px solid var(--soft); border-radius: 5px;
+    font: inherit; cursor: pointer; text-align: left;
+  }
+  .yesno button:hover { border-color: var(--accent); background: var(--accent-bg); }
+  .yesno button.chosen {
+    border-color: var(--accent); background: var(--accent-bg);
+  }
+  .yesno-title { display: block; font-weight: 700; color: var(--ink); }
+  .yesno-desc  { display: block; font-weight: 400; color: var(--muted); font-size: 0.88rem; margin-top: 0.2rem; }
+
+  .shareholders-list { display: grid; gap: 0.4rem; margin-top: 0.6rem; }
+
+  /* --- Recovery header (CHELA-XXXX-x-M-N-W broken into 5 fields) ----------------------
+     Two-row CSS grid:
+       row 1 = labels (only field columns populate this row)
+       row 2 = inputs + CHELA literal + dashes
+     Fields span both rows and use `grid-template-rows: subgrid` so their internal
+     label/input pair locks into the parent's row tracks — that's what keeps every label
+     baseline aligned across all five fields. CHELA and the dashes are placed explicitly
+     in row 2 only, so they sit at the vertical centre of the input boxes without any
+     padding hacks. */
+  .header-grid {
+    display: inline-grid;
+    grid-template-rows: auto auto;
+    grid-auto-flow: column;
+    grid-auto-columns: max-content;
+    column-gap: 0.5rem;
+    row-gap: 0.2rem;
+    margin: 0.8rem 0;
+    font-family: var(--mono);
+    align-items: center;
+    justify-items: center;
+  }
+  .header-grid > .lit  { grid-row: 2; font-weight: 700; color: var(--ink); }
+  .header-grid > .dash { grid-row: 2; font-weight: 700; color: var(--muted); }
+  .header-field {
+    display: grid;
+    grid-row: 1 / span 2;
+    grid-template-rows: subgrid;
+    justify-items: center;
+  }
+  .header-field label {
+    font-family: -apple-system, sans-serif; font-size: 0.6rem;
+    margin: 0; color: var(--muted); font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.03em;
+    align-self: end;
+  }
+  .header-field input {
+    font-family: var(--mono); font-size: 1.05rem; font-weight: 600;
+    text-align: center; padding: 0.45rem 0.35rem;
+    align-self: start;
+  }
+  .header-field input.w-id { width: 6ch; text-transform: uppercase; }
+  .header-field input.w-num { width: 4ch; }
+  .header-field input.w-count { width: 5ch; }
+  .header-field input.locked { background: #f4f4ef; color: var(--muted); }
+
+  /* --- Word grid (recovery typing surface) -------------------------------------------- */
+  .word-progress {
+    color: var(--muted); font-size: 0.88rem; margin: 0.4rem 0 0.8rem 0;
+    font-family: var(--mono);
+  }
+  .word-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 0.5rem 0.6rem; margin: 0.6rem 0;
+  }
+  @media (max-width: 600px) {
+    .word-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+  .word-cell {
+    display: flex; align-items: stretch;
+    border: 1.5px solid var(--soft); border-radius: 4px;
+    background: #fff; overflow: hidden;
+  }
+  .word-cell.valid { border-color: var(--ok); }
+  .word-cell.invalid { border-color: var(--err); }
+  .word-cell.focused { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .word-cell .num {
+    background: #f4f4ef; color: var(--muted);
+    padding: 0.5rem 0.3rem; font-family: var(--mono);
+    font-size: 0.78rem; min-width: 2rem; text-align: right;
+    border-right: 1px solid var(--hr); user-select: none;
+  }
+  .word-cell input {
+    flex: 1; border: 0; outline: 0;
+    padding: 0.45rem 0.5rem; font-family: var(--mono);
+    font-size: 0.95rem; background: transparent;
+    width: 100%;
+  }
+  .word-cell .check {
+    padding: 0 0.4rem; display: flex; align-items: center;
+    font-size: 0.9rem; user-select: none;
+  }
+  .word-cell.valid .check { color: var(--ok); }
+  .word-cell.invalid .check { color: var(--err); }
+
+  /* --- Confirm-screen summary ---------------------------------------------------------- */
+  .confirm-headline {
+    color: var(--accent-bold); font-weight: 700; font-size: 1.05rem;
+    line-height: 1.4; margin: 0 0 1rem 0;
+  }
+  .summary { margin: 0; }
+  .summary dt {
+    font-weight: 600; color: var(--muted); font-size: 0.82rem;
+    text-transform: uppercase; letter-spacing: 0.04em; margin-top: 0.7rem;
+  }
+  .summary dd { margin: 0.2rem 0 0 0; }
+
+  /* --- Complete screen ----------------------------------------------------------------- */
+  /* Big circular checkmark used at the top of the split-done and recover-done screens.
+     Replaces the TUI box-drawing banner — the ASCII art doesn't survive variable-width
+     box-drawing-glyph fallback in browser fonts. */
+  .complete-banner {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 0.6rem; padding: 1.2rem 1rem 0.4rem 1rem; margin: 0;
+  }
+  .complete-banner .check {
+    width: 64px; height: 64px; border-radius: 50%;
+    background: var(--ok); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 2.4rem; line-height: 1; font-weight: 700;
+    font-family: var(--sans);
+  }
+  .complete-banner .label {
+    font-family: var(--sans); font-size: 1.4rem; font-weight: 700;
+    color: var(--ok); letter-spacing: 0.02em;
+  }
+
+  /* --- Recover share-counter ---------------------------------------------------------- */
+  .share-counter {
+    background: var(--accent-bg); color: var(--accent-bold);
+    padding: 0.55rem 0.85rem; border-radius: 4px; margin: 0 0 0.9rem 0;
+    font-size: 0.92rem;
+  }
+
+  .muted { color: var(--muted); }
+  .small { font-size: 0.85rem; }
+  .hidden { display: none !important; }
+
+  footer {
+    text-align: center; color: var(--muted);
+    font-size: 0.85rem; margin: 2rem 0 0 0;
+  }
+  footer a { color: var(--accent); }
+  .boot-error {
+    max-width: 760px; margin: 2rem auto; padding: 1.5rem;
+    background: var(--err-bg); border-left: 3px solid var(--err);
+    color: var(--err); border-radius: 4px;
+  }
+</style>
+</head>
+<body>
+<main>
+  <div class="app-header">
+    <h1 class="app-title">chela</h1>
+    <p class="app-tagline">Shamir's Secret Sharing for cryptocurrency wallets and master passwords. Everything runs locally in your browser — your secret never leaves this machine.</p>
+  </div>
+  <div id="app"></div>
+  <footer>
+    chela · runs entirely in your browser · <a href="https://github.com/SecretSplitKit/Chela" target="_blank" rel="noopener">github.com/SecretSplitKit/Chela</a>
+  </footer>
+</main>
+
+<script>
+"use strict";
+// =========================================================================================
+// chela web UI — wizard mirroring the TUI step-for-step.
+//
+// SECURITY: no innerHTML for any user-supplied or WASM-returned content. All dynamic DOM
+// is built via document.createElement / element.textContent / element.setAttribute. The
+// share-preview iframe uses iframe.srcdoc (a property setter, not innerHTML) with a
+// sandbox attribute; its content is produced by our trusted WASM renderer.
+// =========================================================================================
+
+const WASM_BASE64 = null;
+const WASM_URL = "./chela.wasm";
+
+let memory = null;
+let wasmExports = null;
+
+async function loadWasm() {
+  const importObj = {
+    chela: {
+      random_bytes: (ptr, len) => {
+        try { crypto.getRandomValues(new Uint8Array(memory.buffer, ptr, len)); return 0; }
+        catch (e) { console.error("random_bytes:", e); return 1; }
+      },
+    },
+  };
+  let bytes;
+  if (WASM_BASE64) {
+    const bin = atob(WASM_BASE64);
+    bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  } else {
+    const resp = await fetch(WASM_URL);
+    if (!resp.ok) throw new Error("failed to fetch chela.wasm: " + resp.status);
+    bytes = new Uint8Array(await resp.arrayBuffer());
+  }
+  const result = await WebAssembly.instantiate(bytes, importObj);
+  wasmExports = result.instance.exports;
+  memory = wasmExports.memory;
+}
+
+// --- FFI marshalling --------------------------------------------------------------------
+function writeBytes(bytes) {
+  const len = bytes.length;
+  const ptr = wasmExports.chela_alloc(len);
+  new Uint8Array(memory.buffer, ptr, len).set(bytes);
+  return [ptr, len];
+}
+function readPacked(packed) {
+  const ptr = Number(packed >> 32n);
+  const len = Number(packed & 0xFFFFFFFFn);
+  const copy = new Uint8Array(new Uint8Array(memory.buffer, ptr, len));
+  wasmExports.chela_dealloc(ptr, len);
+  return copy;
+}
+function callJson(fn, req) {
+  const [p, l] = writeBytes(req);
+  const r = wasmExports[fn](p, l);
+  wasmExports.chela_dealloc(p, l);
+  return JSON.parse(new TextDecoder().decode(readPacked(r)));
+}
+function callBytes(fn, req) {
+  const [p, l] = writeBytes(req);
+  const r = wasmExports[fn](p, l);
+  wasmExports.chela_dealloc(p, l);
+  return readPacked(r);
+}
+
+// --- Request encoders (must match chela-wasm/src/request.rs) ----------------------------
+const TE = new TextEncoder();
+class RB {
+  constructor() { this.parts = []; this.n = 0; }
+  push(b) { this.parts.push(b); this.n += b.length; }
+  u8(v) { this.push(new Uint8Array([v & 0xff])); }
+  u16(v) { const b = new Uint8Array(2); new DataView(b.buffer).setUint16(0, v, true); this.push(b); }
+  u32(v) { const b = new Uint8Array(4); new DataView(b.buffer).setUint32(0, v, true); this.push(b); }
+  s(str) { const e = TE.encode(str); this.u32(e.length); this.push(e); }
+  build() { const o = new Uint8Array(this.n); let i = 0; for (const p of this.parts) { o.set(p, i); i += p.length; } return o; }
+}
+function encSplitBip39(t, n, mnem, pp) { const b = new RB(); b.u8(1); b.u8(t); b.u8(n); b.s(mnem); b.s(pp); return b.build(); }
+function encSplitText(t, n, txt)       { const b = new RB(); b.u8(2); b.u8(t); b.u8(n); b.s(txt); return b.build(); }
+function encRecover(shares)            { const b = new RB(); b.u8(3); b.u16(shares.length); for (const s of shares) { b.s(s.header); b.s(s.words); } return b.build(); }
+function encRenderPaper(shares, opts) {
+  const b = new RB(); b.u8(4); b.u16(shares.length);
+  for (const s of shares) { b.s(s.header); b.s(s.words); }
+  if (opts.backupName && opts.backupName.trim()) { b.u8(1); b.s(opts.backupName); } else { b.u8(0); }
+  if (opts.description && opts.description.trim()) { b.u8(1); b.s(opts.description); } else { b.u8(0); }
+  if (opts.shareholderNames && opts.shareholderNames.length) {
+    b.u8(1); b.u16(opts.shareholderNames.length);
+    for (const n of opts.shareholderNames) b.s(n);
+  } else { b.u8(0); }
+  return b.build();
+}
+
+// =========================================================================================
+// DOM helpers — direct createElement / textContent only.
+// =========================================================================================
+function E(tag, attrs) {
+  const el = document.createElement(tag);
+  if (attrs) {
+    if (attrs.class) el.className = attrs.class;
+    if (attrs.text != null) el.textContent = attrs.text;
+    if (attrs.id) el.id = attrs.id;
+    if (attrs.type) el.type = attrs.type;
+    if (attrs.placeholder != null) el.placeholder = attrs.placeholder;
+    if (attrs.value != null) el.value = attrs.value;
+    if (attrs.min != null) el.min = String(attrs.min);
+    if (attrs.max != null) el.max = String(attrs.max);
+    if (attrs.rows) el.rows = attrs.rows;
+    if (attrs.disabled) el.disabled = true;
+    if (attrs.href) el.href = attrs.href;
+    if (attrs.download) el.setAttribute("download", attrs.download);
+    if (attrs.click) el.addEventListener("click", attrs.click);
+    if (attrs.input) el.addEventListener("input", attrs.input);
+  }
+  return el;
+}
+function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+function appendAll(parent, ...children) {
+  for (const c of children) {
+    if (c == null || c === false) continue;
+    if (Array.isArray(c)) { for (const cc of c) if (cc) parent.appendChild(cc); continue; }
+    if (typeof c === "string") parent.appendChild(document.createTextNode(c));
+    else parent.appendChild(c);
+  }
+  return parent;
+}
+
+// =========================================================================================
+// State machine
+//
+// `phase` is the current screen identifier. Each phase has a render function that
+// builds the body, a validate function, and a `next` that decides where to go on
+// "Continue". A history stack tracks back navigation.
+// =========================================================================================
+const state = {
+  flow: null,       // "bip39" | "text" | "recover" | null (menu)
+  phase: "menu",
+  history: [],      // phase names visited, for Back
+  data: {},         // collected so far
+  result: null,     // generated shares / recovered secret
+};
+
+function reset() {
+  state.flow = null;
+  state.phase = "menu";
+  state.history = [];
+  state.data = {};
+  state.result = null;
+  render();
+}
+
+function goTo(nextPhase) {
+  if (state.phase !== nextPhase) {
+    state.history.push(state.phase);
+    state.phase = nextPhase;
+  }
+  render();
+}
+
+function goBack() {
+  if (state.flow === "recover") {
+    if (state.phase === "recover-words") {
+      // Back from words returns to the header screen for the SAME share, preserving
+      // both the header draft and any partially-typed words so the user can fix a
+      // mistake in the header without retyping.
+      state.phase = "recover-header";
+      // Pop the matching history entry we pushed in handleContinue.
+      if (state.history[state.history.length - 1] === "recover-header") state.history.pop();
+      render();
+      return;
+    }
+    // recover-header: discard this share's draft. If we have previously-collected
+    // shares, pop the last one so the user can re-enter it.
+    state.data.headerDraft = null;
+    state.data.wordsDraft = [];
+    if (state.data.collected.length > 0) {
+      state.data.collected.pop();
+      if (state.data.collected.length === 0) state.data.expected = null;
+      // Pop the "recover-words" we pushed in handleContinue when we looped.
+      if (state.history[state.history.length - 1] === "recover-words") state.history.pop();
+      render();
+      return;
+    }
+    // No shares collected yet: cancel back to menu.
+    reset();
+    return;
+  }
+  // Non-recover flows: simple history pop.
+  const prev = state.history.pop();
+  if (prev) { state.phase = prev; render(); return; }
+  reset();
+}
+
+function startFlow(flow) {
+  state.flow = flow;
+  state.history = ["menu"];
+  state.data = defaultDataFor(flow);
+  state.result = null;
+  state.phase = firstPhaseFor(flow);
+  render();
+}
+
+function defaultDataFor(flow) {
+  if (flow === "bip39")   return { mnemonic: "", passphrase: "", backupName: "", total: 5, threshold: 3, useShareholderNames: null, shareholderNames: [], description: "" };
+  if (flow === "text")    return { text: "", backupName: "", total: 5, threshold: 3, useShareholderNames: null, shareholderNames: [], description: "" };
+  if (flow === "recover") return {
+    collected: [],      // [{ header, words } ...] — committed shares
+    expected: null,     // { id, threshold, total, wordCount } from first share's header
+    headerDraft: null,  // { id, x, threshold, total, wordCount } currently being entered
+    wordsDraft: [],     // array of W strings for the current share
+  };
+  return {};
+}
+
+function firstPhaseFor(flow) {
+  if (flow === "bip39")   return "mnemonic";
+  if (flow === "text")    return "text";
+  if (flow === "recover") return "recover-header";
+  return "menu";
+}
+
+// =========================================================================================
+// Phase registry
+//
+// Each phase = { title, totalIndex, render(card), validate(): err|null, next(): phaseName }
+// `totalIndex` is the human-visible "Step X of Y" counter; computed from a per-flow list.
+// =========================================================================================
+
+const phaseOrders = {
+  bip39: ["mnemonic", "passphrase", "name", "rule", "shareholders", "shareholder-names", "note", "confirm"],
+  text:  ["text", "name", "rule", "shareholders", "shareholder-names", "note", "confirm"],
+  // Recovery alternates between "header" and "words" per share until threshold is met.
+  recover: ["recover-header", "recover-words"],
+};
+
+function visiblePhasesFor(flow) {
+  // Hide "shareholder-names" unless the user opted into per-card names.
+  if (!flow) return [];
+  const list = phaseOrders[flow] || [];
+  return list.filter(p => p !== "shareholder-names" || state.data.useShareholderNames === true);
+}
+
+function stepCounter() {
+  if (state.flow === "recover") {
+    const have = state.data.collected.length;
+    const need = state.data.expected ? state.data.expected.threshold : null;
+    const onWords = state.phase === "recover-words";
+    if (need) {
+      return `Card ${have + 1} of ${need} · ${onWords ? "Words" : "Card code"}`;
+    }
+    return `Card ${have + 1} · ${onWords ? "Words" : "Card code"}`;
+  }
+  const order = visiblePhasesFor(state.flow);
+  const idx = order.indexOf(state.phase);
+  if (idx < 0) return "";
+  return `Step ${idx + 1} of ${order.length}`;
+}
+
+function nextPhase() {
+  // For recovery the next phase is decided in handleContinue (header → words → ...).
+  if (state.flow === "recover") return null;
+  const order = visiblePhasesFor(state.flow);
+  const idx = order.indexOf(state.phase);
+  if (idx < 0 || idx + 1 >= order.length) return null;
+  return order[idx + 1];
+}
+
+// =========================================================================================
+// Phase definitions
+// =========================================================================================
+
+const phases = {
+  // --- BIP-39 mnemonic ------------------------------------------------------------------
+  mnemonic: {
+    title: "Enter Your BIP-39 Mnemonic",
+    render: (body) => {
+      appendAll(body,
+        E("p", { text: "Paste your mnemonic on one line. 12, 15, 18, 21, or 24 words separated by single spaces." }),
+      );
+      const ta = E("textarea", {
+        id: "wz-input",
+        placeholder: "abandon abandon abandon …",
+        value: state.data.mnemonic,
+        input: (e) => { state.data.mnemonic = e.target.value; },
+      });
+      body.appendChild(ta);
+    },
+    validate: () => {
+      const m = (state.data.mnemonic || "").trim();
+      if (!m) return "Please paste your BIP-39 mnemonic.";
+      const w = m.split(/\s+/);
+      if (![12, 15, 18, 21, 24].includes(w.length)) {
+        return `Expected 12, 15, 18, 21, or 24 words. You pasted ${w.length}.`;
+      }
+      return null;
+    },
+  },
+
+  // --- BIP-39 passphrase ----------------------------------------------------------------
+  passphrase: {
+    title: "Enter the BIP-39 Passphrase",
+    render: (body) => {
+      appendAll(body,
+        E("p", { text: "BIP-39 wallets optionally combine the mnemonic with a passphrase to derive a different seed. If your wallet uses one, enter it now. If not, leave it blank." }),
+      );
+      body.appendChild(buildSecretField(state.data.passphrase, (v) => { state.data.passphrase = v; }));
+    },
+    validate: () => null,
+  },
+
+  // --- Text secret ----------------------------------------------------------------------
+  text: {
+    title: "Enter the Text to Split",
+    render: (body) => {
+      appendAll(body,
+        E("p", { text: "Up to 255 characters; UTF-8 is supported." }),
+      );
+      body.appendChild(buildSecretField(state.data.text, (v) => { state.data.text = v; }));
+    },
+    validate: () => {
+      if (!state.data.text) return "Please enter the text to split.";
+      if (state.data.text.length > 255) return `Text is ${state.data.text.length} characters; the limit is 255.`;
+      return null;
+    },
+  },
+
+  // --- Backup name ----------------------------------------------------------------------
+  name: {
+    title: "Give This Backup a Name",
+    render: (body) => {
+      appendAll(body,
+        E("p", { text: "A short name lets recipients see what this card is for at a glance (e.g. \"Alice's Ethereum wallet\" or \"Family password manager\")." }),
+        E("p", { class: "small muted", text: "Leave blank to skip — the cards still work without a name." }),
+      );
+      const inp = E("input", {
+        type: "text", value: state.data.backupName,
+        input: (e) => { state.data.backupName = e.target.value; },
+      });
+      body.appendChild(inp);
+    },
+    validate: () => null,
+  },
+
+  // --- Recovery rule (M of N) -----------------------------------------------------------
+  rule: {
+    title: "Choose the Recovery Rule",
+    render: (body) => {
+      appendAll(body,
+        E("p", { text: "Pick how many total shares to generate, and how many of them will be needed to recover the secret. Any smaller number reveals nothing." }),
+      );
+
+      const trade = E("div", { class: "tradeoffs" });
+      appendAll(trade,
+        E("strong", { text: "Trade-offs:" }),
+        (() => {
+          const ul = E("ul");
+          const li1 = E("li"); appendAll(li1, E("strong", { text: "More total shares" }), " = more redundancy if a card is lost — but also more cards an attacker might find.");
+          const li2 = E("li"); appendAll(li2, E("strong", { text: "Higher required-to-recover" }), " = harder for an attacker who finds some cards — but also harder for legitimate recipients to coordinate.");
+          const li3 = E("li", { text: "Required must be at least 2; a 1-of-N split just makes N copies." });
+          appendAll(ul, li1, li2, li3);
+          return ul;
+        })(),
+      );
+      body.appendChild(trade);
+
+      const cfg = E("div", { class: "common-configs" });
+      appendAll(cfg, E("strong", { text: "Common configurations:" }));
+      const configs = [
+        ["2-of-3", "small family, simple coordination"],
+        ["3-of-5", "typical inheritance kit (tolerates 2 lost cards)"],
+        ["4-of-7", "wider distribution, more loss tolerance"],
+        ["5-of-9", "institutional / multi-jurisdiction"],
+      ];
+      for (const [c, desc] of configs) {
+        const row = E("div");
+        appendAll(row, E("span", { class: "cfg", text: c }), "— " + desc);
+        cfg.appendChild(row);
+      }
+      body.appendChild(cfg);
+
+      const row = E("div", { class: "row" });
+      const totalWrap = E("div");
+      appendAll(totalWrap, E("label", { text: "Total shares to generate" }));
+      const totalInp = E("input", {
+        type: "number", value: String(state.data.total), min: 2, max: 255,
+        input: (e) => {
+          state.data.total = parseInt(e.target.value, 10) || 0;
+          const threshInp = document.getElementById("wz-threshold");
+          if (threshInp) threshInp.max = String(state.data.total);
+        },
+      });
+      totalWrap.appendChild(totalInp);
+      const threshWrap = E("div");
+      appendAll(threshWrap, E("label", { text: "Shares required to recover" }));
+      const threshInp = E("input", {
+        id: "wz-threshold",
+        type: "number", value: String(state.data.threshold), min: 2, max: state.data.total,
+        input: (e) => { state.data.threshold = parseInt(e.target.value, 10) || 0; },
+      });
+      threshWrap.appendChild(threshInp);
+      appendAll(row, totalWrap, threshWrap);
+      body.appendChild(row);
+    },
+    validate: () => {
+      const t = state.data.total, m = state.data.threshold;
+      if (!(t >= 2 && t <= 255)) return "Total must be between 2 and 255.";
+      if (!(m >= 2 && m <= t)) return `Required must be between 2 and ${t}.`;
+      return null;
+    },
+  },
+
+  // --- Identify shareholders Y/N --------------------------------------------------------
+  shareholders: {
+    title: "Identify Each Shareholder on Their Card?",
+    render: (body) => {
+      appendAll(body,
+        E("p", { text: "If you say yes, each printed share will list every shareholder by name with this card's recipient marked. That helps the recipients find each other later — without it, they may not know who else holds a card." }),
+      );
+
+      const trade = E("div", { class: "tradeoffs" });
+      appendAll(trade,
+        E("strong", { text: "Trade-off:" }),
+        E("p", { text: "Any single recovered card now identifies every shareholder by name. The cryptographic payload still reveals nothing, but an attacker who finds one card learns who else to target." }),
+        E("p", { text: "Mitigation: use first names or pseudonyms shared out of band with each recipient." }),
+      );
+      body.appendChild(trade);
+
+      const grid = E("div", { class: "yesno" });
+      const yes = E("button", { type: "button", class: "yesno" + (state.data.useShareholderNames === true ? " chosen" : "") });
+      yes.classList.add("yesno-btn"); if (state.data.useShareholderNames === true) yes.classList.add("chosen");
+      yes.className = "" + (state.data.useShareholderNames === true ? "chosen" : "");
+      appendAll(yes,
+        E("span", { class: "yesno-title", text: "Yes — list every shareholder on each card" }),
+        E("span", { class: "yesno-desc", text: "You'll be asked for each name on the next screen." }),
+      );
+      yes.addEventListener("click", () => { state.data.useShareholderNames = true; render(); });
+
+      const no = E("button", { type: "button" });
+      no.className = state.data.useShareholderNames === false ? "chosen" : "";
+      appendAll(no,
+        E("span", { class: "yesno-title", text: "No — keep cards anonymous" }),
+        E("span", { class: "yesno-desc", text: "The cards won't say who's holding what." }),
+      );
+      no.addEventListener("click", () => { state.data.useShareholderNames = false; render(); });
+
+      appendAll(grid, yes, no);
+      body.appendChild(grid);
+    },
+    validate: () => state.data.useShareholderNames === null ? "Please choose yes or no — both have meaningful trade-offs." : null,
+  },
+
+  // --- Shareholder names ----------------------------------------------------------------
+  "shareholder-names": {
+    title: "Shareholder Names",
+    render: (body) => {
+      const n = state.data.total;
+      while (state.data.shareholderNames.length < n) state.data.shareholderNames.push("");
+      state.data.shareholderNames.length = n;
+      appendAll(body,
+        E("p", { text: `Type a name (first name or pseudonym is fine) for each of the ${n} shares.` }),
+        E("p", { class: "small muted", text: "Leave a slot blank to use a generic \"Shareholder N\" placeholder." }),
+      );
+      const list = E("div", { class: "shareholders-list" });
+      for (let i = 0; i < n; i++) {
+        const inp = E("input", {
+          type: "text", value: state.data.shareholderNames[i],
+          placeholder: `Shareholder ${i + 1}`,
+          input: (e) => { state.data.shareholderNames[i] = e.target.value; },
+        });
+        list.appendChild(inp);
+      }
+      body.appendChild(list);
+    },
+    validate: () => null,
+  },
+
+  // --- Recovery note --------------------------------------------------------------------
+  note: {
+    title: "Add a Note to Each Card",
+    render: (body) => {
+      appendAll(body,
+        E("p", { text: "Write a short note that will appear at the top of every printed share. This is context for the recipient, not recovery instructions (the cards already include step-by-step instructions at the bottom)." }),
+      );
+      const ex = E("div", { class: "examples-block" });
+      const exHead = E("strong", { text: "Examples:" });
+      const ul = E("ul");
+      const examples = [
+        "“This is my Ethereum wallet seed phrase, ask Scott to help you recover it.”",
+        "“Bitwarden master password; vault lives at https://vw.myserver.lol”",
+        "“Backup for the family Bitcoin wallet — call Alice at (555) 123-4567 first.”",
+      ];
+      for (const text of examples) ul.appendChild(E("li", { text }));
+      appendAll(ex, exHead, ul);
+      body.appendChild(ex);
+
+      const ta = E("textarea", {
+        placeholder: "(leave blank for no note)",
+        value: state.data.description,
+        input: (e) => { state.data.description = e.target.value; },
+      });
+      body.appendChild(ta);
+    },
+    validate: () => null,
+  },
+
+  // --- Confirm --------------------------------------------------------------------------
+  confirm: {
+    title: "Confirm",
+    render: (body) => {
+      const what = state.flow === "bip39" ? "BIP-39 seed" : "password";
+      const headline = E("p", { class: "confirm-headline" });
+      headline.appendChild(document.createTextNode(`You are about to split your ${what} into ${state.data.total} shares.`));
+      headline.appendChild(E("br"));
+      headline.appendChild(document.createTextNode(`Any ${state.data.threshold} of them, combined later, will reconstruct the secret.`));
+      body.appendChild(headline);
+
+      const dl = E("dl", { class: "summary" });
+      if (state.data.backupName.trim()) {
+        appendAll(dl, E("dt", { text: "Backup name" }), E("dd", { text: state.data.backupName.trim() }));
+      }
+      appendAll(dl,
+        E("dt", { text: "Shareholder names on each card" }),
+        E("dd", { text: state.data.useShareholderNames ? "Yes — names listed on every card" : "No — cards stay anonymous" }),
+      );
+      appendAll(dl,
+        E("dt", { text: "Recovery note" }),
+        E("dd", { text: state.data.description.trim() ? state.data.description.trim() : "(none)" }),
+      );
+      body.appendChild(dl);
+
+      const warn = E("div", { class: "alert warn" });
+      appendAll(warn,
+        E("p", { text: "After splitting, distribute one share to each shareholder." }),
+        E("p", { text: "ANY single share alone reveals nothing about the secret." }),
+      );
+      body.appendChild(warn);
+    },
+    validate: () => null,
+  },
+
+  // --- Recover: card code (CHELA-XXXX-x-M-N-W broken into 5 fields) -------------------
+  // Labels match the printed cards: "Card code" (whole thing), "Recovery set" (the 4-hex
+  // tag), "Card #" (the per-card index). The "Required to recover / Total cards / Word
+  // count" trio doesn't have separate labels on the card itself — they're just the last
+  // three numbers in the card code — so the inline help explains the mapping.
+  "recover-header": {
+    title: "Enter the Card Code",
+    render: (body) => {
+      const have = state.data.collected.length;
+      const exp = state.data.expected;
+
+      if (have === 0) {
+        appendAll(body,
+          E("p", { text: "Find \"Card code\" on the printed card — it's the dashed line near the top, e.g. CHELA-9DA3-1-3-5-25. Type each part into the matching box below." }),
+        );
+      } else {
+        appendAll(body,
+          E("p", { text: `Now read the card code from card #${have + 1}. Most fields are locked because they have to match the first card — just type this card's number.` }),
+        );
+        const counter = E("div", { class: "share-counter" });
+        counter.textContent = `Recovery set ${exp.id} · ${have} of ${exp.threshold} cards entered.`;
+        body.appendChild(counter);
+      }
+
+      // Initialise headerDraft for this share if not already started.
+      if (!state.data.headerDraft) {
+        state.data.headerDraft = exp
+          ? { id: exp.id, x: "", threshold: String(exp.threshold), total: String(exp.total), wordCount: String(exp.wordCount) }
+          : { id: "", x: "", threshold: "", total: "", wordCount: "" };
+      }
+      const d = state.data.headerDraft;
+      const locked = exp !== null;
+
+      const grid = E("div", { class: "header-grid" });
+      grid.appendChild(E("span", { class: "lit", text: "CHELA" }));
+      grid.appendChild(E("span", { class: "dash", text: "—" }));
+      grid.appendChild(buildHeaderField("Recovery set", "w-id", d.id, 4, locked, (v) => { d.id = v.toUpperCase(); }));
+      grid.appendChild(E("span", { class: "dash", text: "—" }));
+      // Card-number is always editable (different per card).
+      grid.appendChild(buildHeaderField("Card #", "w-num", d.x, 3, false, (v) => { d.x = v.replace(/[^0-9]/g, ""); }, true));
+      grid.appendChild(E("span", { class: "dash", text: "—" }));
+      grid.appendChild(buildHeaderField("# Required", "w-num", d.threshold, 3, locked, (v) => { d.threshold = v.replace(/[^0-9]/g, ""); }));
+      grid.appendChild(E("span", { class: "dash", text: "—" }));
+      grid.appendChild(buildHeaderField("Total cards", "w-num", d.total, 3, locked, (v) => { d.total = v.replace(/[^0-9]/g, ""); }));
+      grid.appendChild(E("span", { class: "dash", text: "—" }));
+      grid.appendChild(buildHeaderField("Word count", "w-count", d.wordCount, 3, locked, (v) => { d.wordCount = v.replace(/[^0-9]/g, ""); }));
+      body.appendChild(grid);
+    },
+    validate: () => {
+      const d = state.data.headerDraft;
+      if (!d) return "Internal error: card-code draft missing.";
+      const id = d.id.toUpperCase();
+      if (!/^[0-9A-F]{4}$/.test(id)) return "Recovery set must be exactly 4 hex characters (0-9, A-F).";
+      const x = parseInt(d.x, 10);
+      const threshold = parseInt(d.threshold, 10);
+      const total = parseInt(d.total, 10);
+      const wc = parseInt(d.wordCount, 10);
+      if (!(x >= 1 && x <= 255)) return "Card # must be 1 or higher.";
+      if (!(threshold >= 2)) return "# Required must be 2 or higher.";
+      if (!(total >= threshold)) return "Total cards must be at least as big as # Required.";
+      if (!(wc >= 1)) return "Word count must be 1 or higher.";
+      if (state.data.expected) {
+        const e = state.data.expected;
+        if (id !== e.id) return `Recovery set (${id}) doesn't match the first card (${e.id}).`;
+        if (threshold !== e.threshold) return `# Required (${threshold}) doesn't match the first card (${e.threshold}).`;
+        if (total !== e.total) return `Total cards (${total}) doesn't match the first card (${e.total}).`;
+        if (wc !== e.wordCount) return `Word count (${wc}) doesn't match the first card (${e.wordCount}).`;
+      } else {
+        state.data.expected = { id, threshold, total, wordCount: wc };
+      }
+      // Check this card number wasn't already collected.
+      if (state.data.collected.some(s => s.header.includes(`-${x}-`))) {
+        const match = state.data.collected.find(s => s.header === `CHELA-${id}-${x}-${threshold}-${total}-${wc}`);
+        if (match) return `You already entered card #${x}.`;
+      }
+      // Commit normalised values back into the draft so the words phase has them.
+      d.id = id; d.x = String(x); d.threshold = String(threshold); d.total = String(total); d.wordCount = String(wc);
+      return null;
+    },
+  },
+
+  // --- Recover: words (W input boxes in a 4-column grid) ------------------------------
+  "recover-words": {
+    title: "Type Each Word",
+    render: (body) => {
+      const d = state.data.headerDraft;
+      const wc = parseInt(d.wordCount, 10);
+      // Initialise wordsDraft to the right length.
+      if (state.data.wordsDraft.length !== wc) {
+        state.data.wordsDraft = Array(wc).fill("");
+      }
+      appendAll(body,
+        E("p", { text: `Read the ${wc} words off the card and type each one into its own box, in order.` }),
+        E("p", { class: "small muted", text: "Each word lights up green when it matches the BIP-39 wordlist, red if it doesn't. Tab moves to the next field." }),
+      );
+      const progress = E("div", { class: "word-progress" });
+      progress.textContent = `Card code: CHELA-${d.id}-${d.x}-${d.threshold}-${d.total}-${d.wordCount}`;
+      body.appendChild(progress);
+
+      const grid = E("div", { class: "word-grid" });
+      for (let i = 0; i < wc; i++) {
+        grid.appendChild(buildWordCell(i, wc));
+      }
+      body.appendChild(grid);
+    },
+    validate: () => {
+      const words = state.data.wordsDraft.map(w => (w || "").trim().toLowerCase());
+      const blanks = [];
+      const bad = [];
+      for (let i = 0; i < words.length; i++) {
+        if (!words[i]) blanks.push(i + 1);
+        else if (!isValidBip39Word(words[i])) bad.push(i + 1);
+      }
+      if (blanks.length) return `Word ${blanks[0]} is empty.`;
+      if (bad.length) return `Word ${bad[0]} ("${state.data.wordsDraft[bad[0] - 1]}") isn't in the BIP-39 wordlist.`;
+      return null;
+    },
+  },
+};
+
+// =========================================================================================
+// Recovery-specific helpers
+// =========================================================================================
+function buildHeaderField(labelText, sizeClass, value, maxLen, locked, onChange, autofocus) {
+  const wrap = E("div", { class: "header-field" });
+  wrap.appendChild(E("label", { text: labelText }));
+  const inp = E("input", {
+    type: "text", value: value,
+    input: (e) => {
+      let v = e.target.value;
+      if (v.length > maxLen) { v = v.slice(0, maxLen); e.target.value = v; }
+      onChange(v);
+    },
+  });
+  inp.className = sizeClass + (locked ? " locked" : "");
+  inp.maxLength = maxLen;
+  if (locked) inp.readOnly = true;
+  if (autofocus) {
+    // Defer focus until the element is in the DOM and the parent card is rendered.
+    setTimeout(() => { try { inp.focus(); inp.select(); } catch (e) {} }, 0);
+  }
+  wrap.appendChild(inp);
+  return wrap;
+}
+
+// In-memory cache: word → boolean. Avoids re-calling the WASM for words we've seen.
+const wordCache = new Map();
+function isValidBip39Word(word) {
+  const key = (word || "").trim().toLowerCase();
+  if (!key) return false;
+  if (wordCache.has(key)) return wordCache.get(key);
+  const bytes = TE.encode(key);
+  const [ptr, len] = writeBytes(bytes);
+  const r = wasmExports.chela_word_in_list(ptr, len);
+  wasmExports.chela_dealloc(ptr, len);
+  const ok = r === 1;
+  wordCache.set(key, ok);
+  return ok;
+}
+
+function buildWordCell(index, total) {
+  const cell = E("div", { class: "word-cell" });
+  const num = E("span", { class: "num", text: String(index + 1) + "." });
+  const inp = E("input", {
+    type: "text",
+    value: state.data.wordsDraft[index] || "",
+    placeholder: "",
+  });
+  inp.autocomplete = "off";
+  inp.autocapitalize = "off";
+  inp.spellcheck = false;
+  const check = E("span", { class: "check", text: "" });
+  appendAll(cell, num, inp, check);
+
+  const updateCellState = () => {
+    const raw = inp.value.trim().toLowerCase();
+    cell.classList.remove("valid", "invalid");
+    check.textContent = "";
+    if (!raw) return;
+    if (isValidBip39Word(raw)) {
+      cell.classList.add("valid");
+      check.textContent = "✓";
+    } else {
+      cell.classList.add("invalid");
+      check.textContent = "✗";
+    }
+  };
+
+  inp.addEventListener("focus", () => cell.classList.add("focused"));
+  inp.addEventListener("blur", () => cell.classList.remove("focused"));
+  inp.addEventListener("input", () => {
+    state.data.wordsDraft[index] = inp.value.trim().toLowerCase();
+    updateCellState();
+  });
+  inp.addEventListener("keydown", (e) => {
+    // Space, comma, or Enter advance to the next field — handy when typing fast.
+    if ((e.key === " " || e.key === "," || e.key === "Enter") && index + 1 < total) {
+      const raw = inp.value.trim();
+      if (raw.length > 0) {
+        e.preventDefault();
+        state.data.wordsDraft[index] = raw.toLowerCase();
+        updateCellState();
+        focusNextWordCell(index);
+      }
+    }
+  });
+  updateCellState();
+  // Auto-focus the first empty cell so the user can start typing immediately.
+  if (index === firstEmptyWordIndex()) {
+    setTimeout(() => { try { inp.focus(); } catch (e) {} }, 0);
+  }
+  return cell;
+}
+
+function firstEmptyWordIndex() {
+  for (let i = 0; i < state.data.wordsDraft.length; i++) {
+    if (!state.data.wordsDraft[i] || !state.data.wordsDraft[i].trim()) return i;
+  }
+  return -1;
+}
+
+function focusNextWordCell(currentIdx) {
+  const inputs = document.querySelectorAll(".word-cell input");
+  const next = inputs[currentIdx + 1];
+  if (next) { next.focus(); next.select(); }
+}
+
+// =========================================================================================
+// Masked input with a Reveal toggle.
+// =========================================================================================
+function buildSecretField(initialValue, onChange) {
+  const wrap = E("div");
+  const row = E("div", { class: "field-with-toggle" });
+  const inp = E("input", { type: "password", value: initialValue, input: (e) => onChange(e.target.value) });
+  const btn = E("button", { type: "button", class: "reveal-btn", text: "Reveal" });
+  btn.addEventListener("click", () => {
+    if (inp.type === "password") { inp.type = "text"; btn.textContent = "Hide"; }
+    else { inp.type = "password"; btn.textContent = "Reveal"; }
+  });
+  appendAll(row, inp, btn);
+  appendAll(wrap, row, E("p", { class: "small muted", text: "Input is masked. Click Reveal to peek." }));
+  return wrap;
+}
+
+// =========================================================================================
+// Render dispatch
+// =========================================================================================
+function render() {
+  const root = document.getElementById("app");
+  clear(root);
+  if (state.phase === "menu") return renderMenu(root);
+  if (state.phase === "complete") return renderComplete(root);
+  if (state.phase === "recovered") return renderRecovered(root);
+  renderWizardPhase(root);
+  window.scrollTo({ top: 0, behavior: "instant" });
+}
+
+function renderMenu(root) {
+  const card = E("div", { class: "card" });
+  const body = E("div", { class: "card-body" });
+  body.appendChild(E("h2", { class: "step-title", text: "What would you like to do?" }));
+  const grid = E("div", { class: "menu-grid" });
+  const items = [
+    { flow: "bip39",   title: "Split a BIP-39 seed",   desc: "Split a cryptocurrency wallet's seed phrase (with optional passphrase) into shares." },
+    { flow: "text",    title: "Split a text password", desc: "Split a master password or any short text up to 255 characters." },
+    { flow: "recover", title: "Recover from shares",   desc: "Combine a threshold of shares to reconstruct the original secret." },
+  ];
+  for (const it of items) {
+    const btn = E("button", { type: "button", class: "menu-btn", click: () => startFlow(it.flow) });
+    appendAll(btn,
+      E("span", { class: "menu-btn-title", text: it.title }),
+      E("span", { class: "menu-btn-desc",  text: it.desc }),
+    );
+    grid.appendChild(btn);
+  }
+  body.appendChild(grid);
+  card.appendChild(body);
+  root.appendChild(card);
+}
+
+function renderWizardPhase(root) {
+  const phase = phases[state.phase];
+  if (!phase) { console.error("unknown phase:", state.phase); return; }
+  const card = E("div", { class: "card" });
+
+  // Top toolbar: Back button + step counter
+  const toolbar = E("div", { class: "card-toolbar" });
+  const back = E("button", { type: "button", class: "back-btn", text: state.history.length === 0 ? "← Cancel" : "← Back", click: goBack });
+  const counter = E("span", { class: "step-counter", text: stepCounter() });
+  appendAll(toolbar, back, counter);
+  card.appendChild(toolbar);
+
+  // Body — title + phase render
+  const body = E("div", { class: "card-body" });
+  body.appendChild(E("h2", { class: "step-title", text: phase.title }));
+  const phaseBody = E("div");
+  phase.render(phaseBody);
+  body.appendChild(phaseBody);
+  body.appendChild(E("div", { id: "wz-flash" }));
+  card.appendChild(body);
+
+  // Footer: Continue button (label varies)
+  const footer = E("div", { class: "card-footer" });
+  const continueLabel = continueButtonLabel();
+  const next = E("button", { type: "button", class: "primary", text: continueLabel, click: handleContinue });
+  footer.appendChild(next);
+  card.appendChild(footer);
+
+  root.appendChild(card);
+}
+
+function continueButtonLabel() {
+  if (state.flow === "recover") {
+    if (state.phase === "recover-header") return "Continue to Words →";
+    // recover-words
+    const have = state.data.collected.length;
+    const need = state.data.expected ? state.data.expected.threshold : null;
+    if (need && have + 1 >= need) return "Recover Secret →";
+    return "Save Share, Next Card →";
+  }
+  if (state.phase === "confirm") return "Generate Shares →";
+  return "Continue →";
+}
+
+function handleContinue() {
+  const phase = phases[state.phase];
+  if (!phase) return;
+  const err = phase.validate ? phase.validate() : null;
+  if (err) { showFlash(err, "err"); return; }
+
+  if (state.flow === "recover") {
+    if (state.phase === "recover-header") {
+      // Advance to the words screen for this same share.
+      goTo("recover-words");
+      return;
+    }
+    // We're on recover-words: commit this share into the collected list.
+    const d = state.data.headerDraft;
+    const wc = parseInt(d.wordCount, 10);
+    const header = `CHELA-${d.id}-${parseInt(d.x, 10)}-${parseInt(d.threshold, 10)}-${parseInt(d.total, 10)}-${wc}`;
+    const words = state.data.wordsDraft.slice(0, wc).map(w => w.trim().toLowerCase()).join(" ");
+    state.data.collected.push({ header, words });
+    state.data.headerDraft = null;
+    state.data.wordsDraft = [];
+
+    const have = state.data.collected.length;
+    const need = state.data.expected.threshold;
+    if (have >= need) { runRecover(); return; }
+
+    // Loop back to header for the next share.
+    state.phase = "recover-header";
+    state.history.push("recover-words");
+    render();
+    return;
+  }
+
+  if (state.phase === "confirm") { runSplit(); return; }
+
+  const np = nextPhase();
+  if (np) goTo(np);
+}
+
+let flashTimer = null;
+function showFlash(msg, kind) {
+  const f = document.getElementById("wz-flash");
+  if (!f) return;
+  clear(f);
+  const alert = E("div", { class: "alert " + kind });
+  alert.appendChild(E("p", { text: msg }));
+  f.appendChild(alert);
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => { if (f) clear(f); }, 8000);
+}
+
+// =========================================================================================
+// Split / recover actions
+// =========================================================================================
+function runSplit() {
+  let resp;
+  try {
+    if (state.flow === "bip39") {
+      resp = callJson("chela_split", encSplitBip39(state.data.threshold, state.data.total, state.data.mnemonic.trim(), state.data.passphrase));
+    } else {
+      resp = callJson("chela_split", encSplitText(state.data.threshold, state.data.total, state.data.text));
+    }
+  } catch (e) { showFlash("WASM error: " + e.message, "err"); console.error(e); return; }
+  if (!resp.ok) { showFlash(resp.error, "err"); return; }
+
+  const sharesForRender = resp.shares.map(s => ({ header: s.card_code, words: s.words.join(" ") }));
+  const shareholderNames = state.data.useShareholderNames
+    ? state.data.shareholderNames.map((n, i) => (n && n.trim()) ? n.trim() : `Shareholder ${i + 1}`)
+    : null;
+  let paperHtml;
+  try {
+    const paperBytes = callBytes("chela_render_paper_html", encRenderPaper(sharesForRender, {
+      backupName: state.data.backupName,
+      description: state.data.description,
+      shareholderNames,
+    }));
+    paperHtml = new TextDecoder().decode(paperBytes);
+  } catch (e) { showFlash("Render error: " + e.message, "err"); console.error(e); return; }
+  if (paperHtml.startsWith('{"ok":false')) {
+    let msg = paperHtml; try { msg = JSON.parse(paperHtml).error; } catch (e) {}
+    showFlash("Render failed: " + msg, "err"); return;
+  }
+
+  state.result = {
+    setId: resp.shares[0].identifier,
+    total: resp.shares.length,
+    threshold: resp.shares[0].threshold,
+    paperHtml,
+  };
+  state.history.push(state.phase);
+  state.phase = "complete";
+  render();
+}
+
+// Big green ✓ + label, used at the top of both done-screens (split + recover).
+function buildCompleteBanner(label) {
+  const wrap = E("div", { class: "complete-banner" });
+  wrap.appendChild(E("div", { class: "check", text: "✓" }));
+  wrap.appendChild(E("div", { class: "label", text: label }));
+  return wrap;
+}
+
+function runRecover() {
+  let resp;
+  try { resp = callJson("chela_recover", encRecover(state.data.collected)); }
+  catch (e) { showFlash("WASM error: " + e.message, "err"); console.error(e); return; }
+  if (!resp.ok) { showFlash(resp.error, "err"); return; }
+  state.result = resp;
+  state.history.push(state.phase);
+  state.phase = "recovered";
+  render();
+}
+
+function renderComplete(root) {
+  const r = state.result;
+  const card = E("div", { class: "card" });
+  const toolbar = E("div", { class: "card-toolbar" });
+  appendAll(toolbar,
+    E("button", { type: "button", class: "back-btn", text: "← Back to menu", click: reset }),
+    E("span", { class: "step-counter", text: "Done" }),
+  );
+  card.appendChild(toolbar);
+
+  const body = E("div", { class: "card-body" });
+  body.appendChild(buildCompleteBanner("Shares generated"));
+
+  const okAlert = E("div", { class: "alert ok" });
+  const okP = E("p");
+  appendAll(okP,
+    E("strong", { text: String(r.total) }),
+    document.createTextNode(" shares generated. Recovery set "),
+    E("code", { text: r.setId }),
+    document.createTextNode(". Any "),
+    E("strong", { text: String(r.threshold) }),
+    document.createTextNode(" of them recover the secret."),
+  );
+  okAlert.appendChild(okP);
+  body.appendChild(okAlert);
+
+  const blob = new Blob([r.paperHtml], { type: "text/html" });
+  const url = URL.createObjectURL(blob);
+  const dlWrap = E("p");
+  const dl = E("a", { class: "primary", href: url, download: `chela-backup-${r.setId}.html`, text: "⬇  Download printable backup (HTML)" });
+  dlWrap.appendChild(dl);
+  body.appendChild(dlWrap);
+
+  const hint = E("p", { class: "muted small" });
+  appendAll(hint,
+    document.createTextNode("Open the downloaded file in your browser and use "),
+    E("strong", { text: "File → Print" }),
+    document.createTextNode(" (or “Save as PDF”) to put it on paper. One share per page."),
+  );
+  body.appendChild(hint);
+
+  body.appendChild(E("h3", { text: "Preview" }));
+  const iframe = E("iframe", { class: "preview" });
+  iframe.setAttribute("sandbox", "allow-same-origin");
+  iframe.srcdoc = r.paperHtml;
+  body.appendChild(iframe);
+  card.appendChild(body);
+
+  const footer = E("div", { class: "card-footer" });
+  footer.appendChild(E("button", { type: "button", class: "secondary", text: "Back to menu", click: reset }));
+  card.appendChild(footer);
+
+  root.appendChild(card);
+}
+
+function renderRecovered(root) {
+  const r = state.result;
+  const card = E("div", { class: "card" });
+  const toolbar = E("div", { class: "card-toolbar" });
+  appendAll(toolbar,
+    E("button", { type: "button", class: "back-btn", text: "← Back to menu", click: reset }),
+    E("span", { class: "step-counter", text: "Recovered" }),
+  );
+  card.appendChild(toolbar);
+
+  const body = E("div", { class: "card-body" });
+  body.appendChild(buildCompleteBanner("Secret recovered"));
+
+  const ok = E("div", { class: "alert ok" });
+  ok.appendChild(E("p", { text: "Secret recovered." }));
+  body.appendChild(ok);
+
+  if (r.kind === "bip39") {
+    body.appendChild(E("label", { text: "BIP-39 mnemonic" }));
+    body.appendChild(E("pre", { text: r.mnemonic }));
+    body.appendChild(E("label", { text: "Passphrase" }));
+    if (r.passphrase) body.appendChild(E("pre", { text: r.passphrase }));
+    else { const p = E("pre"); p.appendChild(E("em", { text: "(none)" })); body.appendChild(p); }
+  } else {
+    body.appendChild(E("label", { text: "Text" }));
+    body.appendChild(E("pre", { text: r.text }));
+  }
+  card.appendChild(body);
+
+  const footer = E("div", { class: "card-footer" });
+  footer.appendChild(E("button", { type: "button", class: "secondary", text: "Back to menu", click: reset }));
+  card.appendChild(footer);
+
+  root.appendChild(card);
+}
+
+// =========================================================================================
+// Boot
+// =========================================================================================
+(async () => {
+  try {
+    await loadWasm();
+    render();
+  } catch (e) {
+    const app = document.getElementById("app");
+    if (app) clear(app);
+    const div = E("div", { class: "boot-error" });
+    appendAll(div,
+      (() => { const p = E("p"); p.appendChild(E("strong", { text: "Failed to load chela WebAssembly module." })); return p; })(),
+      E("p", { text: String(e) }),
+      (() => {
+        const p = E("p", { class: "small" });
+        appendAll(p,
+          document.createTextNode("If you opened this file directly, your browser may be blocking the WASM. Run "),
+          E("code", { text: "chela-serve" }),
+          document.createTextNode(" and visit the URL it prints instead."),
+        );
+        return p;
+      })(),
+    );
+    document.body.appendChild(div);
+    console.error(e);
+  }
+})();
+</script>
+</body>
+</html>

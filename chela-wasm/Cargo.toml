@@ -1,0 +1,20 @@
+[package]
+name = "chela-wasm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "WebAssembly bindings for the chela cryptographic core. Exposes a tiny C-ABI that an HTML/JS UI calls to split secrets, recover them, and render printable share cards."
+
+[lib]
+# `cdylib` produces a `.wasm` artefact when targeting `wasm32-unknown-unknown`.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+chela-engine = { path = "../chela-engine" }
+chela-share = { path = "../chela-share" }
+chela-bip39 = { path = "../chela-bip39" }
+chela-primitives = { path = "../chela-primitives" }
+
+[lints]
+workspace = true

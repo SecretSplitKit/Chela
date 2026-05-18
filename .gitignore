@@ -1,0 +1,77 @@
+# Build artifacts
+target/
+/dist/
+
+# Generated bundles. The TEMPLATE chela.html lives under chela-serve/assets/ and
+# IS committed; the rewritten standalone bundles (root chela.html or the versioned
+# chela-vX.Y.Z-web.html the release workflow produces) are derived and never source.
+/chela.html
+/chela-v*-web.html
+/chela-*-web.html
+
+# Demo / local-only output
+/demo-output/
+
+# Cargo internals
+.cargo-ok
+**/*.rs.bk
+
+# Fuzzing scratch (corpus + crashes regenerate on each run; commit only minimised
+# regression inputs under chela-share/fuzz/crash-inputs/, which is intentionally
+# NOT covered by these patterns)
+chela-share/fuzz/corpus/
+chela-share/fuzz/artifacts/
+
+# Profiler / coverage / debug output
+*.profraw
+*.profdata
+/coverage/
+*.lcov
+/perf.data*
+core
+vgcore.*
+
+# Editor / IDE state
+.vscode/
+.idea/
+*.iml
+*~
+*.swp
+*.swo
+*.swn
+.netrwhist
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Secrets — keep these out at all costs. RELEASING.md says generate the minisign
+# keypair OFF the repo machine; these patterns are belt-and-braces in case anyone
+# runs `minisign -G` here by mistake.
+*.key
+*.pem
+*.p12
+.env
+.env.*
+.envrc
+/.secrets/
+/secrets/
+minisign.key
+minisign.pub
+*.minisig
+SHA256SUMS
+
+# Agent / AI tooling state
+/.claude/
+.cursor/
+.aider*
+
+# Local test scratch
+test.md
+/test-screens/
+
+# Backup / merge debris
+*.bak
+*.orig
+*.rej

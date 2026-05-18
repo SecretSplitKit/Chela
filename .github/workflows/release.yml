@@ -1,0 +1,390 @@
+# Reproducible + signed release workflow.
+#
+# Triggers on a `vX.Y.Z` tag push. For every target in the build matrix:
+#   1. Build all four binaries (chela, chela-cli, chela-serve, chela-bundle) twice in
+#      independent target directories.
+#   2. Hash both copies and fail loudly if they differ — that's the reproducibility
+#      check. Without it, the signed tarball means "the CI machine produced this on
+#      this day," not "anyone with the same source tree can produce this byte-for-byte."
+#   3. Archive the binaries into a per-target tarball (.tar.gz on unix, .zip on windows).
+# A separate `bundle-web` job builds the standalone `chela.html` once.
+# Finally a `release` job downloads every artifact, signs each with minisign, builds
+# a SHA256SUMS aggregate and signs that too, then publishes the lot to the GitHub
+# release with the hashes inlined into the release notes body.
+#
+# To cut a release the maintainer must:
+#   - have generated a minisign keypair (one-time, off-CI).
+#   - set the `MINISIGN_PRIVATE_KEY` and `MINISIGN_PASSWORD` repo secrets.
+#   - publish the matching public key in README.md (see "Verifying a release").
+#   - push a tag like `v1.0.0` to main.
+# See RELEASING.md for the full operator runbook.
+#
+# Security:
+# - Every interpolation of a `${{ ... }}` expression into a shell `run:` block goes
+#   through an explicit `env:` mapping. The tag pattern below (`v[0-9]+.[0-9]+.[0-9]+`)
+#   already constrains the only attacker-influenceable input (the tag name) to a small
+#   alphabet, but the env-var indirection costs nothing and keeps audit tools happy.
+# - Every third-party action is pinned to a full commit SHA, not a mutable @v4 / @stable
+#   tag/branch. An upstream maintainer compromise cannot silently push new code into the
+#   release job that holds the minisign signing key. Trailing comment is informational;
+#   bump via Dependabot.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: write  # required to attach artifacts to the GitHub release
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            archive: tar.gz
+            bin_suffix: ""
+            # Strip ELF build-id (random per link) so the binary is byte-stable.
+            rustflags: "-C link-arg=-Wl,--build-id=none"
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            archive: tar.gz
+            bin_suffix: ""
+            # Strip Mach-O LC_UUID (random per link).
+            rustflags: "-C link-arg=-Wl,-no_uuid"
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            archive: tar.gz
+            bin_suffix: ""
+            rustflags: "-C link-arg=-Wl,-no_uuid"
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            archive: zip
+            bin_suffix: ".exe"
+            # Make the PE timestamp deterministic (MSVC linker flag).
+            rustflags: "-C link-arg=/Brepro"
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9  # master @ 2026-05
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+
+      # chela-serve's build script invokes an inner `cargo build --target wasm32-...`
+      # to embed the WASM blob via include_bytes!. Only the linux runner needs the
+      # wasm32 toolchain installed.
+      - name: Install wasm32 target
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Pin SOURCE_DATE_EPOCH to the tag commit
+        shell: bash
+        run: echo "SOURCE_DATE_EPOCH=$(git -C . log -1 --pretty=%ct)" >> "$GITHUB_ENV"
+
+      # ---- Build pass 1 -------------------------------------------------------------
+      - name: Build (pass 1)
+        shell: bash
+        env:
+          CARGO_TARGET_DIR: build-1
+          RUSTFLAGS: ${{ matrix.rustflags }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          cargo build --release --locked --target "$TARGET" \
+            -p chela-tui -p chela-cli -p chela-serve
+
+      # ---- Build pass 2 (independent target dir) ------------------------------------
+      - name: Build (pass 2)
+        shell: bash
+        env:
+          CARGO_TARGET_DIR: build-2
+          RUSTFLAGS: ${{ matrix.rustflags }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          cargo build --release --locked --target "$TARGET" \
+            -p chela-tui -p chela-cli -p chela-serve
+
+      # ---- Reproducibility check ----------------------------------------------------
+      - name: Verify reproducibility (hash both passes)
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          BIN_SUFFIX: ${{ matrix.bin_suffix }}
+        run: |
+          set -euo pipefail
+          fail=0
+          for bin in chela chela-cli chela-serve chela-bundle; do
+            b1="build-1/${TARGET}/release/${bin}${BIN_SUFFIX}"
+            b2="build-2/${TARGET}/release/${bin}${BIN_SUFFIX}"
+            if [ ! -f "$b1" ] || [ ! -f "$b2" ]; then
+              echo "::error::expected binary $bin missing"
+              fail=1
+              continue
+            fi
+            h1=$(sha256sum "$b1" | awk '{print $1}')
+            h2=$(sha256sum "$b2" | awk '{print $1}')
+            if [ "$h1" != "$h2" ]; then
+              echo "::error::$bin not reproducible: $h1 != $h2"
+              fail=1
+            else
+              echo "$bin reproducible: $h1"
+            fi
+          done
+          exit $fail
+
+      # ---- Stage pass-1 binaries + a tarball-internal README -----------------------
+      - name: Stage release artifacts
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+          TARGET: ${{ matrix.target }}
+          BIN_SUFFIX: ${{ matrix.bin_suffix }}
+        run: |
+          set -euo pipefail
+          stage="stage/chela-${TAG}-${TARGET}"
+          mkdir -p "$stage"
+          for bin in chela chela-cli chela-serve chela-bundle; do
+            cp "build-1/${TARGET}/release/${bin}${BIN_SUFFIX}" "$stage/"
+          done
+          cat > "$stage/README.txt" <<EOF
+          chela ${TAG} — ${TARGET}
+
+          Binaries:
+            chela          Wizard TUI (default front-end)
+            chela-cli      Non-interactive CLI for scripting / piping
+            chela-serve    Localhost webserver hosting the WASM UI
+            chela-bundle   Builds a single-file chela.html (offline browser UI)
+
+          Verify this archive's minisign signature against the public key published
+          on the chela GitHub releases page (also embedded in README.md). See:
+          https://github.com/SecretSplitKit/Chela#verifying-a-release
+          EOF
+
+      - name: Pack tarball
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          # --sort=name + numeric owner = deterministic tar across runs.
+          # SOURCE_DATE_EPOCH governs file mtimes via --mtime.
+          base="chela-${TAG}-${TARGET}"
+          cd stage
+          tar --sort=name --owner=0 --group=0 --numeric-owner \
+              --mtime="@${SOURCE_DATE_EPOCH}" \
+              -czf "../${base}.tar.gz" "${base}"
+          cd ..
+          sha256sum "${base}.tar.gz" > "${base}.tar.gz.sha256"
+
+      - name: Pack zip
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          $base = "chela-$env:TAG-$env:TARGET"
+          # 7z is pre-installed on windows-latest. -mtc=off strips embedded timestamps
+          # so the zip itself is reproducible (file mtimes inside are already pinned to
+          # the stage step's copies).
+          7z a -tzip -mx9 -mtc=off "$base.zip" "stage/$base/" > $null
+          (Get-FileHash -Algorithm SHA256 "$base.zip").Hash.ToLower() + "  $base.zip" `
+            | Out-File -Encoding ASCII "$base.zip.sha256"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: build-${{ matrix.target }}
+          path: |
+            chela-${{ github.ref_name }}-${{ matrix.target }}.tar.gz
+            chela-${{ github.ref_name }}-${{ matrix.target }}.tar.gz.sha256
+            chela-${{ github.ref_name }}-${{ matrix.target }}.zip
+            chela-${{ github.ref_name }}-${{ matrix.target }}.zip.sha256
+          if-no-files-found: ignore
+
+  bundle-web:
+    name: Bundle standalone chela.html
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9  # master @ 2026-05
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+      - name: Pin SOURCE_DATE_EPOCH to the tag commit
+        shell: bash
+        run: echo "SOURCE_DATE_EPOCH=$(git -C . log -1 --pretty=%ct)" >> "$GITHUB_ENV"
+      - name: Build chela-bundle and produce chela.html (pass 1)
+        shell: bash
+        env:
+          CARGO_TARGET_DIR: build-1
+        run: |
+          cargo build --release --locked --bin chela-bundle
+          ./build-1/release/chela-bundle build-1/chela.html
+      - name: Build chela-bundle and produce chela.html (pass 2)
+        shell: bash
+        env:
+          CARGO_TARGET_DIR: build-2
+        run: |
+          cargo build --release --locked --bin chela-bundle
+          ./build-2/release/chela-bundle build-2/chela.html
+      - name: Verify chela.html reproducibility
+        shell: bash
+        run: |
+          h1=$(sha256sum build-1/chela.html | awk '{print $1}')
+          h2=$(sha256sum build-2/chela.html | awk '{print $1}')
+          if [ "$h1" != "$h2" ]; then
+            echo "::error::chela.html not reproducible: $h1 != $h2"
+            exit 1
+          fi
+          echo "chela.html reproducible: $h1"
+      - name: Stage + hash
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          cp build-1/chela.html "chela-${TAG}-web.html"
+          sha256sum "chela-${TAG}-web.html" > "chela-${TAG}-web.html.sha256"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: build-web
+          path: |
+            chela-${{ github.ref_name }}-web.html
+            chela-${{ github.ref_name }}-web.html.sha256
+
+  release:
+    name: Sign + publish GitHub release
+    needs: [build, bundle-web]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Install minisign
+        shell: bash
+        run: sudo apt-get update && sudo apt-get install -y minisign
+
+      - name: Sign every release artifact and the SHA256SUMS aggregate
+        shell: bash
+        env:
+          MINISIGN_PRIVATE_KEY: ${{ secrets.MINISIGN_PRIVATE_KEY }}
+          MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [ -z "${MINISIGN_PRIVATE_KEY:-}" ]; then
+            echo "::error::MINISIGN_PRIVATE_KEY repo secret is not set — see RELEASING.md"
+            exit 1
+          fi
+          umask 077
+          printf '%s' "$MINISIGN_PRIVATE_KEY" > /tmp/minisign.key
+          cd artifacts
+
+          # 1) Re-hash every release artifact into one SHA256SUMS aggregate (sorted
+          #    for deterministic output). The per-artifact .sha256 files uploaded by
+          #    the build jobs are kept as-is for users who prefer the BSD-style
+          #    one-file-per-artifact form, but SHA256SUMS is the canonical document
+          #    we sign and inline into the release notes.
+          : > SHA256SUMS
+          for f in $(ls -1 chela-*.tar.gz chela-*.zip chela-*.html 2>/dev/null | sort); do
+            [ -f "$f" ] || continue
+            sha256sum "$f" >> SHA256SUMS
+          done
+
+          # 2) Sign every release artifact AND the aggregate. .sha256 files are not
+          #    signed individually (their integrity is implied by signing the parent
+          #    artifact AND by SHA256SUMS itself being signed).
+          for f in chela-*.tar.gz chela-*.zip chela-*.html SHA256SUMS; do
+            [ -f "$f" ] || continue
+            minisign -S -m "$f" -s /tmp/minisign.key -t "chela ${TAG} $(basename "$f")"
+          done
+          shred -u /tmp/minisign.key
+
+      - name: Build release notes body with inline SHA256SUMS
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          cd artifacts
+          # Heredoc with the SHA256SUMS block embedded — the user can copy any single
+          # line out to verify a single download without trusting a separate file.
+          {
+            cat <<HEADER
+          Reproducible signed release.
+
+          ## Verifying
+
+          Download the artifact you want and the matching \`.minisig\` file. The chela
+          minisign public key is in [README.md](https://github.com/SecretSplitKit/Chela#verifying-a-release):
+
+          \`\`\`sh
+          minisign -V -p chela.pub -m chela-${TAG}-<target>.tar.gz
+          \`\`\`
+
+          The native binaries are in per-target \`.tar.gz\` / \`.zip\` archives. The
+          standalone browser bundle is \`chela-${TAG}-web.html\` — no install, open in
+          any modern browser. \`chela-serve\` prints the SHA-256 of its embedded HTML
+          and WASM at startup so you can cross-check against the values below.
+
+          ## SHA-256 hashes
+
+          \`SHA256SUMS\` and \`SHA256SUMS.minisig\` are attached below as files for
+          one-shot multi-artifact verification:
+
+          \`\`\`sh
+          minisign -V -p chela.pub -m SHA256SUMS
+          sha256sum -c SHA256SUMS
+          \`\`\`
+
+          Inline copy for quick visual compare (also in the SHA256SUMS file):
+
+          \`\`\`
+          HEADER
+            cat SHA256SUMS
+            echo '```'
+          } > release_body.md
+          echo "Release body composed; preview:"
+          echo "---"
+          cat release_body.md
+          echo "---"
+
+      - name: List artifacts to be released
+        shell: bash
+        run: ls -la artifacts/
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@62c96d0c4e8a889135c1f3a25910db8dbe0e85f7  # v2.3.4
+        with:
+          files: |
+            artifacts/chela-*.tar.gz
+            artifacts/chela-*.tar.gz.sha256
+            artifacts/chela-*.tar.gz.minisig
+            artifacts/chela-*.zip
+            artifacts/chela-*.zip.sha256
+            artifacts/chela-*.zip.minisig
+            artifacts/chela-*.html
+            artifacts/chela-*.html.sha256
+            artifacts/chela-*.html.minisig
+            artifacts/SHA256SUMS
+            artifacts/SHA256SUMS.minisig
+          fail_on_unmatched_files: false
+          body_path: artifacts/release_body.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

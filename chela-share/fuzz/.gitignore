@@ -1,0 +1,7 @@
+# cargo-fuzz puts the harness target dir and the corpus under the fuzz crate.
+# The corpus is small but volatile (changes every run); the target dir is huge.
+# Keep both out of git. If a panic is reproducible, save the crashing input under
+# `crash-inputs/` and check that in by hand.
+/target
+/corpus
+/artifacts

@@ -1,0 +1,49 @@
+# Short-budget fuzz check on PRs.
+#
+# `cargo fuzz run parse_shares -- -max_total_time=60` runs libFuzzer for 60 seconds
+# against the share-text parser. The point is a fast smoke test — catch a freshly-
+# introduced panic before merge, not exhaustively search the input space. A longer
+# run (hours / overnight) belongs in the pre-release checklist; see TODO.md item 2.
+#
+# Requires nightly because cargo-fuzz uses unstable rustc flags. Stable runtime users
+# never see this dependency — the fuzz crate is excluded from the main workspace.
+#
+# Third-party actions are pinned to commit SHAs; version tag in trailing comment is
+# informational only — update via Dependabot.
+
+name: Fuzz smoke
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  parse_shares:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9  # master @ 2026-05
+        with:
+          toolchain: nightly
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+      - name: Run parse_shares fuzzer (60s budget)
+        shell: bash
+        run: |
+          cd chela-share/fuzz
+          cargo +nightly fuzz run parse_shares -- \
+            -max_total_time=60 \
+            -timeout=5 \
+            -rss_limit_mb=256
+      - name: Upload crash artifacts (if any)
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: fuzz-crashes
+          path: |
+            chela-share/fuzz/artifacts/parse_shares/
+            chela-share/fuzz/corpus/parse_shares/
+          if-no-files-found: ignore

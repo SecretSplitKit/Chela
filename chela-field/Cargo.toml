@@ -1,0 +1,10 @@
+[package]
+name = "chela-field"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Finite-field abstraction for chela's Shamir's Secret Sharing engine. GF(2^8) is the only concrete impl in v1; the trait keeps the door open for other fields."
+
+[lints]
+workspace = true
