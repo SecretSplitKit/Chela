@@ -16,6 +16,38 @@ constant-time GF(2^8), Shamir's split/combine, and BIP-39 are implemented in thi
 repository so every line can be audited in-tree. See [AUDITORS.md](./AUDITORS.md)
 for provenance and a guided walk-through.
 
+## Recovering shares — for family members
+
+You don't need to be technical. You don't need to install anything.
+
+> **Take your time.** The paper cards in your hand are the only
+> thing that can recover the secret, they don't expire. If you need to come back
+> tomorrow, the cards will still work tomorrow.
+
+### Quick version — 5 steps
+
+1. **Find a Windows, Mac, or Linux computer with a web browser.** Any modern
+   computer from the last 10 years works.
+2. **Download the recovery program.** Go to the
+   [latest release](https://github.com/SecretSplitKit/Chela/releases/latest),
+   scroll to the *Assets* section, and click the file ending in **`-web.html`**
+   (for example `chela-v1.0.0-web.html`). Save it somewhere you'll remember — your
+   Desktop or Downloads is fine.
+3. **Open the file you just downloaded.** Double-click it. Your web browser will
+   open with chela's main screen.
+4. **Click "Recover from shares"** and follow the wizard. It asks you for one card
+   at a time, then shows the recovered secret on the next screen.
+5. **You need a minimum number of cards** to recover. The card itself tells you how
+   many — look for the "M of N" notation on the front (e.g. *"3 of 5"* means any 3
+   of the 5 cards is enough).
+
+**Full walk-through with screenshots and troubleshooting:
+[RECOVERY.md](./RECOVERY.md).**
+
+> **Your privacy:** chela runs entirely inside your web browser. Nothing is sent
+> over the internet. If you want to be extra cautious, you can disconnect from Wi-Fi
+> *before* you start the recovery — it still works the same way.
+
 ## Build
 
 ```sh
