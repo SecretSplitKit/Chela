@@ -81,6 +81,21 @@ template, base64-encodes the embedded WASM at the marker, writes the result.
 Workspace members go from 10 to 9 (`chela-serve` out, `chela-bundle` in).
 `chela-wasm` is unchanged.
 
+#### Why not merge `chela-wasm` and `chela-bundle` into one crate
+
+Considered. Rejected because the build invocations are fundamentally different:
+
+- `chela-wasm` is a `cdylib` library that targets `wasm32-unknown-unknown`.
+- `chela-bundle` is a native binary that consumes the wasm bytes.
+
+Merging them would require one `Cargo.toml` whose `build.rs` recursively
+invokes cargo on its own crate for a different target. That works, but the
+recursive wasm build would run on every `cargo build -p chela-wasm` (even when
+the caller just wants the rlib for tests) and "build this crate" silently
+triggering "also build a wasm of this crate" is surprising. The split between
+"the wasm library" and "the thing that bundles the wasm library into HTML" is a
+clean separation of concerns; the new layout preserves it.
+
 Affected:
 
 - `Cargo.toml` — workspace `members` list.
@@ -131,8 +146,7 @@ Concrete rules applied across the repo:
   cross-references. Keep WHY-comments only when the reason is non-obvious from
   the code.
 - **Inline comments:** delete commentary that restates the code. Keep notes
-  about hidden invariants. Keep every `// SAFETY:` block — those are
-  load-bearing.
+  about hidden invariants. Every `// SAFETY:` block is preserved verbatim.
 - **No `///` docstring essays on internal items.** A signature is usually
   enough.
 - **Section divider comments** (`// ---`, `// === Section ===`) inside source
@@ -151,15 +165,14 @@ Docs consolidation:
 |---|---|
 | `README.md` | Keep, slim. The current "Where to find the hashes" block lists three ways to find hashes (inlined in release notes, `SHA256SUMS` file, per-artifact `.sha256` files); collapse to just the `SHA256SUMS` + minisign path. Drop the "Run — browser server" section. |
 | `SPEC.md` | Keep, slim. Drop justification prose; the tables and rules stay. Target ~60% of current length. |
-| `AGENTS.md` | Keep, restructured. Merge `AUDITORS.md` content into a section. Drop the D1..D8 numbering. |
-| `AUDITORS.md` | **Delete.** Content merged into `AGENTS.md`. |
+| `AGENTS.md` | Keep, reframe and rewrite (see § 4 below). Drop the D1..D8 numbering. Content: instructions for an AI agent that a user has pointed at the repo to verify that chela is secure and well packaged. |
+| `AUDITORS.md` | **Keep, restructure** (see § 5 below). Step-by-step walkthrough of the codebase for a human auditor: zero fluff, no "load-bearing" rhetoric, walks the reader through files in the order they should be read with the rationale for each decision in line. |
 | `MANUAL_RECOVERY.md` | Keep, slim (see § 2 above). |
 | `RECOVERY.md` | Keep. User-facing wizard walkthrough; minor prose pass only. |
 | `RELEASING.md` | Keep, slim. Single-path SHA256SUMS instructions. |
 | `TODO.md` | **Delete.** Project state, not documentation. |
 | `CONTRIBUTING.md` | Keep. Already short. |
 | `CODE_OF_CONDUCT.md` | Keep, unchanged. |
-| `AGENTS.md` framing | Reframe as a contributors' reference. The current opening line markets the file as a guide for "contributors and AI agents working in this repo" — drop the AI-agents framing; the file is a developer reference. Consider renaming to `CONTRIBUTING-INTERNAL.md` or folding the crate-map section into `CONTRIBUTING.md`; final naming decided during implementation. |
 
 Scope ceiling for the prose pass:
 
@@ -169,6 +182,109 @@ Scope ceiling for the prose pass:
   copy, a separate conversation.
 - Do not change identifier names, function signatures, or types as part of the
   prose pass. If a name reads as AI-generated, flag it but leave it.
+
+### 4. `AGENTS.md` — reframe as "for AI agents evaluating the repo"
+
+Current state: `AGENTS.md` is framed as a contributor reference (crate map,
+required-before-PR commands, "hard rules", "load-bearing design decisions"
+D1..D8, "adding a payload kind", "where untrusted bytes enter"). The opening
+line says "Reference for contributors and AI agents working in this repo."
+
+New purpose: `AGENTS.md` is a reference for someone who has pointed an AI
+agent at this repo and wants the agent to verify that chela is **secure** and
+**well packaged**. The audience is the agent, but the user is the human
+deciding whether to trust the project.
+
+Structure of the rewritten file:
+
+1. **What you are looking at** — one paragraph stating what chela does and
+   what someone running an agent over the repo should be checking.
+2. **Repo orientation** — the crate map (which already exists), kept terse.
+3. **What to verify for security** — concrete things an agent should be able
+   to check itself:
+   - No crates.io dependencies in the cryptographic core. Audit query
+     provided.
+   - `unsafe_code = "deny"` workspace-wide. The five opt-in files are listed;
+     every `unsafe` block carries a `// SAFETY:` comment.
+   - Every secret-bearing buffer is wiped via `volatile_set` rather than
+     `fill(0)`. Audit query provided.
+   - Crypto test vectors come from a primary source; each test cites it.
+   - Pinned third-party GitHub Actions (SHA, not `@v4`).
+   - Reproducible release builds (link to `RELEASING.md`).
+4. **What to verify for packaging** — release signing (minisign), `SHA256SUMS`,
+   pre-push hook, CI matrix, fuzz harness.
+5. **What this file is not** — a contributor onboarding guide; for that,
+   `CONTRIBUTING.md`. The codebase walkthrough lives in `AUDITORS.md`.
+
+Constraints:
+
+- No D1..D8 numbering. No "load-bearing".
+- No marketing prose. State the rule, state the audit query, move on.
+- Cross-references to other docs are fine, but no per-line `// see AGENTS.md
+  § X` in the *source code* (that's covered by § 3).
+
+The "Hard rules" content from the current file mostly belongs in `AUDITORS.md`
+(as code-level invariants) or in `CONTRIBUTING.md` (as PR rules); the
+`AGENTS.md` rewrite drops it.
+
+### 5. `AUDITORS.md` — restructure as a step-by-step walkthrough
+
+Current state: `AUDITORS.md` is already information-dense — sections for threat
+model, provenance, test vectors, entropy, `unsafe`, load-bearing invariants
+(S1..S7), release signing. The content is good; the framing is the problem.
+Patterns to drop: the S1..S7 numbering used as vocabulary, "load-bearing", per-
+section "trade-off" / "documented limitation" headings, the fact that S5 and S6
+cross-reference each other by number.
+
+New purpose: an auditor sits down with the repo open and reads `AUDITORS.md`
+top to bottom. By the end they have read every cryptographic source file and
+know why each decision was made.
+
+Structure of the rewritten file:
+
+1. **Threat model** — what chela defends against, what it does not. (Kept
+   roughly as-is; already tight.)
+2. **Read these files in this order** — a numbered reading list, e.g.:
+   1. `chela-primitives/src/sha256.rs` — SHA-256 by FIPS 180-4; here is what
+      to check.
+   2. `chela-primitives/src/ct.rs` — constant-time equality.
+   3. `chela-primitives/src/zeroize.rs` — volatile wipe primitive.
+   4. `chela-primitives/src/rng.rs` — OS RNG, per-platform syscalls.
+   5. `chela-field/src/gf256.rs` — constant-time GF(2^8).
+   6. `chela-sss/src/lib.rs` — Shamir split / combine.
+   7. `chela-bip39/src/lib.rs` — BIP-0039 codec.
+   8. `chela-bip39/src/wordlist.rs` — vendored English wordlist (with the
+      SHA-256 verification command).
+   9. `chela-engine/src/lib.rs` — bundle codec, identifier, per-share checksum.
+   10. `chela-share/` — share text and JSON formats.
+   11. `chela-wasm/src/lib.rs` — FFI surface to the browser bundle.
+3. **For each file in the reading list:**
+   - What it does (one sentence).
+   - The spec it implements, with the citation.
+   - What an auditor should verify here.
+   - The rationale for any decision that isn't obvious from the spec — the
+     "why this is here" content, restated in plain prose rather than as a
+     numbered design decision.
+4. **Cross-cutting concerns** — concerns that don't belong to a single file:
+   - The set of secret-bearing buffers and where they're wiped (current S3
+     table, kept).
+   - The five `unsafe` opt-ins (current § 4 table, kept).
+   - The "no crates.io deps" property (current S7, with the audit query).
+5. **Release verification** — current § 6, kept.
+
+Constraints:
+
+- No S1..S7 numbering as vocabulary. Section titles are descriptive.
+- No "load-bearing" or "trade-offs we accept for".
+- Every section either tells the auditor what to read, what to check, or what
+  to run as a command. No standalone exposition.
+- The current content is mostly preserved. This is a reorganisation, not a
+  delete.
+
+The "why this is here" parts that previously lived in `AGENTS.md`'s D1..D8
+section (e.g. why the identifier doesn't include the kind byte, why GF(2^8)
+is constant-time and not table-based, why allocation lives in `chela-engine`
+not `chela-sss`) move into the relevant file walkthroughs in `AUDITORS.md`.
 
 ## What is explicitly preserved
 
@@ -196,10 +312,11 @@ unchanged except for the `chela-serve` removal:
 - All existing engine round-trip tests must pass unmodified (they cover the
   wire format that is not changing).
 
-Risk on the prose pass: a sweeping rewrite can accidentally delete a
-load-bearing comment. Mitigation: SAFETY blocks, zeroize-justification
-comments, and crypto-vector citations are explicitly preserved per the rules
-in § 3.
+Risk on the prose pass: a sweeping rewrite can accidentally delete a comment
+that documents a non-obvious invariant. Mitigation: SAFETY blocks,
+zeroize-justification comments, and crypto-vector citations are explicitly
+preserved per the rules in § 3. Anything outside those categories is fair game
+for deletion if it restates the code.
 
 ## Out of scope (deferred follow-up)
 
