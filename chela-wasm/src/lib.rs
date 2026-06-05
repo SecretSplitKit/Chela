@@ -118,8 +118,8 @@ pub unsafe extern "C" fn chela_dealloc(ptr: u32, len: u32) {
 /// documented in `request::SplitRequest`; output is a JSON object:
 ///
 /// ```json
-/// { "ok": true, "shares": [{ "x": 1, "threshold": 3, "total": 5, "set_id": "05A3",
-///     "card_code": "CHELA-05A3-1-3-5-25", "words": ["..."] }, ...] }
+/// { "ok": true, "shares": [{ "x": 17, "threshold": 3, "total": 5, "set_id": "05A3",
+///     "card_code": "CHELA-05A3-17-3-5-16", "words": ["..."] }, ...] }
 /// ```
 ///
 /// `total` is present only when the split knows it; `set_id` is the 11-bit nonce in
@@ -348,8 +348,8 @@ pub(crate) fn do_render_shares_json(input: &[u8]) -> Result<Vec<u8>, String> {
 /// {
 ///   "ok": true,
 ///   "shares": [
-///     {"ok": true, "x": 1, "threshold": 3, "total": 5,
-///      "set_id": "0058", "card_code": "CHELA-0058-1-3-5-40",
+///     {"ok": true, "x": 9, "threshold": 3, "total": 5,
+///      "set_id": "0058", "card_code": "CHELA-0058-9-3-5-16",
 ///      "words": ["security", "moment", ...]},
 ///     {"ok": false, "error": "embedded JSON did not parse: …"}
 ///   ]
