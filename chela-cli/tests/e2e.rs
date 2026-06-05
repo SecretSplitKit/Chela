@@ -130,6 +130,33 @@ fn round_trip_12_word_seed_no_passphrase_2_of_3() {
 }
 
 #[test]
+fn round_trip_words_only_no_headers_2_of_3() {
+    // Words-alone recovery: feed just the BIP-39 words (no CHELA- header lines),
+    // one share per line. The words carry x, M, and the nonce on their own.
+    let mnemonic =
+        "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon \
+         abandon about";
+    let shares = split_with_args(&["split", "--mnemonic", mnemonic, "-m", "2", "-n", "3"]);
+    let words_only: String = shares
+        .lines()
+        .filter(|l| {
+            !l.trim().is_empty() && !l.trim_start().to_ascii_uppercase().starts_with("CHELA-")
+        })
+        .take(2)
+        .collect::<Vec<_>>()
+        .join("\n");
+    let (status, stdout, stderr) = recover_with_input(&words_only);
+    assert!(
+        status.success(),
+        "recover failed:\nstdout: {stdout}\nstderr: {stderr}"
+    );
+    assert!(
+        stdout.contains(mnemonic),
+        "recovered mnemonic missing:\n{stdout}",
+    );
+}
+
+#[test]
 fn round_trip_text_payload_2_of_4() {
     let secret = "correct horse battery staple";
     let shares = split_with_args(&["split", "--text", secret, "-m", "2", "-n", "4"]);
@@ -162,11 +189,10 @@ fn sub_threshold_recovery_fails_cleanly() {
 fn mixed_shares_from_different_splits_rejected() {
     let split_a = split_with_args(&["split", "--mnemonic", ABANDON_24, "-m", "2", "-n", "3"]);
     let split_b = split_with_args(&["split", "--mnemonic", ABANDON_24, "-m", "2", "-n", "3"]);
-    // One share from each split. Same mnemonic → same identifier (it's deterministic
-    // from the body), so the early consistency check passes; SSS combine on points from
-    // two different polynomials then yields garbage that no kind's identifier matches,
-    // surfacing as BundleCorrupt. The important guarantee is that we don't silently
-    // produce a recovered secret.
+    // One share from each split. v2 draws a fresh random nonce per generation, so
+    // the two splits carry different nonces; recover_secret sees the disagreement and
+    // rejects with MismatchedShares. The guarantee is that we never silently produce
+    // a recovered secret from cards of different generations.
     let from_first_split = pick_shares(&split_a, &[1]);
     let from_second_split = pick_shares(&split_b, &[2]);
     let mixed = format!("{from_first_split}\n{from_second_split}");
@@ -177,6 +203,50 @@ fn mixed_shares_from_different_splits_rejected() {
         msg.contains("BundleCorrupt") || msg.contains("MismatchedShares") || msg.contains("parse:"),
         "expected BundleCorrupt / MismatchedShares / parse error, got:\n{msg}",
     );
+}
+
+/// List the per-share files a split wrote into `dir` whose name matches
+/// `share-<x>.<suffix>`, sorted by path. v2 share `x` is a random coordinate in
+/// `1..=32`, not a sequential `1..=N`, so callers must discover the real
+/// filenames rather than assume `share-1`, `share-2`, …
+fn share_files(dir: &std::path::Path, suffix: &str) -> Vec<String> {
+    let mut files: Vec<String> = std::fs::read_dir(dir)
+        .unwrap()
+        .map(|e| e.unwrap())
+        .filter_map(|e| {
+            let name = e.file_name().into_string().unwrap();
+            (name.starts_with("share-") && name.ends_with(suffix))
+                .then(|| e.path().to_str().unwrap().to_owned())
+        })
+        .collect();
+    files.sort();
+    files
+}
+
+/// Extract the share coordinate `x` from a `CHELA-<nonce>-<x>-<M>-<N>-<W>` header
+/// line in a share-text block.
+fn header_x(block: &str) -> u8 {
+    let header = block
+        .lines()
+        .find(|l| l.trim_start().to_ascii_uppercase().starts_with("CHELA-"))
+        .expect("share block has a CHELA- header");
+    header.trim().split('-').nth(2).unwrap().parse().unwrap()
+}
+
+/// Extract `x` from a `…/share-<x>.<suffix>` path.
+fn file_x(path: &str) -> u8 {
+    let name = std::path::Path::new(path)
+        .file_name()
+        .unwrap()
+        .to_str()
+        .unwrap();
+    name.strip_prefix("share-")
+        .unwrap()
+        .split('.')
+        .next()
+        .unwrap()
+        .parse()
+        .unwrap()
 }
 
 /// Run `chela-cli recover <file>...` with positional file paths. Returns
@@ -218,17 +288,11 @@ fn recover_imports_shares_from_paper_html_files() {
         tmpdir.to_str().unwrap(),
     ]);
 
-    let file = |n: u8| {
-        tmpdir
-            .join(format!("share-{n}.html"))
-            .to_str()
-            .unwrap()
-            .to_owned()
-    };
-    let f1 = file(1);
-    let f3 = file(3);
-    let f5 = file(5);
-    let (status, stdout, stderr) = recover_with_files(&[&f1, &f3, &f5]);
+    // v2 share x is random in 1..=32, so discover the actual files and take 3.
+    let html_files = share_files(&tmpdir, ".html");
+    assert_eq!(html_files.len(), 5, "expected 5 per-share HTML files");
+    let subset: Vec<&str> = html_files.iter().take(3).map(String::as_str).collect();
+    let (status, stdout, stderr) = recover_with_files(&subset);
     assert!(
         status.success(),
         "recover failed:\nstdout: {stdout}\nstderr: {stderr}",
@@ -303,17 +367,21 @@ fn recover_mixed_html_and_text_files() {
         tmpdir.to_str().unwrap(),
     ]);
 
-    // Save share 3 as a plain text file (the share-text format that
-    // parse_shares accepts).
-    let text_share_3 = pick_shares(&all_shares, &[3]);
-    let text_path = tmpdir.join("share-3.txt");
-    std::fs::write(&text_path, &text_share_3).unwrap();
+    // Save one share as plain text (the share-text format parse_shares accepts).
+    let text_share = pick_shares(&all_shares, &[1]);
+    let text_x = header_x(&text_share);
+    let text_path = tmpdir.join("share-text.txt");
+    std::fs::write(&text_path, &text_share).unwrap();
 
-    // Recover using cards 1 and 5 as HTML + card 3 as text.
-    let html_1 = tmpdir.join("share-1.html").to_str().unwrap().to_owned();
-    let html_5 = tmpdir.join("share-5.html").to_str().unwrap().to_owned();
-    let text_3 = text_path.to_str().unwrap().to_owned();
-    let (status, stdout, stderr) = recover_with_files(&[&html_1, &text_3, &html_5]);
+    // Recover with two distinct HTML cards (x != the text card's x) + the text card.
+    let html: Vec<String> = share_files(&tmpdir, ".html")
+        .into_iter()
+        .filter(|p| file_x(p) != text_x)
+        .take(2)
+        .collect();
+    assert_eq!(html.len(), 2, "expected 2 distinct HTML cards");
+    let text = text_path.to_str().unwrap().to_owned();
+    let (status, stdout, stderr) = recover_with_files(&[&html[0], &text, &html[1]]);
     assert!(
         status.success(),
         "recover failed:\nstdout: {stdout}\nstderr: {stderr}",
@@ -390,26 +458,20 @@ fn recover_imports_per_share_json_files() {
         tmpdir.to_str().unwrap(),
     ]);
 
-    // The folder should now contain share-1..5.share.json + the bundle.
+    // The folder should now contain 5 per-share JSON files + the bundle. v2 share x
+    // is random in 1..=32, so match by the share-<x>.share.json shape, not by number.
     let entries: Vec<_> = std::fs::read_dir(&tmpdir)
         .unwrap()
         .map(|e| e.unwrap().file_name().into_string().unwrap())
         .collect();
-    assert!(entries.iter().any(|n| n == "share-1.share.json"));
-    assert!(entries.iter().any(|n| n == "share-3.share.json"));
-    assert!(entries.iter().any(|n| n == "share-5.share.json"));
+    let json_files = share_files(&tmpdir, ".share.json");
+    assert_eq!(json_files.len(), 5, "expected 5 per-share JSON files");
     assert!(entries
         .iter()
         .any(|n| n.starts_with("chela-") && n.ends_with("-shares.json")));
 
-    let file = |n: u8| {
-        tmpdir
-            .join(format!("share-{n}.share.json"))
-            .to_str()
-            .unwrap()
-            .to_owned()
-    };
-    let (status, stdout, stderr) = recover_with_files(&[&file(1), &file(3), &file(5)]);
+    let subset: Vec<&str> = json_files.iter().take(3).map(String::as_str).collect();
+    let (status, stdout, stderr) = recover_with_files(&subset);
     assert!(status.success(), "recover failed:\n{stdout}\n{stderr}");
     assert!(stdout.contains(ABANDON_24));
     assert!(stdout.contains("json-import test 🦀"));
@@ -467,20 +529,24 @@ fn recover_mixed_html_text_and_json_files() {
         tmpdir.to_str().unwrap(),
     ]);
 
-    // Save share #3 as plain text alongside the HTML/JSON the split wrote.
-    let text_share = pick_shares(&all, &[3]);
-    let text_path = tmpdir.join("share-3.txt");
+    // Save one share as plain text alongside the HTML/JSON the split wrote.
+    let text_share = pick_shares(&all, &[1]);
+    let text_x = header_x(&text_share);
+    let text_path = tmpdir.join("share-text.txt");
     std::fs::write(&text_path, &text_share).unwrap();
 
-    // Mix one HTML + one JSON + one text — all should compose.
-    let html_1 = tmpdir.join("share-1.html").to_str().unwrap().to_owned();
-    let json_5 = tmpdir
-        .join("share-5.share.json")
-        .to_str()
-        .unwrap()
-        .to_owned();
-    let text_3 = text_path.to_str().unwrap().to_owned();
-    let (status, stdout, stderr) = recover_with_files(&[&html_1, &json_5, &text_3]);
+    // Mix one HTML + one JSON + one text, three distinct x values. v2 x is random.
+    let html = share_files(&tmpdir, ".html")
+        .into_iter()
+        .find(|p| file_x(p) != text_x)
+        .expect("an HTML card with x != text card");
+    let html_x = file_x(&html);
+    let json = share_files(&tmpdir, ".share.json")
+        .into_iter()
+        .find(|p| file_x(p) != text_x && file_x(p) != html_x)
+        .expect("a JSON card distinct from the HTML and text cards");
+    let text = text_path.to_str().unwrap().to_owned();
+    let (status, stdout, stderr) = recover_with_files(&[&html, &json, &text]);
     assert!(status.success(), "recover failed:\n{stdout}\n{stderr}");
     assert!(stdout.contains(ABANDON_24));
 
@@ -519,16 +585,19 @@ fn split_writes_all_four_outputs_when_all_flags_given() {
 
     assert!(paper_html.exists(), "--paper file should exist");
     assert!(json_bundle.exists(), "--json file should exist");
-    assert!(paper_dir.join("share-1.html").exists());
+    // v2 share x is random in 1..=32, so per-share files are share-<x>.…, not share-1.
+    let paper_html_files = share_files(&paper_dir, ".html");
+    assert_eq!(paper_html_files.len(), 3, "expected 3 per-share HTML files");
     assert!(paper_dir.join("README.txt").exists());
-    assert!(json_dir.join("share-1.share.json").exists());
+    let json_share_files = share_files(&json_dir, ".share.json");
+    assert_eq!(json_share_files.len(), 3, "expected 3 per-share JSON files");
 
     // The combined JSON bundle uses the chela.shares.v1 schema.
     let bundle_text = std::fs::read_to_string(&json_bundle).unwrap();
     assert!(bundle_text.contains(r#""type":"chela.shares.v1""#));
 
     // Single share files use chela.share.v1.
-    let per_share = std::fs::read_to_string(json_dir.join("share-2.share.json")).unwrap();
+    let per_share = std::fs::read_to_string(&json_share_files[0]).unwrap();
     assert!(per_share.contains(r#""type":"chela.share.v1""#));
     // And the bundle filename includes the set ID.
     let json_entries: Vec<String> = std::fs::read_dir(&json_dir)

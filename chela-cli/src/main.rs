@@ -10,9 +10,9 @@ use chela_engine::{
     recover_secret, split_secret, EngineError, OutputMode, RecoveredSecret, SplitInput,
 };
 use chela_share::{
-    extract_shares_from_html, extract_shares_from_json, format_share, parse_shares,
-    render_json_folder, render_paper_folder, render_paper_html, render_shares_json, BackupMeta,
-    ImportError, JsonFolder, PaperFolder,
+    extract_shares_from_html, extract_shares_from_json, format_share, parse_share_words,
+    parse_shares, render_json_folder, render_paper_folder, render_paper_html, render_shares_json,
+    BackupMeta, ImportError, JsonFolder, PaperFolder,
 };
 
 fn main() -> ExitCode {
@@ -127,6 +127,9 @@ fn cmd_split(args: Vec<String>) -> Result<(), String> {
             "threshold (-m) must be at least {}",
             chela_engine::MIN_THRESHOLD
         ));
+    }
+    if total > chela_engine::MAX_SHARES {
+        return Err("total (-n) must be at most 32".into());
     }
 
     let input = match (mnemonic.as_deref(), text.as_deref()) {
@@ -312,7 +315,7 @@ fn cmd_recover(file_paths: &[String]) -> Result<(), String> {
         io::stdin()
             .read_to_string(&mut buf)
             .map_err(|e| format!("read stdin: {e}"))?;
-        let parsed = parse_shares(&buf).map_err(|e| format!("parse: {e:?}"))?;
+        let parsed = parse_share_text(&buf).map_err(|e| format!("parse: {e:?}"))?;
         chela_primitives::zeroize::Zeroize::zeroize(&mut buf);
         if parsed.is_empty() {
             return Err("no shares found on stdin".into());
@@ -419,10 +422,27 @@ fn read_one_file(contents: &str) -> Result<Vec<chela_engine::Share>, String> {
         let results = extract_shares_from_json(contents).map_err(|e| import_err_to_string(&e))?;
         collect_strict(results, "share")
     } else {
-        // Fall through to text-share parser. Empty / unrecognized input surfaces
-        // as a parse error from `parse_shares`.
-        parse_shares(contents).map_err(|e| format!("parse share text: {e:?}"))
+        // Fall through to text-share parser. Accepts both headered `CHELA-…` cards
+        // and words-only backups. Empty / unrecognized input surfaces as a parse error.
+        parse_share_text(contents).map_err(|e| format!("parse share text: {e:?}"))
     }
+}
+
+/// Parse share text that may be either headered `CHELA-…` cards or words-only
+/// backups. A `CHELA-` line anywhere selects the headered parser; otherwise each
+/// non-blank line is a lone share's words, decoded via [`parse_share_words`].
+fn parse_share_text(input: &str) -> Result<Vec<chela_engine::Share>, chela_share::FormatError> {
+    let has_header = input
+        .lines()
+        .any(|l| l.trim_start().to_ascii_uppercase().starts_with("CHELA-"));
+    if has_header {
+        return parse_shares(input);
+    }
+    input
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| parse_share_words(l.trim()))
+        .collect()
 }
 
 /// Reduce a `Vec<Result<Share, ImportError>>` to `Vec<Share>` or the first
