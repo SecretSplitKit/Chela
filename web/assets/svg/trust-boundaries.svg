@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" width="100%"
+     stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <title>chela trust boundaries</title>
+  <desc>Two concentric rectangles illustrate security boundaries: the outer dashed rectangle encloses threats outside chela's control, while the inner solid rectangle contains what chela's code directly defends.</desc>
+
+  <!-- Outer rectangle: 600×320, centered in 640×360 → x=20, y=20 -->
+  <rect x="20" y="20" width="600" height="320" rx="8" stroke-width="1.5" stroke-dasharray="8 4"/>
+
+  <!-- Outer label -->
+  <text x="320" y="48" text-anchor="middle" fill="currentColor" stroke="none"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600">Outside chela's perimeter — you handle these</text>
+
+  <!-- Outer items, evenly spaced in the gap between outer and inner rects -->
+  <!-- Gap region: y=60–80 (top) and y=270–330 (bottom), sides x=20–120 and x=520–620 -->
+  <!-- Top-left cluster -->
+  <text x="80" y="85" text-anchor="start" fill="currentColor" stroke="none"
+        font-family="ui-monospace, SF Mono, Menlo, Consolas, monospace" font-size="12">Compromised host machine</text>
+  <text x="80" y="108" text-anchor="start" fill="currentColor" stroke="none"
+        font-family="ui-monospace, SF Mono, Menlo, Consolas, monospace" font-size="12">Tampered build artifact</text>
+
+  <!-- Bottom-left cluster -->
+  <text x="80" y="300" text-anchor="start" fill="currentColor" stroke="none"
+        font-family="ui-monospace, SF Mono, Menlo, Consolas, monospace" font-size="12">Coalition of M+ cardholders</text>
+  <text x="80" y="323" text-anchor="start" fill="currentColor" stroke="none"
+        font-family="ui-monospace, SF Mono, Menlo, Consolas, monospace" font-size="12">Compromised browser</text>
+
+  <!-- Inner rectangle: 400×180, centered in 640×360 → x=120, y=120+offset -->
+  <!-- Centered: x = (640-400)/2 = 120, y = (360-180)/2 = 90; bump y to 130 to leave outer items room -->
+  <rect x="120" y="120" width="400" height="190" rx="6" stroke-width="2"/>
+
+  <!-- Inner label -->
+  <text x="320" y="148" text-anchor="middle" fill="currentColor" stroke="none"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600">chela's perimeter — chela handles these</text>
+
+  <!-- Inner items -->
+  <text x="200" y="176" text-anchor="start" fill="currentColor" stroke="none"
+        font-family="ui-monospace, SF Mono, Menlo, Consolas, monospace" font-size="12">Shamir split / combine</text>
+  <text x="200" y="200" text-anchor="start" fill="currentColor" stroke="none"
+        font-family="ui-monospace, SF Mono, Menlo, Consolas, monospace" font-size="12">OS RNG calls</text>
+  <text x="200" y="224" text-anchor="start" fill="currentColor" stroke="none"
+        font-family="ui-monospace, SF Mono, Menlo, Consolas, monospace" font-size="12">Share encoding &amp; checksums</text>
+  <text x="200" y="248" text-anchor="start" fill="currentColor" stroke="none"
+        font-family="ui-monospace, SF Mono, Menlo, Consolas, monospace" font-size="12">BIP-39 codec</text>
+</svg>

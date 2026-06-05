@@ -1,21 +1,4 @@
-//! JSON export of chela shares.
-//!
-//! Two file formats:
-//!
-//! - **Single share** (`*.share.json`): one `chela.share.v1` object per file.
-//!   Same schema embedded in the HTML paper backup via [`crate::html`]; the
-//!   `<script>`-wrapped form and the standalone file are byte-identical aside
-//!   from the surrounding tags.
-//!
-//! - **Bundle** (`chela-<setID>-shares.json`): a single file containing every
-//!   share from one split. Wrapped in `{"type":"chela.shares.v1","shares":[…]}`
-//!   for the convenience of recovery tools that want one file per recovery set.
-//!
-//! Both are accepted by [`crate::extract_shares_from_json`] (auto-detected via
-//! the top-level `type` field).
-//!
-//! See `html.rs::render_json_block` for the per-share schema documentation;
-//! the bundle schema is just `{type: "chela.shares.v1", shares: [<share>, …]}`.
+//! JSON export of chela shares: per-share `chela.share.v1` files and a combined `chela.shares.v1` bundle.
 
 use alloc::borrow::ToOwned;
 use alloc::format;
@@ -27,16 +10,13 @@ use chela_engine::{OutputMode, PayloadKind, Share};
 
 use crate::{format_share, BackupMeta, PaperFolder};
 
-/// Per-share `.share.json` filename: `share-<x>.share.json`. Matches the
-/// `share-<x>.html` naming used by [`crate::render_paper_folder`], so both
-/// formats can live side-by-side in one folder without collision.
+/// Per-share `.share.json` filename: `share-<x>.share.json`.
 #[must_use]
 pub fn share_json_filename(share: &Share) -> String {
     format!("share-{}.share.json", share.x)
 }
 
-/// Bundle filename: `chela-<setID>-shares.json`. Includes the set ID so
-/// multiple bundles from independent splits can coexist in one folder.
+/// Bundle filename: `chela-<setID>-shares.json`.
 #[must_use]
 pub fn shares_bundle_filename(shares: &[Share]) -> String {
     let id = shares.first().map_or("0000".to_owned(), |s| {
@@ -45,9 +25,7 @@ pub fn shares_bundle_filename(shares: &[Share]) -> String {
     format!("chela-{id}-shares.json")
 }
 
-/// Render a single share as a standalone `chela.share.v1` JSON document. The
-/// returned string is exactly what you'd write to a `share-<x>.share.json`
-/// file; ends with a trailing newline.
+/// Render a single share as a standalone `chela.share.v1` JSON document (trailing newline included).
 #[must_use]
 pub fn render_share_json(share: &Share, meta: &BackupMeta<'_>) -> String {
     let mut out = String::with_capacity(1024);
@@ -56,9 +34,7 @@ pub fn render_share_json(share: &Share, meta: &BackupMeta<'_>) -> String {
     out
 }
 
-/// Render every share in `shares` as a single `chela.shares.v1` bundle
-/// document. The returned string is what you'd write to a
-/// `chela-<setID>-shares.json` file; ends with a trailing newline.
+/// Render every share as a single `chela.shares.v1` bundle document (trailing newline included).
 #[must_use]
 pub fn render_shares_json(shares: &[Share], meta: &BackupMeta<'_>) -> String {
     let names_valid = meta
@@ -86,14 +62,12 @@ pub fn render_shares_json(shares: &[Share], meta: &BackupMeta<'_>) -> String {
 
 /// A folder-worth of per-share JSON files. Pure strings — no filesystem access
 /// (this crate is `#![no_std]`); the binaries write each `(filename, contents)`
-/// pair to disk. Mirrors [`PaperFolder`].
+/// pair to disk.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JsonFolder {
     /// `(filename, contents)` per share, e.g. `share-1.share.json`.
     pub shares: Vec<(String, String)>,
     /// Filename + contents of the combined bundle (`chela-<setID>-shares.json`).
-    /// Convenience: tools that want one file per set can use this; tools that
-    /// want one file per share can use `shares`.
     pub bundle: (String, String),
 }
 
@@ -129,8 +103,7 @@ pub fn render_json_folder(shares: &[Share], meta: &BackupMeta<'_>) -> JsonFolder
     }
 }
 
-/// Construct a combined HTML + JSON output folder. Useful for the TUI/CLI
-/// flow where the user wants both formats written to one directory.
+/// Construct a combined HTML + JSON output folder.
 #[must_use]
 pub fn render_combined_folder(shares: &[Share], meta: &BackupMeta<'_>) -> CombinedFolder {
     CombinedFolder {
@@ -139,28 +112,18 @@ pub fn render_combined_folder(shares: &[Share], meta: &BackupMeta<'_>) -> Combin
     }
 }
 
-/// Bundle of both formats together. Tools merge `paper.shares` + `json.shares`
-/// + `json.bundle` + `paper.readme` into one filesystem write.
+/// Both paper-backup and JSON formats together.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CombinedFolder {
     pub paper: PaperFolder,
     pub json: JsonFolder,
 }
 
-// =========================================================================================
-// Internals
-// =========================================================================================
-
-/// Write a single `chela.share.v1` JSON object (no surrounding tags / newlines)
-/// to `out`. Used by:
-///   - [`render_share_json`] (writes a single object then `\n`)
-///   - [`render_shares_json`] (writes each object inside the `shares` array)
-///   - [`crate::html`] (wraps each object inside a `<script>` tag)
+/// Write a single `chela.share.v1` JSON object (no surrounding tags / newlines) to `out`.
 ///
 /// String fields escape `<` to `<` so a user-supplied `</script>` in
 /// `description` / `backup_name` / `shareholder_names` can't break out of the
-/// surrounding script tag when this JSON is embedded in HTML. The escape is
-/// harmless for standalone-file consumers.
+/// surrounding `<script>` tag when this JSON is embedded in HTML.
 pub(crate) fn write_share_json_object(out: &mut String, share: &Share, meta: &BackupMeta<'_>) {
     out.push('{');
     out.push_str("\"type\":\"chela.share.v1\",");
@@ -226,10 +189,7 @@ pub(crate) fn write_share_json_object(out: &mut String, share: &Share, meta: &Ba
     out.push('}');
 }
 
-/// Write a JSON string literal: opening `"`, escaped contents, closing `"`.
-/// Standard escapes (`"`, `\`, `\n`, `\r`, `\t`, C0 controls) plus an
-/// additional `<` → `<` escape to keep our JSON safe inside HTML
-/// `<script>` tags.
+/// Write a JSON string literal with standard escapes plus `<` → `<` to keep JSON safe inside HTML `<script>` tags.
 pub(crate) fn json_string(out: &mut String, s: &str) {
     out.push('"');
     for c in s.chars() {

@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tour of the codebase — chela explained</title>
+  <link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body>
+  <header class="topbar">
+    <a href="index.html" class="brand">chela</a>
+    <a href="https://github.com/SecretSplitKit/Chela" class="repo-link">GitHub</a>
+  </header>
+
+  <div class="layout">
+    <nav class="sidebar" aria-label="Table of contents">
+      <button class="hamburger" aria-label="Toggle sidebar">≡</button>
+      <ol>
+        <li><a href="index.html">What is chela?</a></li>
+        <li><a href="chapter-1-shamir.html">Why secret sharing</a></li>
+        <li><a href="chapter-2-threat-model.html">Threat model</a></li>
+        <li><a href="chapter-3-touring.html">Tour of the codebase</a></li>
+        <li><a href="chapter-4-evaluating.html">Audit chela yourself</a></li>
+      </ol>
+    </nav>
+
+    <main class="content">
+      <h1>A tour of the codebase</h1>
+
+      <p>
+        chela is one Cargo workspace of ten crates. The lower half is the cryptographic
+        core: primitives, field arithmetic, secret sharing, BIP-39 encoding, and the
+        engine that orchestrates them. The upper half is user-facing: share formatting,
+        the interactive TUI, the scriptable CLI, the WASM FFI, and the self-contained
+        HTML bundle. Each layer depends only on the layers below it; nothing in the
+        upper half is imported by the lower half.
+      </p>
+
+      <h2>How the crates depend on each other</h2>
+
+      <figure>
+        <pre class="mermaid">
+flowchart TB
+  field[chela-field] --> sss[chela-sss]
+  prim[chela-primitives] --> sss
+  prim --> bip[chela-bip39]
+  sss --> engine[chela-engine]
+  bip --> engine
+  engine --> share[chela-share]
+  share --> tui[chela-tui]
+  share --> cli[chela-cli]
+  share --> wasm[chela-wasm]
+  wasm --> bundle[chela-bundle]
+        </pre>
+        <img class="mermaid-fallback" src="assets/svg/dependency-tree.svg"
+             alt="Dependency tree of the chela workspace. chela-field and chela-primitives sit at the top with no dependencies. chela-sss builds on both; chela-bip39 builds on chela-primitives. Both feed chela-engine, which feeds chela-share, which feeds the three front-ends chela-tui, chela-cli, and chela-wasm. chela-bundle embeds the compiled chela-wasm at build time.">
+        <figcaption>The main dependency edges of the chela workspace. Each crate's
+        complete list is in its Cargo.toml. The chela-bundle edge is a build-time
+        relationship: its build script compiles and embeds chela-wasm.</figcaption>
+      </figure>
+
+      <h2>What each crate does</h2>
+
+      <h3><a class="src" data-file="chela-primitives/">chela-primitives/</a></h3>
+      <p>
+        The foundation layer. Provides SHA-256 (hand-written, no third-party crate),
+        constant-time byte equality (<code>ct_eq</code>), a <code>volatile_set</code>
+        primitive for zeroing secret-bearing buffers without the compiler optimizing the
+        write away, and a thin wrapper around the OS random-number generator. Every
+        security-sensitive operation in the workspace ultimately bottoms out here.
+      </p>
+
+      <h3><a class="src" data-file="chela-field/">chela-field/</a></h3>
+      <p>
+        Constant-time arithmetic over GF(2^8), the finite field of 256 elements.
+        Addition is XOR; multiplication is a branch-free shift-and-XOR loop of eight
+        unconditional rounds, with the reduction modulo the Rijndael polynomial
+        <code>0x11b</code> driven by bit masks rather than branches. No lookup tables:
+        a table indexed by secret bytes would leak via the CPU cache, so every
+        operation runs in data-independent time and share values cannot be recovered
+        through a timing side-channel. This crate has no dependencies at all.
+      </p>
+
+      <h3><a class="src" data-file="chela-sss/">chela-sss/</a></h3>
+      <p>
+        The Shamir Secret Sharing implementation. <code>split</code> samples a random
+        polynomial of degree M−1 over GF(2^8) and evaluates it at N distinct points,
+        one per share. <code>combine</code> runs Lagrange interpolation to recover the
+        polynomial's constant term. Each byte of the secret is processed independently;
+        a 24-word BIP-39 seed (32 bytes of entropy) produces 32 independent
+        single-byte polynomials.
+      </p>
+
+      <h3><a class="src" data-file="chela-bip39/">chela-bip39/</a></h3>
+      <p>
+        BIP-0039 codec plus the 2048-word English wordlist, compiled in at build time.
+        Converts between raw entropy bytes and the mnemonic word sequence, including
+        the checksum appended to the last word. Also used to encode share bytes as
+        word lists on the printed cards so a human can transcribe a share using only
+        a pen.
+      </p>
+
+      <h3><a class="src" data-file="chela-engine/">chela-engine/</a></h3>
+      <p>
+        Orchestration layer. Calls <code>chela-sss</code> for the core math and
+        <code>chela-bip39</code> for encoding, then assembles the full share bundle:
+        computing the 16-bit split identifier, appending the 2-byte per-share checksum,
+        and serializing everything into the wire format defined in <code>SPEC.md</code>.
+        Recovery is the inverse: parse, verify identifier, verify checksum, decode,
+        combine.
+      </p>
+
+      <h3><a class="src" data-file="chela-share/">chela-share/</a></h3>
+      <p>
+        Share presentation layer. Takes the raw share bytes from <code>chela-engine</code>
+        and renders them as: a plain-text card (the word list plus metadata), a JSON
+        object for programmatic use, and a printable paper-backup HTML page styled to
+        fit on a standard index card. Its parser is the one place chela reads
+        externally supplied text, so the fuzz harness lives here too.
+      </p>
+
+      <h3><a class="src" data-file="chela-tui/">chela-tui/</a></h3>
+      <p>
+        The interactive terminal wizard. Walks the user through split or recovery with
+        prompts and confirmation steps, then prints each share card to the terminal for
+        transcription or saving. Intended for users who want a guided experience.
+        Depends on <code>chela-engine</code>; does not touch the crypto directly.
+      </p>
+
+      <h3><a class="src" data-file="chela-cli/">chela-cli/</a></h3>
+      <p>
+        The scriptable command-line interface. Takes flags rather than interactive
+        prompts: the secret arrives via <code>--mnemonic</code> or <code>--text</code>,
+        share cards print to stdout, and the <code>--paper</code> / <code>--json</code>
+        flags write paper-backup or JSON files instead. Suited for automation, shell
+        scripts, and users comfortable with the command line. The same engine and
+        encoding as the TUI; different surface only.
+      </p>
+
+      <h3><a class="src" data-file="chela-wasm/">chela-wasm/</a></h3>
+      <p>
+        A WebAssembly FFI wrapper around <code>chela-engine</code>
+        and <code>chela-share</code>. The C-ABI is hand-rolled — no
+        <code>wasm-bindgen</code>, no third-party crates. The exports are
+        <code>chela_alloc</code> and <code>chela_dealloc</code> for memory management,
+        plus <code>chela_split</code>, <code>chela_recover</code>,
+        <code>chela_render_paper_html</code>, <code>chela_render_shares_json</code>,
+        <code>chela_extract_shares</code>, and <code>chela_word_in_list</code> for the
+        actions. JS passes inputs as a tagged binary format and reads JSON back; the
+        cryptographic core does not depend on any browser API. Compiled to a
+        <code>.wasm</code> binary that is base64-embedded into the standalone bundle.
+      </p>
+
+      <h3><a class="src" data-file="chela-bundle/">chela-bundle/</a></h3>
+      <p>
+        Build tool that assembles the standalone <code>chela.html</code>. Inlines the
+        compiled WASM binary (base64), the JavaScript glue, and the UI into a single
+        self-contained HTML file that runs entirely in the browser with no network
+        requests. The file you download from the release page is produced by this crate.
+      </p>
+
+      <div class="card">
+        <h3>Coming in sub-project 2</h3>
+        <p>
+          Each crypto-core crate has its own walkthrough chapter — those will land in
+          sub-project 2 of this explainer. Sub-project 2 covers
+          <code>chela-primitives</code>, <code>chela-field</code>, <code>chela-sss</code>,
+          <code>chela-bip39</code>, <code>chela-engine</code>, and <code>chela-share</code>
+          in depth, with hand-crafted SVG illustrations of the field arithmetic and
+          the Lagrange interpolation steps.
+        </p>
+      </div>
+
+      <nav class="page-nav" aria-label="Pagination">
+        <a class="prev" href="chapter-2-threat-model.html">← Back: Threat model</a>
+        <a class="next" href="chapter-4-evaluating.html">Next: Audit chela yourself →</a>
+      </nav>
+    </main>
+  </div>
+
+  <script src="assets/js/nav.js" defer></script>
+  <script src="assets/js/permalink.js" defer></script>
+  <script src="assets/js/mermaid-lazy.js" defer></script>
+</body>
+</html>

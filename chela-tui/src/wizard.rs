@@ -648,7 +648,7 @@ fn render_field_chip(value: &str, focused: bool) -> String {
     }
 }
 
-/// Print a "Step N [of M]: <action>" header. `total = None` during setup, before N is known.
+/// Print a `"Step N [of M]: <action>"` header. `total = None` during setup, before N is known.
 fn step_header(step: u32, total: Option<u32>, action: &str) {
     let prefix = match total {
         Some(t) => format!("Step {step} of {t}:"),

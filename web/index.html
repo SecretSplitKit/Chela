@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>chela explained</title>
+  <link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body>
+  <header class="topbar">
+    <a href="index.html" class="brand">chela</a>
+    <a href="https://github.com/SecretSplitKit/Chela" class="repo-link">GitHub</a>
+  </header>
+
+  <div class="layout">
+    <nav class="sidebar" aria-label="Table of contents">
+      <button class="hamburger" aria-label="Toggle sidebar">≡</button>
+      <ol>
+        <li><a href="index.html">What is chela?</a></li>
+        <li><a href="chapter-1-shamir.html">Why secret sharing</a></li>
+        <li><a href="chapter-2-threat-model.html">Threat model</a></li>
+        <li><a href="chapter-3-touring.html">Tour of the codebase</a></li>
+        <li><a href="chapter-4-evaluating.html">Audit chela yourself</a></li>
+      </ol>
+    </nav>
+
+    <main class="content">
+      <h1>chela explained</h1>
+
+      <p>
+        chela splits a BIP-39 wallet seed (or any short secret) into N shares using
+        Shamir's Secret Sharing, then recovers the original from any M of those shares.
+        Each share is a printable card: a short BIP-39 word list you can lock in a safe,
+        hand to a trusted person, or store in a different country.
+        The scheme is information-theoretically secure — any M−1 shares reveal nothing
+        about the secret — making it practical for inheritance planning and disaster
+        recovery without any single point of loss or compromise.
+      </p>
+
+      <h2>Who chela is for</h2>
+      <ul>
+        <li>
+          <strong>Inheritance planning.</strong> Split a hardware-wallet seed so heirs can
+          recover access without a single point of failure, and without any one executor
+          holding the whole secret before it is needed.
+        </li>
+        <li>
+          <strong>Disaster recovery.</strong> Store shares in physically separate locations
+          (home safe, bank box, trusted relative). Losing one location does not lose the
+          secret; a house fire or flood cannot wipe out recovery.
+        </li>
+        <li>
+          <strong>Eliminating the single-point-of-compromise.</strong> No single safe, hard
+          drive, or person holds a copy of the whole secret. An adversary who obtains one
+          card learns nothing.
+        </li>
+      </ul>
+
+      <h2>Who chela is not for</h2>
+      <ul>
+        <li>
+          <strong>It does not replace a hardware wallet.</strong> chela protects the backup
+          seed; your hardware wallet protects day-to-day signing. Use both.
+        </li>
+        <li>
+          <strong>It does not hide secrets from yourself.</strong> Recovery requires M
+          shares in the same room. If you lock all shares in inaccessible places, you lock
+          yourself out too.
+        </li>
+        <li>
+          <strong>It does not defend against a coalition of M cardholders.</strong> If M
+          people you gave shares to conspire, they can recover the secret. Choose your
+          cardholders with the same care you would choose co-signers.
+        </li>
+      </ul>
+
+      <figure>
+        <img src="assets/svg/secret-to-shares.svg"
+             alt="Diagram: a secret is split into five shares; any three combine back into the secret.">
+        <figcaption>
+          A 3-of-5 split: the secret becomes five independent cards. Any three cards
+          reconstruct the original; two cards or fewer reveal nothing.
+        </figcaption>
+      </figure>
+
+      <div class="card">
+        <h3>Walk me through it →</h3>
+        <p>
+          Start with why secret sharing exists, then step through the threat model and the
+          codebase before deciding whether to trust it.
+        </p>
+        <a href="chapter-1-shamir.html">Start with the theory</a>
+      </div>
+
+      <div class="card">
+        <h3>I just want to evaluate the code →</h3>
+        <p>
+          Skip the theory. Go straight to the grep commands, opt-in unsafe files, and
+          reproducible-build verification steps.
+        </p>
+        <a href="chapter-4-evaluating.html">Audit chela yourself</a>
+      </div>
+
+      <nav class="page-nav" aria-label="Pagination">
+        <span class="prev"></span>
+        <a class="next" href="chapter-1-shamir.html">Next: Why secret sharing →</a>
+      </nav>
+    </main>
+  </div>
+
+  <script src="assets/js/nav.js" defer></script>
+  <script src="assets/js/permalink.js" defer></script>
+</body>
+</html>

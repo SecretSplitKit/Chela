@@ -1,21 +1,14 @@
-//! Minimal JSON parser used by [`crate::import`] to read the structured share
-//! data embedded in chela's paper-backup HTML files.
+//! Minimal JSON parser for the structured share data embedded in chela's paper-backup HTML.
 //!
-//! No third-party dependencies; no `unsafe`. Bounds recursion depth so an
-//! adversarial input can't blow the stack. Strings are returned as owned
-//! `String`s; the input is assumed to be valid UTF-8 (a `&str`).
-//!
-//! Scope is deliberately tight — we own the JSON we emit, so we never need
-//! to round-trip floats or exotic escapes. Numbers are integers (`i64`).
+//! No third-party dependencies; no `unsafe`. Depth-limited to prevent stack overflow
+//! on adversarial input. Numbers are `i64` only (no floats).
 
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::fmt;
 
-/// Maximum nesting depth. chela's own schema nests two levels (object with
-/// arrays of strings); the limit is generous enough that a future schema bump
-/// won't hit it, while still small enough to prevent stack-overflow via
-/// adversarial input.
+/// Maximum nesting depth — generous enough for future schema changes, small enough to
+/// prevent stack overflow on adversarial input.
 const MAX_DEPTH: usize = 32;
 
 /// A parsed JSON value. Numbers are `i64` (chela's schema is integer-only).
@@ -26,7 +19,7 @@ pub enum Value {
     Number(i64),
     String(String),
     Array(Vec<Value>),
-    /// Object members preserved in source order (`Vec`, not `HashMap`, for `no_std`).
+    /// Object members in source order (`Vec`, not `HashMap`, for `no_std`).
     Object(Vec<(String, Value)>),
 }
 
@@ -98,10 +91,9 @@ pub enum JsonError {
     UnexpectedEof,
     /// Malformed `\…` escape inside a string literal.
     BadEscape,
-    /// Number literal couldn't be parsed as `i64`, or contains a `.` / `e` /
-    /// `E` (this parser is integer-only by design).
+    /// Number literal couldn't be parsed as `i64`, or contains `.` / `e` / `E`.
     InvalidNumber,
-    /// Nesting depth exceeded [`MAX_DEPTH`].
+    /// Nesting depth exceeded `MAX_DEPTH`.
     DepthLimitExceeded,
     /// Non-whitespace data after the top-level value.
     TrailingGarbage,
@@ -259,9 +251,7 @@ impl Parser<'_> {
                         b't' => out.push('\t'),
                         b'u' => {
                             let cp = self.parse_unicode_escape()?;
-                            // Reject high/low surrogates — keep parser minimal; chela
-                            // only emits codepoints below 0xD800 in `\u` escapes
-                            // (control chars and `<`).
+                            // Reject surrogates — chela only emits \u escapes below 0xD800.
                             if (0xD800..=0xDFFF).contains(&cp) {
                                 return Err(JsonError::BadEscape);
                             }
@@ -271,12 +261,9 @@ impl Parser<'_> {
                         _ => return Err(JsonError::BadEscape),
                     }
                 }
-                // Per RFC 8259, raw control chars (< 0x20) are not allowed
-                // unescaped inside string literals.
+                // RFC 8259: raw control chars (< 0x20) are not allowed unescaped.
                 b if b < 0x20 => return Err(JsonError::UnexpectedChar(self.pos - 1)),
-                // Otherwise treat the byte as part of the underlying UTF-8 (the
-                // input is already &str so it's valid UTF-8). We need to copy
-                // the full codepoint, which may be 1–4 bytes.
+                // Copy the full UTF-8 codepoint (1–4 bytes).
                 b => {
                     let extra = match b {
                         0x00..=0x7f => 0,
@@ -347,7 +334,7 @@ impl Parser<'_> {
                 break;
             }
         }
-        // Reject floats / exponents — out of scope.
+        // Reject floats / exponents.
         if let Some(b) = self.peek() {
             if matches!(b, b'.' | b'e' | b'E') {
                 return Err(JsonError::InvalidNumber);

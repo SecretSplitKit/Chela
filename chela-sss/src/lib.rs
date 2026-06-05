@@ -1,5 +1,5 @@
-//! Shamir's Secret Sharing over GF(2^8). Byte-wise polynomial sharing; recovery by
-//! Lagrange interpolation at x=0. Caller-allocated buffers, no heap, `#![no_std]`.
+//! Shamir's Secret Sharing over GF(2^8): byte-wise polynomial splitting and recovery
+//! by Lagrange interpolation at x=0, using caller-allocated buffers (`#![no_std]`).
 
 #![no_std]
 #![deny(unsafe_code)]

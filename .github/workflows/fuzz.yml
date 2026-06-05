@@ -3,7 +3,7 @@
 # `cargo fuzz run parse_shares -- -max_total_time=60` runs libFuzzer for 60 seconds
 # against the share-text parser. The point is a fast smoke test — catch a freshly-
 # introduced panic before merge, not exhaustively search the input space. A longer
-# run (hours / overnight) belongs in the pre-release checklist; see TODO.md item 2.
+# run (hours / overnight) belongs in the pre-release checklist; see RELEASING.md.
 #
 # Requires nightly because cargo-fuzz uses unstable rustc flags. Stable runtime users
 # never see this dependency — the fuzz crate is excluded from the main workspace.

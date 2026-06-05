@@ -1,28 +1,4 @@
-//! Import shares from chela paper-backup HTML files.
-//!
-//! Every paper card chela produces embeds its data as a machine-readable JSON
-//! block inside `<script type="application/json" class="chela-share">…</script>`
-//! (see `html.rs::render_json_block` for the schema). This module finds every
-//! such block in an arbitrary chunk of HTML, parses each as JSON, validates
-//! the schema, and produces [`Share`] values ready to feed into
-//! [`chela_engine::recover_secret`].
-//!
-//! Tolerates:
-//!   - Multi-page HTML (one `<article>` per share) — every block extracted
-//!   - Cards that came from different splits — each one parsed independently;
-//!     the caller filters via [`Share::identifier`]
-//!   - Surrounding markup, attribute reordering, single-quoted attributes
-//!
-//! Rejects (per-share, returning a [`Vec`] of `Result` so partial failures
-//! don't poison the whole batch):
-//!   - JSON that doesn't parse
-//!   - JSON that lacks `"type":"chela.share.v1"`
-//!   - Missing or wrongly-typed required fields
-//!   - Word strings not in the BIP-39 wordlist
-//!   - Words length doesn't match `word_count`
-//!   - Inconsistent x/threshold/total (must satisfy `1 ≤ x ≤ total`,
-//!     `2 ≤ threshold ≤ total ≤ 255`)
-//!   - Unknown `scheme` or `payload_kind`
+//! Import shares from chela paper-backup HTML and JSON files.
 
 use alloc::vec::Vec;
 
@@ -122,26 +98,23 @@ pub fn extract_shares_from_json(
     }
 }
 
-/// Find every `<script ... class="chela-share" ... type="application/json" ...>...</script>`
-/// in `html` and return the body of each. Tolerant of attribute order and
-/// single-vs-double quotes.
+/// Find every `<script type="application/json" class="chela-share">…</script>` body in `html`.
+/// Tolerant of attribute order and single-vs-double quotes.
 fn find_chela_share_blocks(html: &str) -> Vec<&str> {
     let mut out = Vec::new();
     let bytes = html.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
-        // Find the next `<script` substring (case-insensitive on the keyword).
         let Some(start_rel) = find_subslice_ci(&bytes[i..], b"<script") else {
             break;
         };
         let tag_start = i + start_rel;
-        // Locate the end of the opening tag (`>`).
         let Some(tag_end_rel) = bytes[tag_start..].iter().position(|&b| b == b'>') else {
             break;
         };
         let tag_end = tag_start + tag_end_rel;
         let opening_tag = &html[tag_start..=tag_end];
-        // Skip `<script` if `<` isn't followed by a recognised attribute char —
+        // Skip if `<script` isn't followed by a recognised attribute char —
         // avoids matching things like `<scripting>`.
         let after_script = tag_start + b"<script".len();
         let next_char = bytes.get(after_script).copied().unwrap_or(b'>');
@@ -158,10 +131,9 @@ fn find_chela_share_blocks(html: &str) -> Vec<&str> {
             continue;
         }
 
-        // Body runs from after `>` to the matching `</script>`. JSON is data,
-        // not script, so a literal `</script>` inside a string would be escaped
-        // by our encoder (`<`) — therefore the first `</script>` we see
-        // ends the block.
+        // Body runs from after `>` to the first `</script>`. JSON strings
+        // produced by this crate escape `<` to `<`, so a literal `</script>`
+        // inside user data can't prematurely close the block.
         let body_start = tag_end + 1;
         let Some(close_rel) = find_subslice_ci(&bytes[body_start..], b"</script>") else {
             // Unclosed script — abandon.

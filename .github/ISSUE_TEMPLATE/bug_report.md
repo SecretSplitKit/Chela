@@ -37,7 +37,7 @@ Steps to reproduce the behavior:
 <!-- Please fill the following information. -->
 
 - OS: [e.g. Ubuntu 20.04]
-- chela version: [e.g. 0.1.0]
+- chela version: [e.g. 1.0.0-rc.1]
 
 ## Additional context
 

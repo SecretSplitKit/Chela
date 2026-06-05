@@ -18,7 +18,7 @@
 //!
 //! # Wire format
 //!
-//! Inputs are framed in a tiny tagged binary format (see [`request`] module). Outputs
+//! Inputs are framed in a tiny tagged binary format (see `request` module). Outputs
 //! are JSON for easy parsing on the JS side via `JSON.parse`.
 //!
 //! # RNG
@@ -70,10 +70,6 @@ fn leak_to_packed(mut v: Vec<u8>) -> u64 {
     pack(ptr, len)
 }
 
-// =========================================================================================
-// Memory management exports
-// =========================================================================================
-
 /// Allocate `len` bytes of WASM memory and return a pointer (offset) to the start. The
 /// caller must pair this with a [`chela_dealloc`] call once finished. A length of 0
 /// returns a non-null but unspecified pointer; passing it to `chela_dealloc` is safe.
@@ -118,12 +114,8 @@ pub unsafe extern "C" fn chela_dealloc(ptr: u32, len: u32) {
     drop(v);
 }
 
-// =========================================================================================
-// Action exports
-// =========================================================================================
-
 /// Split a secret into M-of-N shares. Input is the tagged binary request format
-/// documented in [`request::SplitRequest`]; output is a JSON object:
+/// documented in `request::SplitRequest`; output is a JSON object:
 ///
 /// ```json
 /// { "ok": true, "shares": [{ "x": 1, "threshold": 3, "total": 5, "identifier": "9DA3",
@@ -138,7 +130,7 @@ pub unsafe extern "C" fn chela_dealloc(ptr: u32, len: u32) {
 ///
 /// # Safety
 /// `input_ptr` must be the start of a `chela_alloc`-allocated buffer of exactly
-/// `input_len` bytes, populated with a well-formed [`request::SplitRequest`].
+/// `input_len` bytes, populated with a well-formed `request::SplitRequest`.
 #[no_mangle]
 pub unsafe extern "C" fn chela_split(input_ptr: u32, input_len: u32) -> u64 {
     // SAFETY: caller's contract guarantees the pointer + length describe a valid buffer.
@@ -209,7 +201,7 @@ pub(crate) fn do_split(input: &[u8]) -> Result<String, String> {
 }
 
 /// Recover a secret from a set of shares. Input is the tagged binary request format
-/// documented in [`request::RecoverRequest`]; output is a JSON object:
+/// documented in `request::RecoverRequest`; output is a JSON object:
 ///
 /// ```json
 /// { "ok": true, "kind": "bip39", "mnemonic": "...", "passphrase": "..." }
@@ -263,7 +255,7 @@ pub(crate) fn do_recover(input: &[u8]) -> Result<String, String> {
 }
 
 /// Render a printable HTML page containing every share. Input is the tagged binary
-/// request documented in [`request::RenderPaperRequest`]; output is the HTML as raw
+/// request documented in `request::RenderPaperRequest`; output is the HTML as raw
 /// bytes (not JSON-wrapped — the JS side gets a string it can drop into an iframe or
 /// offer for download).
 ///
@@ -301,7 +293,7 @@ pub(crate) fn do_render_paper(input: &[u8]) -> Result<Vec<u8>, String> {
 
 /// Render a `chela.shares.v1` JSON bundle covering every share in `req.shares`.
 /// Mirrors what the CLI's `--json FILE` flag writes. Input is the same
-/// [`request::RenderPaperRequest`] format as [`chela_render_paper_html`];
+/// `request::RenderPaperRequest` format as [`chela_render_paper_html`];
 /// output is the bundle text as raw bytes (UTF-8), suitable for the JS side
 /// to wrap in a Blob and offer for download.
 ///
@@ -474,10 +466,6 @@ pub(crate) fn word_in_list(bytes: &[u8]) -> bool {
     chela_bip39::word_to_index(trimmed).is_some()
 }
 
-// =========================================================================================
-// Error formatting
-// =========================================================================================
-
 fn error_response(msg: &str) -> String {
     format!("{{\"ok\":false,\"error\":{}}}", json::str(msg))
 }
@@ -521,10 +509,6 @@ fn format_error_to_string(e: &FormatError) -> String {
     }
 }
 
-// =========================================================================================
-// Tests
-// =========================================================================================
-//
 // The FFI exports themselves can't be unit-tested on a 64-bit native target — they cast
 // pointers to `u32`, which truncates outside `wasm32`. Instead these tests exercise the
 // inner `do_split` / `do_recover` / `do_render_paper` / `word_in_list` functions that

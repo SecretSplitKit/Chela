@@ -1,11 +1,10 @@
-//! The canonical BIP-0039 English wordlist (2048 words), vendored verbatim from
+//! BIP-0039 English wordlist (2048 words), vendored verbatim from
 //! <https://github.com/bitcoin/bips/blob/master/bip-0039/english.txt>.
 //!
 //! SHA-256 of the source file (one word per line, LF line endings, no trailing
 //! newline issues): 2f5eed53a4727b4bf8880d8f3f199efc90e58503646d9ff8eff3a2ed3b24dbda.
 //!
-//! The wordlist is sorted alphabetically (per BIP-39 spec § 1) so binary search by
-//! word string is correct.
+//! Sorted alphabetically (BIP-39 § 1); binary search on word strings is valid.
 
 pub static WORDLIST: [&str; 2048] = [
     "abandon", "ability", "able", "about", "above", "absent", "absorb", "abstract", "absurd",

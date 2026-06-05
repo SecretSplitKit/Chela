@@ -10,6 +10,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "chela-bundle"
+version = "1.0.0-rc.1"
+
+[[package]]
 name = "chela-cli"
 version = "1.0.0-rc.1"
 dependencies = [
@@ -35,13 +39,6 @@ version = "1.0.0-rc.1"
 [[package]]
 name = "chela-primitives"
 version = "1.0.0-rc.1"
-
-[[package]]
-name = "chela-serve"
-version = "1.0.0-rc.1"
-dependencies = [
- "chela-primitives",
-]
 
 [[package]]
 name = "chela-share"

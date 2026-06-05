@@ -62,7 +62,6 @@ Produces:
 |-------------------------------|----------------------------------------------|
 | `target/release/chela`        | Interactive wizard TUI                       |
 | `target/release/chela-cli`    | Non-interactive CLI for scripting / piping   |
-| `target/release/chela-serve`  | Localhost browser UI                         |
 | `target/release/chela-bundle` | Builds the standalone `chela.html`           |
 
 ```sh
@@ -100,7 +99,6 @@ and clears the screen on exit.
 ## Run — browser
 
 ```sh
-./target/release/chela-serve              # localhost server
 ./target/release/chela-bundle chela.html  # standalone, offline file
 ```
 
@@ -136,30 +134,16 @@ is signed with [minisign](https://jedisct1.github.io/minisign/) and reproducibly
 
 ### Where to find the hashes
 
-Each release publishes SHA-256 hashes in **three places** so you can verify without
-trusting any single channel:
+`SHA256SUMS` and `SHA256SUMS.minisig` are attached to every release.
 
-1. **Inlined in the release notes** — every release body on
-   [the releases page](https://github.com/SecretSplitKit/Chela/releases) ends with a
-   ```` ``` ```` block holding the full `SHA256SUMS` content. Quickest visual check.
-2. **`SHA256SUMS` + `SHA256SUMS.minisig`** — attached as files on every release.
-   One signed document covering every artifact:
+Save the public-key block below to a file named `chela.pub`, then run:
 
-   ```sh
-   minisign -V -p chela.pub -m SHA256SUMS
-   sha256sum -c SHA256SUMS
-   ```
-
-3. **Per-artifact `<name>.sha256`** — attached alongside each archive for tools that
-   prefer one file per artifact.
-
-`chela-serve` additionally prints `SHA-256(chela.html)` and `SHA-256(chela.wasm)`
-to stderr at startup so you can cross-check the embedded bundle against the
-release values without leaving your terminal.
+```sh
+minisign -V -p chela.pub -m SHA256SUMS
+sha256sum -c SHA256SUMS
+```
 
 ### Public key
-
-(Same value duplicated in `AUDITORS.md`.)
 
 ```text
 RWQ_REPLACE_ME_WITH_ACTUAL_PUBLIC_KEY_AFTER_GENERATION
@@ -178,8 +162,7 @@ git checkout v1.0.0
 SOURCE_DATE_EPOCH=$(git log -1 --pretty=%ct) \
   RUSTFLAGS="-C link-arg=-Wl,--build-id=none" \
   cargo build --release --locked
-sha256sum target/release/chela target/release/chela-cli \
-          target/release/chela-serve target/release/chela-bundle
+sha256sum target/release/chela target/release/chela-cli target/release/chela-bundle
 ```
 
 Compare against the `SHA256SUMS` file on the release. RUSTFLAGS above are for Linux;

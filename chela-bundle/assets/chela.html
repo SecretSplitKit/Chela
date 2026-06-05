@@ -1646,9 +1646,11 @@ function renderRecovered(root) {
       (() => {
         const p = E("p", { class: "small" });
         appendAll(p,
-          document.createTextNode("If you opened this file directly, your browser may be blocking the WASM. Run "),
-          E("code", { text: "chela-serve" }),
-          document.createTextNode(" and visit the URL it prints instead."),
+          document.createTextNode("If you opened this file directly, your browser may be blocking the WASM. Try a different modern browser, or use the native "),
+          E("code", { text: "chela" }),
+          document.createTextNode(" TUI / "),
+          E("code", { text: "chela-cli" }),
+          document.createTextNode(" instead."),
         );
         return p;
       })(),

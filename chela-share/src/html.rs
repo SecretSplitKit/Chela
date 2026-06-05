@@ -1,5 +1,4 @@
-//! Print-ready HTML paper-backup template, one share per page. Self-contained: no
-//! external CSS, no images, no JavaScript. See AGENTS.md § D13.
+//! Print-ready HTML paper-backup template, one share per page; self-contained with no external resources.
 
 use core::fmt::Write as _;
 
@@ -65,10 +64,9 @@ fn render_share_page(
 
     out.push_str("<article class=\"share-page\">\n");
 
-    // Machine-readable mirror of everything on this card. Sits inside the article so a
-    // multi-share document can carry one block per page; tools extract via
-    // `querySelectorAll('script.chela-share')`. type="application/json" is non-executable,
-    // so it costs nothing CSP-wise. See the JSON schema in `json` mod docs below.
+    // Machine-readable mirror of this card. One block per <article> so tools can
+    // extract via `querySelectorAll('script.chela-share')`. type="application/json"
+    // is non-executable and costs nothing CSP-wise.
     render_json_block(out, share, meta);
 
     // Header: backup name doubles as page title; falls back to "chela" wordmark.
@@ -91,7 +89,7 @@ fn render_share_page(
     .expect("write to String");
     out.push_str("  </header>\n");
 
-    // Description: optional prose; one paragraph per blank-line-separated block.
+    // Description: one paragraph per blank-line-separated block.
     if let Some(desc) = meta.description.filter(|d| !d.trim().is_empty()) {
         out.push_str("  <section class=\"intro\">\n");
         for block in desc.split("\n\n") {
@@ -113,7 +111,7 @@ fn render_share_page(
         out.push_str("  </section>\n");
     }
 
-    // Metadata: set ID, threshold, full card code (what the holder types verbatim).
+    // Metadata: set ID, threshold, full card code.
     let card_code = format_share(share).lines().next().unwrap_or("").to_owned();
     let card_code_esc = escape(&card_code);
     out.push_str("  <section class=\"metadata\">\n");
@@ -153,7 +151,7 @@ fn render_share_page(
     out.push_str("    </div>\n");
     out.push_str("  </section>\n");
 
-    // Shareholders: holder under "You" first, then others alphabetically (case-insensitive).
+    // Shareholders: this holder first, then others sorted case-insensitively.
     if let Some(names) = meta.shareholder_names {
         let self_idx = usize::from(share.x).saturating_sub(1);
         let my_name = names.get(self_idx).map_or("", String::as_str);
@@ -181,9 +179,8 @@ fn render_share_page(
         out.push_str("  </section>\n");
     }
 
-    // Recovery pointer: deliberately minimal. Detailed step-by-step instructions live
-    // in the repo's RECOVERY.md so they can be improved over time without re-printing
-    // every card; the printed sheet only needs to tell the holder where to go.
+    // Recovery pointer only — detailed instructions live in RECOVERY.md so they can
+    // be updated without re-printing cards.
     out.push_str("  <footer class=\"recovery\">\n");
     out.push_str("    <h2>How to recover the secret</h2>\n");
     write!(
@@ -196,7 +193,7 @@ fn render_share_page(
     out.push_str("    <p class=\"reassurance\">If that link doesn't work years from now, search the web for <em>&ldquo;chela paper backup recovery&rdquo;</em>. Embedded structured data on this page (in the &lt;script&gt; tag at the top) preserves the share for future tools.</p>\n");
     out.push_str("  </footer>\n");
 
-    // Plain-text form: copy-paste alternative for digital users.
+    // Plain-text form: copy-paste alternative.
     out.push_str("  <section class=\"plaintext\">\n");
     out.push_str("    <span class=\"label\">Plain-text form:</span> <code>");
     out.push_str(&escape(format_share(share).trim()));
@@ -208,7 +205,7 @@ fn render_share_page(
 }
 
 /// Emit a `<script type="application/json" class="chela-share">…</script>` block
-/// holding a machine-readable mirror of everything on this card. Schema:
+/// with a machine-readable mirror of this card. Schema:
 ///
 /// ```json
 /// {
@@ -228,9 +225,7 @@ fn render_share_page(
 /// }
 /// ```
 ///
-/// The `card_code` + `words` pair round-trips through `chela_share::parse_share`,
-/// so a tool can reconstruct a `Share` from the JSON without re-implementing the
-/// share-text format.
+/// `card_code` + `words` round-trips through `chela_share::parse_share`.
 ///
 /// `<` is escaped to `<` inside strings so a user-supplied `</script>` in
 /// `description` / `backup_name` / `shareholder_names` can't break out of the tag.

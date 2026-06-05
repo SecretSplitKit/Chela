@@ -1,5 +1,4 @@
-//! Constant-time helpers. Running time depends on input lengths only, never on values.
-//! Threat model is straight-line CPU execution; no Spectre/microarchitectural mitigations.
+//! Constant-time helpers: running time depends on input lengths only, not values; no Spectre mitigations.
 
 /// Constant-time equality of two byte slices. Lengths are not treated as secret; for
 /// equal-length inputs running time is `O(a.len())` regardless of where they differ.

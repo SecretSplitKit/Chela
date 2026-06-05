@@ -1,5 +1,4 @@
 //! Share serialization: plain-text card format and print-ready HTML paper backup.
-//! See AGENTS.md § D12 (text format) and § D13 (HTML).
 
 #![no_std]
 #![forbid(unsafe_code)]
@@ -151,7 +150,7 @@ fn render_readme(
     out
 }
 
-/// Render a [`Share`] as the canonical two-line text format (see AGENTS.md § D12):
+/// Render a [`Share`] as the canonical two-line text format:
 ///
 /// ```text
 /// CHELA-<ID>-<x>-<M>-<N>-<W>
@@ -161,7 +160,7 @@ fn render_readme(
 /// # Panics
 /// Panics only on a hand-constructed `Share` with a word index outside `0..2048`.
 pub fn format_share(share: &Share) -> String {
-    // Scheme and kind are deliberately not on the card (see AGENTS.md § D7, § D12).
+    // Scheme and kind are not included on the card.
     let _ = (share.scheme, share.kind);
 
     let word_count = share.word_indices.len();
@@ -195,7 +194,8 @@ pub fn parse_share(header: &str, words_line: &str) -> Result<Share, FormatError>
     let id_hex = parts[0];
     // ASCII guard: `&id_hex[..2]` byte-indexes a &str and panics if not on a char
     // boundary. Without is_ascii(), a 4-byte non-ASCII slice (e.g. "\u{FFFD}W")
-    // passes the length check and crashes the slicer. Found by fuzzing.
+    // passes the length check and crashes the slicer — the fuzz harness originally
+    // tripped on this exact case.
     if id_hex.len() != 4 || !id_hex.is_ascii() {
         return Err(FormatError::BadIdentifier);
     }

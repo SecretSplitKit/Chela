@@ -1,44 +1,30 @@
 # chela TODO
 
-## Shipped
+## Before v1.0
 
-- BIP-39 mnemonic split & recover (12 / 15 / 18 / 21 / 24 words + optional passphrase)
-- Arbitrary text payload up to 255 bytes
-- Wizard TUI (macOS + Linux) with raw-mode termios masked password input and
-  `SecretString` zeroize-on-Drop
-- Scriptable CLI (`split` / `recover`)
-- Print-ready HTML paper backup
-- OS RNG on macOS / Linux / Windows / WASM
-- WASM webapp via `chela-serve` and the offline single-file `chela.html`
-- KATs against FIPS 180-2, FIPS 197, BIP-0039
-- Reproducible release builds, signed with minisign, `SHA256SUMS` aggregate
-  attached + inlined in the GitHub release notes
-- 60-second smoke fuzz on every PR (`.github/workflows/fuzz.yml`)
+1. **Generate the minisign keypair** off-CI on a machine you trust:
 
-## Project rules
+   ```sh
+   minisign -G -p chela.pub -s minisign.key   # prompts for a passphrase
+   ```
 
-- **No external deps in the cryptographic core.** Vendor with provenance comments
-  (the BIP-39 wordlist is the pattern), or hand-roll.
-- **No `unsafe`** outside the five opt-in modules listed in AUDITORS.md § 4.
-- **Crypto test vectors must come from a primary source** (RFC / FIPS / spec authoring
-  repo).
+   Then:
+   - Paste the contents of `chela.pub` into `README.md`, replacing the
+     `RWQ_REPLACE_ME_WITH_ACTUAL_PUBLIC_KEY_AFTER_GENERATION` placeholder.
+   - Install the `MINISIGN_PRIVATE_KEY` (full file contents) and
+     `MINISIGN_PASSWORD` (passphrase) repo secrets under
+     **Settings → Secrets and variables → Actions**.
 
-## Pre-v1.0 release steps (operational, not code)
+   Full operator runbook in `RELEASING.md`.
 
-1. Generate the minisign keypair off-CI.
-2. Paste the public key into `README.md` and `AUDITORS.md`.
-3. Add `MINISIGN_PRIVATE_KEY` + `MINISIGN_PASSWORD` repo secrets.
+2. **Cut the release.**
 
-## Ongoing — long-duration fuzzing
+   ```sh
+   git tag v1.0.0
+   git push origin v1.0.0
+   ```
 
-Two 4-hour runs already completed against `parse_share` / `parse_shares` with no
-crashes. More fuzzing is always welcome before tagging a release or after any change
-to the share parser:
-
-```sh
-cd chela-share/fuzz
-cargo +nightly fuzz run parse_shares -- -max_total_time=14400   # 4 hours
-```
-
-Any crash → input committed under `chela-share/fuzz/crash-inputs/` plus a regression
-test in `parse_share`'s unit suite.
+   The `.github/workflows/release.yml` workflow builds every artifact twice,
+   hash-diffs the two passes for reproducibility, signs each one + a
+   `SHA256SUMS` aggregate with minisign, and publishes the lot to a GitHub
+   release.

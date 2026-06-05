@@ -1,7 +1,7 @@
 # Reproducible + signed release workflow.
 #
 # Triggers on a `vX.Y.Z` tag push. For every target in the build matrix:
-#   1. Build all four binaries (chela, chela-cli, chela-serve, chela-bundle) twice in
+#   1. Build the native binaries (chela, chela-cli) twice in
 #      independent target directories.
 #   2. Hash both copies and fail loudly if they differ — that's the reproducibility
 #      check. Without it, the signed tarball means "the CI machine produced this on
@@ -83,13 +83,6 @@ jobs:
           toolchain: stable
           targets: ${{ matrix.target }}
 
-      # chela-serve's build script invokes an inner `cargo build --target wasm32-...`
-      # to embed the WASM blob via include_bytes!. Only the linux runner needs the
-      # wasm32 toolchain installed.
-      - name: Install wasm32 target
-        if: matrix.target == 'x86_64-unknown-linux-gnu'
-        run: rustup target add wasm32-unknown-unknown
-
       - name: Pin SOURCE_DATE_EPOCH to the tag commit
         shell: bash
         run: echo "SOURCE_DATE_EPOCH=$(git -C . log -1 --pretty=%ct)" >> "$GITHUB_ENV"
@@ -103,7 +96,7 @@ jobs:
           TARGET: ${{ matrix.target }}
         run: |
           cargo build --release --locked --target "$TARGET" \
-            -p chela-tui -p chela-cli -p chela-serve
+            -p chela-tui -p chela-cli
 
       # ---- Build pass 2 (independent target dir) ------------------------------------
       - name: Build (pass 2)
@@ -114,7 +107,7 @@ jobs:
           TARGET: ${{ matrix.target }}
         run: |
           cargo build --release --locked --target "$TARGET" \
-            -p chela-tui -p chela-cli -p chela-serve
+            -p chela-tui -p chela-cli
 
       # ---- Reproducibility check ----------------------------------------------------
       - name: Verify reproducibility (hash both passes)
@@ -125,7 +118,7 @@ jobs:
         run: |
           set -euo pipefail
           fail=0
-          for bin in chela chela-cli chela-serve chela-bundle; do
+          for bin in chela chela-cli; do
             b1="build-1/${TARGET}/release/${bin}${BIN_SUFFIX}"
             b2="build-2/${TARGET}/release/${bin}${BIN_SUFFIX}"
             if [ ! -f "$b1" ] || [ ! -f "$b2" ]; then
@@ -155,7 +148,7 @@ jobs:
           set -euo pipefail
           stage="stage/chela-${TAG}-${TARGET}"
           mkdir -p "$stage"
-          for bin in chela chela-cli chela-serve chela-bundle; do
+          for bin in chela chela-cli; do
             cp "build-1/${TARGET}/release/${bin}${BIN_SUFFIX}" "$stage/"
           done
           cat > "$stage/README.txt" <<EOF
@@ -164,8 +157,6 @@ jobs:
           Binaries:
             chela          Wizard TUI (default front-end)
             chela-cli      Non-interactive CLI for scripting / piping
-            chela-serve    Localhost webserver hosting the WASM UI
-            chela-bundle   Builds a single-file chela.html (offline browser UI)
 
           Verify this archive's minisign signature against the public key published
           on the chela GitHub releases page (also embedded in README.md). See:
@@ -340,8 +331,8 @@ jobs:
 
           The native binaries are in per-target \`.tar.gz\` / \`.zip\` archives. The
           standalone browser bundle is \`chela-${TAG}-web.html\` — no install, open in
-          any modern browser. \`chela-serve\` prints the SHA-256 of its embedded HTML
-          and WASM at startup so you can cross-check against the values below.
+          any modern browser. The SHA-256 of \`chela-${TAG}-web.html\` is in the
+          SHA256SUMS block below; verify before opening.
 
           ## SHA-256 hashes
 

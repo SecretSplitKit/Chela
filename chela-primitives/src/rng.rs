@@ -1,8 +1,5 @@
-//! OS-backed cryptographic randomness.
-//!
-//! Entry points per target: macOS `getentropy(3)`, Linux `getrandom(2)`, Windows
-//! `BCryptGenRandom`, `wasm32-*` host-supplied import `chela.random_bytes`
-//! `(ptr: i32, len: i32) -> i32` (see AUDITORS.md § 7).
+//! OS-backed cryptographic randomness: macOS `getentropy(3)`, Linux `getrandom(2)`, Windows
+//! `BCryptGenRandom`, wasm32 host import `chela.random_bytes(ptr: i32, len: i32) -> i32`.
 
 #![allow(unsafe_code)]
 
@@ -198,11 +195,7 @@ mod wasm {
 
 #[cfg(test)]
 mod tests {
-    // Imports gated to match the actual test cfgs below:
-    // - fill_bytes is used by every test in this module, but no tests compile
-    //   on wasm32 (the wasm32 path needs a host import not available in unit
-    //   tests).
-    // - RngError is only used by the unsupported-target test.
+    // wasm32 tests are omitted: the wasm32 path needs a host import unavailable in unit tests.
     #[cfg(not(target_arch = "wasm32"))]
     use super::fill_bytes;
     #[cfg(not(any(

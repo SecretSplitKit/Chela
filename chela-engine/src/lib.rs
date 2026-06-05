@@ -1,6 +1,4 @@
-//! High-level chela API: validate input, frame the bundle, SSS-split, encode shares, and
-//! the inverse for recover. See AGENTS.md § D7 (bundle layout / kind byte table), § D8
-//! (share checksum), § D9 (identifier hash), and § D11 (word-count ambiguity).
+//! High-level split/recover API: bundle the secret, SSS-split, encode shares, and the inverse.
 
 #![no_std]
 #![forbid(unsafe_code)]
@@ -35,7 +33,7 @@ const IDENTIFIER_LEN: usize = 2;
 const MAX_PASSPHRASE_LEN: usize = 255;
 const MAX_TEXT_LEN: usize = 255;
 
-/// Bundle `kind` byte values. Full table in AGENTS.md § D7.
+/// Bundle `kind` byte values (0x01..0x0B).
 mod kind {
     pub(super) const BIP39_NO_PASS_12: u8 = 0x01;
     pub(super) const BIP39_NO_PASS_15: u8 = 0x02;
@@ -156,7 +154,7 @@ pub enum EngineError {
     BundleCorrupt,
     /// Shares disagree on identifier/scheme/kind/threshold/total.
     MismatchedShares,
-    /// Share's own 2-byte checksum doesn't verify against (payload, identifier, x). See AGENTS.md § D8.
+    /// Share's own 2-byte checksum doesn't verify against (payload, identifier, x).
     ShareCorrupt,
     /// Words used in the share aren't valid BIP-39 wordlist entries.
     UnknownWord,
@@ -215,7 +213,7 @@ pub enum RecoveredSecret {
 }
 
 /// Build the body bytes SSS will split, plus the `kind_byte` (folded into the identifier
-/// hash, never in the body itself). See AGENTS.md § D7.
+/// hash, never in the body itself).
 fn build_bundle(input: &SplitInput<'_>) -> Result<(Vec<u8>, u8), EngineError> {
     match input {
         SplitInput::Bip39 {
@@ -272,7 +270,7 @@ fn build_bundle(input: &SplitInput<'_>) -> Result<(Vec<u8>, u8), EngineError> {
     }
 }
 
-/// `identifier = SHA-256(body || kind_byte)[0..2]`. See AGENTS.md § D9.
+/// `identifier = SHA-256(body || kind_byte)[0..2]`.
 fn compute_identifier(body: &[u8], kind_byte: u8) -> [u8; IDENTIFIER_LEN] {
     let mut h = Sha256::new();
     h.update(body);
@@ -302,13 +300,13 @@ fn body_len_fits(dec: DecodedKind, body_len: usize) -> bool {
 }
 
 /// Recover the original secret from the SSS-combined body. Tries each kind whose length
-/// pattern fits; the one whose identifier matches names the kind. See AGENTS.md § D9.
+/// pattern fits; the one whose identifier matches names the kind.
 fn parse_bundle(
     body: &[u8],
     identifier: [u8; IDENTIFIER_LEN],
 ) -> Result<RecoveredSecret, EngineError> {
     for &kind_byte in &kind::ALL_VALUES {
-        let dec = decode_kind_byte(kind_byte).expect("ALL_VALUES are by construction valid");
+        let dec = decode_kind_byte(kind_byte).expect("ALL_VALUES are all valid kind bytes");
         if !body_len_fits(dec, body.len()) {
             continue;
         }
@@ -361,8 +359,6 @@ fn interpret_body(dec: DecodedKind, body: &[u8]) -> Result<RecoveredSecret, Engi
         }
     }
 }
-
-// Share encode / decode (BIP-39 wordlist mode). See AGENTS.md § D8.
 
 fn encode_share_bip39(share_bytes: &[u8], identifier: [u8; IDENTIFIER_LEN], x: u8) -> Vec<u16> {
     // share_checksum = SHA-256(share_bytes || identifier || x)[0..SHARE_CHECKSUM_LEN]
@@ -508,7 +504,6 @@ pub fn split_with_rng(
         });
     }
 
-    // Wipe the body — it's the joined secret.
     let mut body_wipe = body;
     chela_primitives::zeroize::volatile_set(&mut body_wipe);
 
@@ -536,8 +531,8 @@ pub fn recover_secret(shares: &[Share]) -> Result<RecoveredSecret, EngineError> 
         return Err(EngineError::InsufficientShares);
     }
 
-    // Word count ↔ payload byte count is ambiguous (see AGENTS.md § D11): enumerate
-    // candidate lengths and pick the first whose share checksum verifies for ALL shares.
+    // Multiple body lengths can encode to the same word count: enumerate candidate lengths
+    // and pick the first whose share checksum verifies for all shares.
     let words_n = first.word_indices.len();
     let total_bits = words_n * 11;
     // Valid byte counts B satisfy ceil(B*8 / 11) == words_n.
@@ -584,7 +579,6 @@ pub fn recover_secret(shares: &[Share]) -> Result<RecoveredSecret, EngineError> 
         chela_primitives::zeroize::Zeroize::zeroize(p);
     }
 
-    // parse_bundle picks the kind whose identifier matches and decodes the body.
     let recovered = parse_bundle(&body, first.identifier);
 
     let mut body_wipe = body;
@@ -805,7 +799,7 @@ mod tests {
 
     #[test]
     fn round_trip_at_payload_lengths_with_word_count_ambiguity() {
-        // Exercises both sides of every word-count ambiguity boundary (see AGENTS.md § D11).
+        // Exercises both sides of every word-count ambiguity boundary.
         for text_len in 1usize..=60 {
             let text: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
                 .chars()

@@ -1,9 +1,4 @@
-//! `chela-bundle` — produces the standalone single-file `chela.html` distribution.
-//! Rewrites the `WASM_BASE64` placeholder in the served template with the inlined,
-//! base64-encoded WASM blob.
-//!
-//! Usage:
-//!     chela-bundle [`output_path`]   # defaults to ./chela.html
+//! Produces the standalone single-file chela.html with the WebAssembly UI inlined.
 
 use std::env;
 use std::fs;
@@ -11,12 +6,9 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-const INDEX_HTML: &str = include_str!("../../assets/chela.html");
+const INDEX_HTML: &str = include_str!("../assets/chela.html");
 const WASM_BYTES: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/chela.wasm"));
 
-/// The exact line in `chela.html` we rewrite. Kept here as a constant so a stray edit
-/// to the source HTML breaks loudly (the bundler errors out) instead of silently
-/// shipping an HTML file with no embedded WASM.
 const WASM_PLACEHOLDER: &str = "const WASM_BASE64 = null;";
 
 fn main() -> ExitCode {
@@ -54,8 +46,7 @@ fn main() -> ExitCode {
     }
 }
 
-/// Standard base64 alphabet per RFC 4648 §4. Hand-rolled to keep the workspace
-/// dependency-free. Padded with `=` to a multiple of 4 output chars.
+/// Standard base64 alphabet per RFC 4648 §4. Hand-rolled to keep the workspace dependency-free.
 fn base64_encode(input: &[u8]) -> String {
     const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(input.len().div_ceil(3) * 4);
@@ -103,7 +94,6 @@ mod tests {
         assert_eq!(base64_encode(b"foobar"), "Zm9vYmFy");
     }
 
-    /// All outputs are padded to a multiple of 4 chars.
     #[test]
     fn always_padded_to_quartet() {
         for len in 0..32 {
@@ -113,9 +103,6 @@ mod tests {
         }
     }
 
-    /// Source HTML must contain the placeholder the bundler rewrites. If someone edits
-    /// `chela.html` and accidentally drops or renames the line, this test fails before
-    /// the bundle ever ships with an unset WASM payload.
     #[test]
     fn source_html_contains_placeholder() {
         assert!(
@@ -129,10 +116,6 @@ mod tests {
         );
     }
 
-    /// Rewriting the placeholder with a known base64 string produces HTML that contains
-    /// the new value once and no longer contains the placeholder. This guards against a
-    /// future regression where someone changes `replacen` to `replace` or breaks the
-    /// rewrite semantics.
     #[test]
     fn rewrite_replaces_placeholder_exactly_once() {
         let bundled =
@@ -144,7 +127,6 @@ mod tests {
                 .count(),
             1,
         );
-        // The rest of the HTML is preserved — sanity-check by length.
         assert_eq!(
             bundled.len(),
             INDEX_HTML.len() - WASM_PLACEHOLDER.len()

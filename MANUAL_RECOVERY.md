@@ -466,12 +466,13 @@ pre-flight section (4 bits → 1 hex digit):
 
 **Card 2 bytes:** `0xEC  0x07  0xE1  0xBA`
 
-## Identify share-bytes vs checksum
+## Discard the last two checksum bytes
 
-Chela puts a 2-byte **checksum** at the end of each card's bit string. The
-checksum is for typo detection only; we're skipping that check (it
-requires SHA-256). The **first part** is the **share bytes** — the actual
-data we'll combine in Step 5.
+Chela puts a 2-byte **checksum** at the end of each card's bit string.
+The checksum is for typo detection only; **doing it by hand is not
+feasible** (one SHA-256 hash is a full day's work with paper and pencil).
+The **first part** is the **share bytes** — the actual data we'll combine
+in Step 5.
 
 The split is always **(total bytes) − 2** share bytes, then **2 bytes**
 of checksum. For our cards: 4 total bytes − 2 = 2 share bytes per card.
@@ -485,6 +486,11 @@ of checksum. For our cards: 4 total bytes − 2 = 2 share bytes per card.
 > bytes, and the share-byte count equals the recovered body length. For
 > our example, the original `"hi"` was 2 bytes; that's what we'll get
 > back at the end of Step 5.
+
+If you have any doubt about a card, type its words back into the chela
+tool later — the tool verifies the checksum automatically and will tell
+you exactly which share is corrupt. Manual recovery without the tool
+trusts the words as written; the tool catches typos.
 
 ### The word-count-ambiguity caveat (read this once, skip on retry)
 

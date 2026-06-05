@@ -1,7 +1,4 @@
-//! Cryptographic primitives for chela, implemented from scratch.
-//!
-//! `unsafe` is denied at the crate level; only `rng` and `zeroize` opt in, with every
-//! usage documented by a `// SAFETY:` block.
+//! Cryptographic primitives for chela: SHA-256, constant-time comparison, OS RNG, and zeroization.
 
 #![no_std]
 #![deny(unsafe_code)]

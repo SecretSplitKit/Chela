@@ -2,7 +2,7 @@
 target/
 /dist/
 
-# Generated bundles. The TEMPLATE chela.html lives under chela-serve/assets/ and
+# Generated bundles. The TEMPLATE chela.html lives under chela-bundle/assets/ and
 # IS committed; the rewritten standalone bundles (root chela.html or the versioned
 # chela-vX.Y.Z-web.html the release workflow produces) are derived and never source.
 /chela.html
@@ -59,6 +59,7 @@ desktop.ini
 /secrets/
 minisign.key
 minisign.pub
+chela.pub
 *.minisig
 SHA256SUMS
 

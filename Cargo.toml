@@ -1,4 +1,4 @@
-# chela workspace manifest. See AGENTS.md for the architectural overview.
+# chela workspace manifest.
 
 [workspace]
 resolver = "2"
@@ -12,12 +12,9 @@ members = [
     "chela-tui",
     "chela-cli",
     "chela-wasm",
-    "chela-serve",
+    "chela-bundle",
 ]
-# chela-share/fuzz is its own little workspace — it depends on libfuzzer-sys, which
-# is the *only* third-party crate anywhere in this repo. It's a test harness, never
-# shipped or linked into a release binary, but we still keep it out of the main
-# workspace so a stray `cargo build --workspace` doesn't pull libfuzzer-sys in.
+# chela-share/fuzz is its own workspace so libfuzzer-sys stays out of the main build.
 exclude = ["chela-share/fuzz"]
 
 [workspace.package]
@@ -28,9 +25,7 @@ repository = "https://github.com/SecretSplitKit/Chela"
 rust-version = "1.89"
 
 [workspace.lints.rust]
-# Workspace default: deny `unsafe`. Crates that genuinely need it (chela-primitives for
-# OS RNG syscalls and volatile zeroize) opt in at the module level with a documented
-# `#[allow(unsafe_code)]`. All other crates pin this to `forbid` in their own lib.rs.
+# Workspace default: deny `unsafe`; crates that genuinely need it opt in at the module level.
 unsafe_code = "deny"
 missing_debug_implementations = "warn"
 unreachable_pub = "warn"
@@ -38,17 +33,12 @@ unreachable_pub = "warn"
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
-# Trade-offs we accept for readability in crypto code:
 module_name_repetitions = "allow"
 must_use_candidate = "allow"
 missing_errors_doc = "allow"
 
-# Release profile: tuned for reproducibility and audit-friendliness. The release CI
-# verifies that two independent builds produce byte-identical artifacts and signs each
-# one with minisign; the settings below remove the obvious sources of build-to-build
-# non-determinism in Rust output. Per-target linker flags that strip platform-specific
-# nondeterministic blobs (Mach-O UUID, ELF build-id, PE timestamp) live in the release
-# workflow as RUSTFLAGS so they only apply to the published artifacts.
+# Release profile: tuned for reproducibility; per-target linker flags that strip
+# nondeterministic blobs live in the release workflow as RUSTFLAGS.
 [profile.release]
 strip = "symbols"
 debug = false

@@ -244,7 +244,6 @@ mod tests {
                 let entropy = hex_decode($entropy_hex);
                 let expected_mnemonic = $mnemonic;
 
-                // Encode: entropy -> mnemonic
                 let got = entropy_to_mnemonic_string(&entropy);
                 assert_eq!(
                     got, expected_mnemonic,
@@ -252,7 +251,6 @@ mod tests {
                     $entropy_hex
                 );
 
-                // Decode: mnemonic -> entropy
                 let got_entropy = mnemonic_to_entropy_bytes(expected_mnemonic).unwrap();
                 assert_eq!(
                     got_entropy, entropy,

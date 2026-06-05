@@ -1,4 +1,4 @@
-//! chela TUI entry point. See AGENTS.md D10 for the raw-menu / line-wizard split.
+//! chela TUI entry point: raw-mode menu dispatches to line-based wizards.
 
 // The only opt-in to `unsafe` is `term::raw_termios` (termios FFI).
 #![deny(unsafe_code)]

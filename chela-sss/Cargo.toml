@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Shamir's Secret Sharing engine generic over any `chela_field::Field`. Splits a byte string into N shares with threshold M, and reconstructs the byte string from any M of those shares via constant-time Lagrange interpolation."
+description = "Shamir's Secret Sharing over GF(2^8): split a byte string into N shares with threshold M, reconstruct from any M shares via Lagrange interpolation."
 
 [dependencies]
 chela-field = { path = "../chela-field" }
