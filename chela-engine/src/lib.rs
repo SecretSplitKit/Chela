@@ -816,6 +816,53 @@ mod tests {
     }
 
     #[test]
+    fn decode_rejects_m_field_31() {
+        // m_field 31 would decode to M=33 (above the 32 cap); decode must reject it before
+        // any CRC work. word0 = (x_field=0 << 6) | (m_field=31 << 1) | reserved=0 = 62.
+        let words = [62u16, 0, 0, 0];
+        assert!(super::decode_share_words(&words).is_err());
+    }
+
+    #[test]
+    fn share_word_counts_are_pinned() {
+        // body = payload ‖ kind_byte, then W = 2 + ceil(8 * body_len / 11) + 1.
+        let seed12 = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        let s12 = split_secret(
+            &SplitInput::Bip39 {
+                mnemonic: seed12,
+                passphrase: "",
+            },
+            2,
+            3,
+            OutputMode::Bip39Wordlist,
+        )
+        .unwrap();
+        assert_eq!(s12[0].word_indices.len(), 16); // 16 entropy + 1 kind = 17 B
+
+        let seed24 = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art";
+        let s24 = split_secret(
+            &SplitInput::Bip39 {
+                mnemonic: seed24,
+                passphrase: "",
+            },
+            2,
+            3,
+            OutputMode::Bip39Wordlist,
+        )
+        .unwrap();
+        assert_eq!(s24[0].word_indices.len(), 27); // 32 entropy + 1 kind = 33 B
+
+        let t = split_secret(
+            &SplitInput::Text { text: "hi" },
+            2,
+            3,
+            OutputMode::Bip39Wordlist,
+        )
+        .unwrap();
+        assert_eq!(t[0].word_indices.len(), 6); // 2 text + 1 kind = 3 B
+    }
+
+    #[test]
     fn end_to_end_bip39_24_word_no_passphrase_3_of_5() {
         let mnemonic =
             "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art";
