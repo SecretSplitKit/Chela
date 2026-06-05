@@ -80,7 +80,12 @@ pub fn split(
         coeffs[0] = Gf256(secret_byte);
 
         let random_slice = &mut rand_buf[..m - 1];
-        rng.fill_random(random_slice)?;
+        if let Err(e) = rng.fill_random(random_slice) {
+            // `coeffs[0]` already holds this secret byte; wipe scratch on the error path.
+            chela_primitives::zeroize::volatile_set(&mut rand_buf);
+            wipe_coeffs(&mut coeffs);
+            return Err(e);
+        }
         for k in 1..m {
             coeffs[k] = Gf256(rand_buf[k - 1]);
         }
