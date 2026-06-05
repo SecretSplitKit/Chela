@@ -67,7 +67,10 @@ flowchart TB
         constant-time byte equality (<code>ct_eq</code>), a <code>volatile_set</code>
         primitive for zeroing secret-bearing buffers without the compiler optimizing the
         write away, and a thin wrapper around the OS random-number generator. Every
-        security-sensitive operation in the workspace ultimately bottoms out here.
+        security-sensitive operation in the workspace ultimately bottoms out here. The
+        SHA-256 here is used only by <code>chela-bip39</code> to validate a mnemonic's
+        built-in checksum on recovery; the share engine uses none — its per-share
+        checksum is an 11-bit CRC and its set id is a random nonce.
       </p>
 
       <h3><a class="src" data-file="chela-field/">chela-field/</a></h3>
@@ -84,10 +87,12 @@ flowchart TB
       <h3><a class="src" data-file="chela-sss/">chela-sss/</a></h3>
       <p>
         The Shamir Secret Sharing implementation. <code>split</code> samples a random
-        polynomial of degree M−1 over GF(2^8) and evaluates it at N distinct points,
-        one per share. <code>combine</code> runs Lagrange interpolation to recover the
-        polynomial's constant term. Each byte of the secret is processed independently;
-        a 24-word BIP-39 seed (32 bytes of entropy) produces 32 independent
+        polynomial of degree M−1 over GF(2^8) and evaluates it at N distinct
+        x-coordinates, one per share. The engine draws those x-coordinates at random from
+        1..32 rather than handing out a sequential 1..N, so a share leaks neither the
+        total count nor its position. <code>combine</code> runs Lagrange interpolation to
+        recover the polynomial's constant term. Each byte of the secret is processed
+        independently; a 24-word BIP-39 seed (32 bytes of entropy) produces 32 independent
         single-byte polynomials.
       </p>
 
@@ -103,11 +108,15 @@ flowchart TB
       <h3><a class="src" data-file="chela-engine/">chela-engine/</a></h3>
       <p>
         Orchestration layer. Calls <code>chela-sss</code> for the core math and
-        <code>chela-bip39</code> for encoding, then assembles the full share bundle:
-        computing the 16-bit split identifier, appending the 2-byte per-share checksum,
-        and serializing everything into the wire format defined in <code>SPEC.md</code>.
-        Recovery is the inverse: parse, verify identifier, verify checksum, decode,
-        combine.
+        <code>chela-bip39</code> for encoding. To split, it draws an 11-bit generation
+        nonce and N random distinct x-coordinates, appends the kind byte to the body and
+        Shamir-splits the whole thing — so the payload type stays hidden until recovery —
+        then encodes each share into the wire format defined in <code>SPEC.md</code>:
+        word 0 packs <code>[x, M]</code>, word 1 is the nonce, the middle words are the
+        Shamir output, and the last word is an 11-bit CRC. Recovery is the inverse:
+        decode and CRC-verify each share's words, check they share one nonce and
+        threshold, Lagrange-combine, then read the kind from the recovered body's last
+        byte. No split identifier, no SHA-256.
       </p>
 
       <h3><a class="src" data-file="chela-share/">chela-share/</a></h3>

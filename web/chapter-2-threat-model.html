@@ -60,21 +60,25 @@
           <tr>
             <td>A single transcription error on a card</td>
             <td>
-              Each share carries a 2-byte SHA-256 checksum that binds the share bytes,
-              the share identifier, and the x-coordinate together. One wrong word during
-              transcription produces an invalid checksum, and recovery fails immediately
-              with a pointer to the bad card — before any secret material is assembled.
-              <br><a class="src" data-file="chela-engine/src/lib.rs">chela-engine::decode_share_bip39</a>
+              The last word of every share is an 11-bit CRC-11/UMTS checksum over the
+              share's decoded values — its x-coordinate, threshold, the generation nonce,
+              and its Shamir output bytes. A mistyped word changes at most 11 contiguous
+              bits, and an 11-bit CRC catches every burst error that short. Recovery
+              rejects the share with <code>ShareCorrupt</code> before any secret material
+              is assembled.
+              <br><a class="src" data-file="chela-engine/src/lib.rs">chela-engine::decode_share_bip39_v2</a>
             </td>
           </tr>
           <tr>
             <td>Shares from two unrelated splits accidentally combined</td>
             <td>
-              Every share is tagged with a 16-bit identifier derived from a SHA-256 hash
-              of the share body and kind byte. Recovery rejects any set of shares whose
-              identifiers disagree, so mixing cards from two different splits is caught
-              before any computation runs.
-              <br><a class="src" data-file="chela-engine/src/lib.rs">chela-engine::compute_identifier</a>
+              Every share carries an 11-bit generation nonce — a random value drawn once
+              per split from the OS CSPRNG and written identically into all of that
+              split's shares. Recovery rejects any set whose nonces disagree with
+              <code>MismatchedShares</code>. The nonce is not a hash of the secret, so it
+              leaks nothing about a low-entropy payload, and re-splitting the same secret
+              draws a fresh nonce — so even those two runs are correctly refused.
+              <br><a class="src" data-file="chela-engine/src/lib.rs">chela-engine::recover_secret</a>
             </td>
           </tr>
         </tbody>

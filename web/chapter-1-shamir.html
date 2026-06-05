@@ -73,9 +73,17 @@
         In 1979, Adi Shamir observed that a polynomial of degree M−1 is uniquely
         determined by exactly M points. If you encode the secret as the constant term of
         a random degree-(M−1) polynomial, then each share is one point on that
-        polynomial — a pair (x, y) where x is the share index and y is the polynomial
-        evaluated at x. To recover the secret you need M shares: M points uniquely
-        determine the polynomial, and evaluating it at x=0 gives back the secret.
+        polynomial — a pair (x, y) where x is the share's x-coordinate and y is the
+        polynomial evaluated at x. To recover the secret you need M shares: M points
+        uniquely determine the polynomial, and evaluating it at x=0 gives back the secret.
+      </p>
+
+      <p>
+        chela picks each x at random from 1..32 rather than handing out a sequential
+        1..N, so a share leaks neither the total number of shares nor its own position.
+        The x is public — it is printed on the card — so its randomness is a privacy
+        property, not a confidentiality one; what must stay secret is the polynomial's
+        coefficients.
       </p>
 
       <p>

@@ -122,9 +122,9 @@
         to prove it never panics, hangs, or over-allocates. A short smoke run executes
         in CI on every pull request; run it locally for longer with
         <code>cargo fuzz run</code>. It found a panic in the share parser: the
-        identifier field passed the four-byte length check but a four-byte non-ASCII
-        value (e.g. <code>"\u{FFFD}W"</code>) crossed a UTF-8 char boundary when
-        sliced, crashing the byte slicer. The fix adds an <code>is_ascii()</code>
+        <code>set_id</code> field passed the four-byte length check but a four-byte
+        non-ASCII value (e.g. <code>"\u{FFFD}W"</code>) crossed a UTF-8 char boundary
+        when sliced, crashing the byte slicer. The fix adds an <code>is_ascii()</code>
         guard before the slice.
       </p>
       <p><a class="src" data-file="chela-share/fuzz/">chela-share/fuzz/</a></p>

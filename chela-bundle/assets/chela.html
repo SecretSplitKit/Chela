@@ -563,6 +563,26 @@ function goTo(nextPhase) {
 function goBack() {
   if (state.flow === "recover") {
     if (state.phase === "recover-words") {
+      if (state.data.wordsOnly) {
+        // Words-only entry has no per-card header screen. Going back from a fresh
+        // (empty) card pops the previously-committed one so it can be re-entered;
+        // from the very first card it drops back out to the card-code screen.
+        if (state.data.collected.length > 0) {
+          state.data.collected.pop();
+          state.data.headerDraft = { id: "", x: "", threshold: "", total: "", wordCount: String(state.data.wordsOnlyCount) };
+          state.data.wordsDraft = [];
+          if (state.history[state.history.length - 1] === "recover-words") state.history.pop();
+          render();
+          return;
+        }
+        state.data.wordsOnly = false;
+        state.data.headerDraft = null;
+        state.data.wordsDraft = [];
+        state.phase = "recover-header";
+        if (state.history[state.history.length - 1] === "recover-header") state.history.pop();
+        render();
+        return;
+      }
       // Back from words returns to the header screen for the SAME share, preserving
       // both the header draft and any partially-typed words so the user can fix a
       // mistake in the header without retyping.
@@ -611,6 +631,8 @@ function defaultDataFor(flow) {
     expected: null,     // { id, threshold, total, wordCount } from first share's header
     headerDraft: null,  // { id, x, threshold, total, wordCount } currently being entered
     wordsDraft: [],     // array of W strings for the current share
+    wordsOnly: false,   // true once the user picks words-only recovery (no card code)
+    wordsOnlyCount: 16, // word count for the current words-only share (user-adjustable)
   };
   return {};
 }
@@ -785,7 +807,7 @@ const phases = {
       const totalWrap = E("div");
       appendAll(totalWrap, E("label", { text: "Total shares to generate" }));
       const totalInp = E("input", {
-        type: "number", value: String(state.data.total), min: 2, max: 255,
+        type: "number", value: String(state.data.total), min: 2, max: 32,
         input: (e) => {
           state.data.total = parseInt(e.target.value, 10) || 0;
           const threshInp = document.getElementById("wz-threshold");
@@ -806,7 +828,7 @@ const phases = {
     },
     validate: () => {
       const t = state.data.total, m = state.data.threshold;
-      if (!(t >= 2 && t <= 255)) return "Total must be between 2 and 255.";
+      if (!(t >= 2 && t <= 32)) return "Total must be between 2 and 32.";
       if (!(m >= 2 && m <= t)) return `Required must be between 2 and ${t}.`;
       return null;
     },
@@ -978,8 +1000,27 @@ const phases = {
         body.appendChild(E("div", { class: "import-divider", text: "— or type the card by hand —" }));
 
         appendAll(body,
-          E("p", { text: "Find \"Card code\" on the printed card — it's the dashed line near the top, e.g. CHELA-9DA3-1-3-5-25. Type each part into the matching box below." }),
+          E("p", { text: "Find \"Card code\" on the printed card — it's the dashed line near the top, e.g. CHELA-9DA3-17-3-5-25. Card numbers are random, not positions, so they can be any value from 1 to 32. Type each part into the matching box below." }),
         );
+
+        // Words-only path. A share is fully recoverable from its BIP-39 words alone —
+        // the card code is advisory. If a card's code is missing or damaged, skip
+        // straight to typing words; the words carry the card number, threshold, and
+        // recovery-set nonce.
+        const wordsOnlyP = E("p", { class: "small muted" });
+        appendAll(wordsOnlyP,
+          document.createTextNode("Lost the card code, or only have the words? "),
+        );
+        const wordsOnlyLink = E("button", {
+          type: "button", class: "back-btn", text: "Recover from words alone →",
+          click: () => {
+            state.data.wordsOnly = true;
+            state.data.headerDraft = { id: "", x: "", threshold: "", total: "", wordCount: String(state.data.wordsOnlyCount) };
+            goTo("recover-words");
+          },
+        });
+        wordsOnlyP.appendChild(wordsOnlyLink);
+        body.appendChild(wordsOnlyP);
       } else {
         appendAll(body,
           E("p", { text: `Now read the card code from card #${have + 1}. Most fields are locked because they have to match the first card — just type this card's number.` }),
@@ -1022,7 +1063,7 @@ const phases = {
       const threshold = parseInt(d.threshold, 10);
       const total = parseInt(d.total, 10);
       const wc = parseInt(d.wordCount, 10);
-      if (!(x >= 1 && x <= 255)) return "Card # must be 1 or higher.";
+      if (!(x >= 1 && x <= 32)) return "Card # must be between 1 and 32.";
       if (!(threshold >= 2)) return "# Required must be 2 or higher.";
       if (!(total >= threshold)) return "Total cards must be at least as big as # Required.";
       if (!(wc >= 1)) return "Word count must be 1 or higher.";
@@ -1051,18 +1092,47 @@ const phases = {
     title: "Type Each Word",
     render: (body) => {
       const d = state.data.headerDraft;
+      const wordsOnly = state.data.wordsOnly;
       const wc = parseInt(d.wordCount, 10);
       // Initialise wordsDraft to the right length.
       if (state.data.wordsDraft.length !== wc) {
         state.data.wordsDraft = Array(wc).fill("");
       }
-      appendAll(body,
-        E("p", { text: `Read the ${wc} words off the card and type each one into its own box, in order.` }),
-        E("p", { class: "small muted", text: "Each word lights up green when it matches the BIP-39 wordlist, red if it doesn't. Tab moves to the next field." }),
-      );
-      const progress = E("div", { class: "word-progress" });
-      progress.textContent = `Card code: CHELA-${d.id}-${d.x}-${d.threshold}-${d.total}-${d.wordCount}`;
-      body.appendChild(progress);
+      if (wordsOnly) {
+        appendAll(body,
+          E("p", { text: "Type every word on the card into its own box, in order. The words carry the card number, threshold, and recovery set — no card code needed." }),
+          E("p", { class: "small muted", text: "Each word lights up green when it matches the BIP-39 wordlist, red if it doesn't. Tab moves to the next field." }),
+        );
+        // Word-count picker — the user sets how many boxes to show. Changing it
+        // re-renders the grid, preserving any words already typed.
+        const countWrap = E("div");
+        appendAll(countWrap, E("label", { text: "How many words on this card?" }));
+        const countInp = E("input", {
+          type: "number", value: String(wc), min: 4, max: 60,
+          input: (e) => {
+            const n = parseInt(e.target.value, 10);
+            if (n >= 4 && n <= 60) {
+              state.data.wordsOnlyCount = n;
+              d.wordCount = String(n);
+              const keep = state.data.wordsDraft.slice(0, n);
+              while (keep.length < n) keep.push("");
+              state.data.wordsDraft = keep;
+              render();
+            }
+          },
+        });
+        countInp.className = "w-count";
+        countWrap.appendChild(countInp);
+        body.appendChild(countWrap);
+      } else {
+        appendAll(body,
+          E("p", { text: `Read the ${wc} words off the card and type each one into its own box, in order.` }),
+          E("p", { class: "small muted", text: "Each word lights up green when it matches the BIP-39 wordlist, red if it doesn't. Tab moves to the next field." }),
+        );
+        const progress = E("div", { class: "word-progress" });
+        progress.textContent = `Card code: CHELA-${d.id}-${d.x}-${d.threshold}-${d.total}-${d.wordCount}`;
+        body.appendChild(progress);
+      }
 
       const grid = E("div", { class: "word-grid" });
       for (let i = 0; i < wc; i++) {
@@ -1268,6 +1338,16 @@ function renderWizardPhase(root) {
 
   // Footer: Continue button (label varies)
   const footer = E("div", { class: "card-footer" });
+  // Words-only recovery doesn't know the threshold (it isn't on a card code), so the
+  // user decides when enough cards are in. Offer an explicit "Recover now" once
+  // committing the current card would give us at least two.
+  if (state.flow === "recover" && state.phase === "recover-words" && state.data.wordsOnly
+      && state.data.collected.length >= 1) {
+    footer.appendChild(E("button", {
+      type: "button", class: "secondary", text: "Recover now",
+      click: () => commitWordsAndRecover(true),
+    }));
+  }
   const continueLabel = continueButtonLabel();
   const next = E("button", { type: "button", class: "primary", text: continueLabel, click: handleContinue });
   footer.appendChild(next);
@@ -1279,7 +1359,9 @@ function renderWizardPhase(root) {
 function continueButtonLabel() {
   if (state.flow === "recover") {
     if (state.phase === "recover-header") return "Continue to Words →";
-    // recover-words
+    // recover-words. Words-only mode never knows the threshold, so the primary action
+    // always adds another card (a separate "Recover now" button ends the loop).
+    if (state.data.wordsOnly) return "Save Card, Add Another →";
     const have = state.data.collected.length;
     const need = state.data.expected ? state.data.expected.threshold : null;
     if (need && have + 1 >= need) return "Recover Secret →";
@@ -1301,23 +1383,9 @@ function handleContinue() {
       goTo("recover-words");
       return;
     }
-    // We're on recover-words: commit this share into the collected list.
-    const d = state.data.headerDraft;
-    const wc = parseInt(d.wordCount, 10);
-    const header = `CHELA-${d.id}-${parseInt(d.x, 10)}-${parseInt(d.threshold, 10)}-${parseInt(d.total, 10)}-${wc}`;
-    const words = state.data.wordsDraft.slice(0, wc).map(w => w.trim().toLowerCase()).join(" ");
-    state.data.collected.push({ header, words });
-    state.data.headerDraft = null;
-    state.data.wordsDraft = [];
-
-    const have = state.data.collected.length;
-    const need = state.data.expected.threshold;
-    if (have >= need) { runRecover(); return; }
-
-    // Loop back to header for the next share.
-    state.phase = "recover-header";
-    state.history.push("recover-words");
-    render();
+    // We're on recover-words: commit this share. Words-only recovery decides when to
+    // stop by the user, with a known card count it stops at the threshold.
+    commitWordsAndRecover(false);
     return;
   }
 
@@ -1325,6 +1393,43 @@ function handleContinue() {
 
   const np = nextPhase();
   if (np) goTo(np);
+}
+
+// Commit the words on screen into the collected set, then either recover or loop back
+// for another card. `forceRecover` triggers recovery immediately (words-only "Recover
+// now"); otherwise a card-code flow recovers once it reaches its threshold.
+function commitWordsAndRecover(forceRecover) {
+  const d = state.data.headerDraft;
+  const wordsOnly = state.data.wordsOnly;
+  const wc = parseInt(d.wordCount, 10);
+  // A words-only share leaves the header blank — the WASM layer recovers it from the
+  // words alone. A card-code share keeps its CHELA-… label for the duplicate/mismatch
+  // guards and the advisory cross-check.
+  const header = wordsOnly
+    ? ""
+    : `CHELA-${d.id}-${parseInt(d.x, 10)}-${parseInt(d.threshold, 10)}-${parseInt(d.total, 10)}-${wc}`;
+  const words = state.data.wordsDraft.slice(0, wc).map(w => w.trim().toLowerCase()).join(" ");
+  state.data.collected.push({ header, words });
+  state.data.headerDraft = null;
+  state.data.wordsDraft = [];
+
+  const have = state.data.collected.length;
+  if (wordsOnly) {
+    // No threshold to compare against — recover when the user asks, otherwise loop.
+    if (forceRecover) { runRecover(); return; }
+    state.data.headerDraft = { id: "", x: "", threshold: "", total: "", wordCount: String(state.data.wordsOnlyCount) };
+    state.history.push("recover-words");
+    render();
+    return;
+  }
+
+  const need = state.data.expected.threshold;
+  if (have >= need) { runRecover(); return; }
+
+  // Loop back to header for the next share.
+  state.phase = "recover-header";
+  state.history.push("recover-words");
+  render();
 }
 
 let flashTimer = null;
@@ -1405,12 +1510,25 @@ function buildCompleteBanner(label) {
 function runRecover() {
   let resp;
   try { resp = callJson("chela_recover", encRecover(state.data.collected)); }
-  catch (e) { showFlash("WASM error: " + e.message, "err"); console.error(e); return; }
-  if (!resp.ok) { showFlash(resp.error, "err"); return; }
+  catch (e) { recoverFailed("WASM error: " + e.message); console.error(e); return; }
+  if (!resp.ok) { recoverFailed(resp.error); return; }
   state.result = resp;
   state.history.push(state.phase);
   state.phase = "recovered";
   render();
+}
+
+// On a failed recovery, words-only mode has already consumed its draft — restore a
+// fresh card so the user can fix words or add another and try again, then surface the
+// error. (Card-code mode keeps its own draft, so it just shows the flash in place.)
+function recoverFailed(msg) {
+  if (state.flow === "recover" && state.data.wordsOnly && state.phase === "recover-words"
+      && !state.data.headerDraft) {
+    state.data.headerDraft = { id: "", x: "", threshold: "", total: "", wordCount: String(state.data.wordsOnlyCount) };
+    state.data.wordsDraft = [];
+    render();
+  }
+  showFlash(msg, "err");
 }
 
 // =========================================================================================
