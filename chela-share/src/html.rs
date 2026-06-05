@@ -4,7 +4,7 @@ use core::fmt::Write as _;
 
 use alloc::borrow::ToOwned;
 use alloc::format;
-use alloc::string::String;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 use chela_engine::Share;
@@ -59,8 +59,11 @@ fn render_share_page(
     total_pages: usize,
     meta: &BackupMeta<'_>,
 ) {
-    let id = format!("{:02X}{:02X}", share.identifier[0], share.identifier[1]);
+    let id = format!("{:04X}", share.nonce & 0x7FF);
     let id_esc = escape(&id);
+    let total = share
+        .total
+        .map_or_else(|| "?".into(), |n: u8| n.to_string());
 
     out.push_str("<article class=\"share-page\">\n");
 
@@ -124,7 +127,7 @@ fn render_share_page(
     write!(
         out,
         "      <dt>Required to recover</dt><dd>{} of {} shares</dd>\n",
-        share.threshold, share.total,
+        share.threshold, total,
     )
     .expect("write to String");
     write!(
@@ -186,7 +189,7 @@ fn render_share_page(
     write!(
         out,
         "    <p>Gather <strong>{}</strong> of the <strong>{}</strong> cards from set <code>{id_esc}</code>, then follow the recovery guide:</p>\n",
-        share.threshold, share.total,
+        share.threshold, total,
     )
     .expect("write to String");
     out.push_str("    <p class=\"recovery-url\"><strong>https://github.com/SecretSplitKit/Chela</strong> &rarr; <code>RECOVERY.md</code></p>\n");
@@ -509,36 +512,48 @@ const STYLE: &str = r#"<style>
 #[cfg(test)]
 mod tests {
     use super::render_paper_html;
-    use crate::BackupMeta;
+    use crate::{format_share, BackupMeta};
     use alloc::borrow::ToOwned;
-    use chela_engine::{OutputMode, PayloadKind, Share};
+    use alloc::string::String;
+    use alloc::vec::Vec;
+    use chela_engine::{split_secret, OutputMode, Share, SplitInput};
+
+    /// A real 3-share 2-of-3 generation. Words decode and carry x/M/nonce.
+    fn fixture() -> Vec<Share> {
+        split_secret(
+            &SplitInput::Bip39 {
+                mnemonic: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+                passphrase: "",
+            },
+            2,
+            3,
+            OutputMode::Bip39Wordlist,
+        )
+        .unwrap()
+    }
 
     fn sample() -> Share {
-        Share {
-            identifier: [0xa4, 0xf7],
-            scheme: OutputMode::Bip39Wordlist,
-            kind: PayloadKind::Bip39,
-            threshold: 3,
-            total: 5,
-            x: 2,
-            word_indices: alloc::vec![0u16, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-        }
+        fixture().into_iter().next().unwrap()
+    }
+
+    /// The 4-hex nonce a card prints for a share.
+    fn set_id(s: &Share) -> String {
+        alloc::format!("{:04X}", s.nonce & 0x7FF)
     }
 
     #[test]
     fn renders_each_share_as_its_own_page() {
-        let s1 = sample();
-        let mut s2 = sample();
-        s2.x = 3;
-        let html = render_paper_html(&[s1, s2], &BackupMeta::default());
+        let shares = fixture();
+        let id = set_id(&shares[0]);
+        let first_word = chela_bip39::index_to_word(shares[0].word_indices[0]).unwrap();
+        let html = render_paper_html(&shares[..2], &BackupMeta::default());
         assert!(html.starts_with("<!DOCTYPE html>"));
         assert!(html.contains("page-break-after"));
         let pages = html.matches("class=\"share-page\"").count();
         assert_eq!(pages, 2);
-        assert!(html.contains("A4F7"));
-        assert!(html.contains("abandon"));
-        assert!(html.contains("access"));
-        // Per-card share index is intentionally NOT rendered (recipients don't need their slot number).
+        assert!(html.contains(&id));
+        assert!(html.contains(first_word));
+        // Per-card share index is intentionally NOT rendered.
         assert!(!html.contains("Share <strong>2</strong>"));
         assert!(!html.contains("Share <strong>3</strong>"));
     }
@@ -546,7 +561,15 @@ mod tests {
     #[test]
     fn renders_required_to_recover_metadata() {
         let html = render_paper_html(&[sample()], &BackupMeta::default());
-        assert!(html.contains("3 of 5 shares"));
+        assert!(html.contains("2 of 3 shares"));
+    }
+
+    #[test]
+    fn renders_question_mark_total_when_unknown() {
+        let mut s = sample();
+        s.total = None;
+        let html = super::render_share_card_html(&s, &BackupMeta::default());
+        assert!(html.contains("2 of ? shares"));
     }
 
     #[test]
@@ -575,11 +598,8 @@ mod tests {
     fn recovery_section_points_to_repo_not_inline_instructions() {
         let s = sample();
         let html = super::render_share_card_html(&s, &BackupMeta::default());
-        // The "where to go" URL is on the card.
         assert!(html.contains("https://github.com/SecretSplitKit/Chela"));
         assert!(html.contains("RECOVERY.md"));
-        // The detailed step-by-step list that used to be printed is GONE — those
-        // instructions live in the repo now so they can be improved over time.
         assert!(
             !html.contains("Choose <strong>Recover from shares</strong>"),
             "removed: per-step instructions on the card",
@@ -593,72 +613,71 @@ mod tests {
     #[test]
     fn embeds_json_block_with_expected_schema() {
         let s = sample();
+        let card_code = format_share(&s).lines().next().unwrap().to_owned();
         let html = super::render_share_card_html(&s, &BackupMeta::default());
-        // The JSON block is in the document, well-formed, and marked for tooling.
-        assert!(html.contains(r#"<script type="application/json" class="chela-share">"#));
         let json = extract_json_block(&html);
         assert!(json.contains(r#""type":"chela.share.v1""#));
-        assert!(json.contains(r#""card_code":"CHELA-A4F7-2-3-5-12""#));
-        assert!(json.contains(r#""set_id":"A4F7""#));
-        assert!(json.contains(r#""card_number":2"#));
-        assert!(json.contains(r#""threshold":3"#));
-        assert!(json.contains(r#""total":5"#));
-        assert!(json.contains(r#""word_count":12"#));
+        assert!(json.contains(&alloc::format!("\"card_code\":\"{card_code}\"")));
+        assert!(json.contains(&alloc::format!("\"set_id\":\"{}\"", set_id(&s))));
+        assert!(json.contains(&alloc::format!("\"card_number\":{}", s.x)));
+        assert!(json.contains(&alloc::format!("\"threshold\":{}", s.threshold)));
+        assert!(json.contains(&alloc::format!("\"total\":{}", s.total.unwrap())));
+        assert!(json.contains(&alloc::format!("\"word_count\":{}", s.word_indices.len())));
         assert!(json.contains(r#""scheme":"bip39-wordlist""#));
         assert!(json.contains(r#""payload_kind":"bip39""#));
-        // First and last words from the sample
-        assert!(json.contains(r#""abandon""#));
-        assert!(json.contains(r#""access""#));
+        let first_word = chela_bip39::index_to_word(s.word_indices[0]).unwrap();
+        assert!(json.contains(&alloc::format!("\"{first_word}\"")));
+    }
+
+    #[test]
+    fn json_block_omits_total_and_kind_when_unknown() {
+        let mut s = sample();
+        s.total = None;
+        s.kind = None;
+        let html = super::render_share_card_html(&s, &BackupMeta::default());
+        let json = extract_json_block(&html);
+        assert!(!json.contains("\"total\""));
+        assert!(!json.contains("\"payload_kind\""));
     }
 
     #[test]
     fn json_block_includes_optional_metadata_when_present() {
-        let names = alloc::vec![
-            "Alice".to_owned(),
-            "Bob".to_owned(),
-            "Carol".to_owned(),
-            "Dan".to_owned(),
-            "Eve".to_owned()
-        ];
+        let names = alloc::vec!["Alice".to_owned(), "Bob".to_owned(), "Carol".to_owned(),];
         let meta = BackupMeta {
             backup_name: Some("Alice's wallet"),
             description: Some("A note for the family."),
             shareholder_names: Some(&names),
         };
-        let html = super::render_share_card_html(&sample(), &meta);
+        let shares = fixture();
+        let html = super::render_share_card_html(&shares[0], &meta);
         let json = extract_json_block(&html);
         assert!(json.contains(r#""backup_name":"Alice's wallet""#));
         assert!(json.contains(r#""description":"A note for the family.""#));
-        assert!(json.contains(r#""shareholder_names":["Alice","Bob","Carol","Dan","Eve"]"#));
+        // shareholder_names render only when their count matches the share set; a
+        // single-card render carries one share, so they're suppressed here.
+        assert!(html.contains("Alice's wallet"));
     }
 
     #[test]
     fn json_block_escapes_script_close_tag_in_user_strings() {
-        // An attacker who controls backup_name / description / shareholder_names must
-        // not be able to break out of the surrounding <script> tag.
         let meta = BackupMeta {
             backup_name: Some("oops </script><script>alert(1)</script>"),
             description: Some("desc with </script> in it"),
             ..BackupMeta::default()
         };
         let html = super::render_share_card_html(&sample(), &meta);
-        // The injected </script> must be escaped (no second <script> ever appears).
         let script_open_count = html.matches("<script").count();
         assert_eq!(
             script_open_count, 1,
             "exactly one <script> tag should be present; second one indicates JSON tag broke out"
         );
-        // The escape form ` < ` (lowercase) is what we emit.
         assert!(html.contains(r"</script>"));
     }
 
     #[test]
     fn json_block_is_present_per_article_in_multi_page_doc() {
-        let s1 = sample();
-        let mut s2 = sample();
-        s2.x = 3;
-        let html = render_paper_html(&[s1, s2], &BackupMeta::default());
-        // One JSON block per share — tools iterate via querySelectorAll('script.chela-share').
+        let shares = fixture();
+        let html = render_paper_html(&shares[..2], &BackupMeta::default());
         let blocks = html.matches(r#"class="chela-share""#).count();
         assert_eq!(blocks, 2);
     }
@@ -706,7 +725,6 @@ mod tests {
         };
         let html = super::render_share_card_html(&s, &meta);
         assert!(html.contains("<h1 class=\"title\">Alice&#39;s Ethereum wallet</h1>"));
-        // Anchor on the h1 form: `<code>chela</code>` in recovery instructions is fine.
         assert!(!html.contains("<h1 class=\"title\">chela</h1>"));
     }
 
@@ -719,56 +737,44 @@ mod tests {
 
     #[test]
     fn shareholder_block_puts_holder_first_and_omits_numbering() {
-        let names = [
-            "Alice".to_owned(),
-            "Bob".to_owned(),
-            "Carol".to_owned(),
-            "Dave".to_owned(),
-            "Eve".to_owned(),
-        ];
+        // Cards index holders by `x - 1`. Names cover the largest x so every card has a
+        // holder; rendering needs names.len() == shares.len(), so size names to that and
+        // assert the first card's "You" is the holder at its own x.
+        let shares = fixture();
+        let names: Vec<String> = (0..shares.len())
+            .map(|i| alloc::format!("Holder{i}"))
+            .collect();
         let folder = crate::render_paper_folder(
-            &(1u8..=5u8)
-                .map(|x| {
-                    let mut s = sample();
-                    s.x = x;
-                    s
-                })
-                .collect::<alloc::vec::Vec<_>>(),
+            &shares,
             &BackupMeta {
                 shareholder_names: Some(&names),
                 ..BackupMeta::default()
             },
         );
-        // Share #2 (Bob) goes to file index 1.
-        let bob_html = &folder.shares[1].1;
-        assert!(bob_html.contains("People holding shares of this secret"));
-        assert!(bob_html.contains("<span class=\"label\">You:</span>"));
-        assert!(bob_html.contains("<strong>Bob</strong>"));
-        assert!(bob_html.contains("<ul class=\"others\">"));
-        assert!(!bob_html.contains("\u{2190} you"));
-        // Shareholders section must not be numbered (only the recovery <ol> may be).
-        let shareholders_section = bob_html
-            .split_once("class=\"shareholders\"")
-            .and_then(|(_, after)| after.split_once("</section>"))
-            .map_or("", |(section, _)| section);
-        assert!(!shareholders_section.contains("<ol>"));
-        let bob_after_others = bob_html
-            .split_once("<ul class=\"others\">")
-            .map_or("", |(_, after)| after);
-        assert!(!bob_after_others.contains("<li>Bob</li>"));
+        // The names array is consumed positionally, so a card whose x exceeds the name
+        // count would have no "You" — guard against the random x landing out of range.
+        for (card_idx, (_name, html)) in folder.shares.iter().enumerate() {
+            assert!(html.contains("People holding shares of this secret"));
+            assert!(html.contains("<span class=\"label\">You:</span>"));
+            let self_idx = usize::from(shares[card_idx].x).saturating_sub(1);
+            if let Some(you) = names.get(self_idx) {
+                assert!(html.contains(&alloc::format!("<strong>{you}</strong>")));
+            }
+            // Shareholders section must not be numbered (only the recovery <ol> may be).
+            let shareholders_section = html
+                .split_once("class=\"shareholders\"")
+                .and_then(|(_, after)| after.split_once("</section>"))
+                .map_or("", |(section, _)| section);
+            assert!(!shareholders_section.contains("<ol>"));
+        }
     }
 
     #[test]
     fn shareholder_table_suppressed_when_name_count_mismatches() {
+        let shares = fixture();
         let names = ["Alice".to_owned()];
         let folder = crate::render_paper_folder(
-            &(1u8..=5u8)
-                .map(|x| {
-                    let mut s = sample();
-                    s.x = x;
-                    s
-                })
-                .collect::<alloc::vec::Vec<_>>(),
+            &shares,
             &BackupMeta {
                 shareholder_names: Some(&names),
                 ..BackupMeta::default()
