@@ -42,6 +42,11 @@ fn main() {
         .arg("--manifest-path")
         .arg(workspace_root.join("Cargo.toml"))
         .env_remove("CARGO_BUILD_JOBS")
+        // Scrub host-target linker flags so they don't reach the wasm link. The release
+        // workflow sets host-only RUSTFLAGS (e.g. -C link-arg=-Wl,--build-id=none); rust-lld
+        // rejects them, which would abort this inner wasm build.
+        .env_remove("RUSTFLAGS")
+        .env_remove("CARGO_ENCODED_RUSTFLAGS")
         .status()
         .expect("failed to spawn inner `cargo build` for chela-wasm");
     assert!(
