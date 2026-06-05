@@ -1166,8 +1166,8 @@ For card 1 of our example (`x = 6`, `M = 2`, tag `0x02C9`, share bytes
 
 ## The long division
 
-The CRC uses the generator number `0x307` = `100 1100 0111` (11 bits below
-an implied leading 1, i.e. the 12-bit pattern `1 0011 0000 111`). The
+The CRC uses the generator number `0x307` = `011 0000 0111` (11 bits below
+an implied leading 1, i.e. the 12-bit pattern `1 0110 0000 111`). The
 recipe:
 
 1. Lay out all the input bytes as one long string of bits, MSB-first.
