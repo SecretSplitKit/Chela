@@ -211,7 +211,7 @@ pub fn parse_share(header: &str, words_line: &str) -> Result<Share, FormatError>
     let total: u8 = parts[3]
         .parse()
         .map_err(|_| FormatError::BadThresholdTotal)?;
-    if threshold == 0 || total < threshold {
+    if threshold < chela_engine::MIN_THRESHOLD || total < threshold {
         return Err(FormatError::BadThresholdTotal);
     }
     if x > total {

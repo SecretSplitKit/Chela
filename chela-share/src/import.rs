@@ -186,7 +186,7 @@ fn decode_share_value(v: &Value) -> Result<Share, ImportError> {
         .and_then(Value::as_usize)
         .ok_or(ImportError::BadField("word_count"))?;
 
-    if x == 0 || x > total || threshold == 0 || threshold > total {
+    if x == 0 || x > total || threshold < chela_engine::MIN_THRESHOLD || threshold > total {
         return Err(ImportError::BadThresholdTotalOrIndex);
     }
 

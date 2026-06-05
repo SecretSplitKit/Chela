@@ -122,6 +122,12 @@ fn cmd_split(args: Vec<String>) -> Result<(), String> {
 
     let threshold = threshold.ok_or("missing -m / --threshold")?;
     let total = total.ok_or("missing -n / --total")?;
+    if threshold < chela_engine::MIN_THRESHOLD {
+        return Err(format!(
+            "threshold (-m) must be at least {}",
+            chela_engine::MIN_THRESHOLD
+        ));
+    }
 
     let input = match (mnemonic.as_deref(), text.as_deref()) {
         (Some(m), None) => SplitInput::Bip39 {

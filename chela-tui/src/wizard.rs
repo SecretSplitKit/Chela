@@ -1265,7 +1265,7 @@ impl ParsedHeader {
         let total: u8 = parts[3]
             .parse()
             .map_err(|_| FormatError::BadThresholdTotal)?;
-        if threshold == 0 || total < threshold {
+        if threshold < MIN_THRESHOLD || total < threshold {
             return Err(FormatError::BadThresholdTotal);
         }
         if x > total {

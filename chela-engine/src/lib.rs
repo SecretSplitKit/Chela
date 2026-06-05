@@ -33,6 +33,10 @@ const IDENTIFIER_LEN: usize = 2;
 const MAX_PASSPHRASE_LEN: usize = 255;
 const MAX_TEXT_LEN: usize = 255;
 
+/// Minimum reconstruction threshold. A threshold of 1 (any single share rebuilds the
+/// secret) gives no secret-sharing security, so the engine refuses to produce it.
+pub const MIN_THRESHOLD: u8 = 2;
+
 /// Bundle `kind` byte values (0x01..0x0B).
 mod kind {
     pub(super) const BIP39_NO_PASS_12: u8 = 0x01;
@@ -486,6 +490,9 @@ pub fn split_with_rng(
     mode: OutputMode,
     rng: &mut dyn RandomSource,
 ) -> Result<Vec<Share>, EngineError> {
+    if threshold < MIN_THRESHOLD {
+        return Err(EngineError::InvalidInput("threshold must be at least 2"));
+    }
     let (body, kind_byte) = build_bundle(input)?;
     // `body` is the full plaintext secret; `Zeroizing` wipes it on every exit, including
     // the BundleTooLarge and split-error early returns below.
@@ -770,6 +777,18 @@ mod tests {
         shares[0].word_indices[0] ^= 1;
         let err = recover_secret(&shares[..2]).unwrap_err();
         assert_eq!(err, super::EngineError::ShareCorrupt);
+    }
+
+    #[test]
+    fn split_rejects_threshold_below_two() {
+        let err = split_secret(
+            &SplitInput::Text { text: "secret" },
+            1,
+            5,
+            OutputMode::Bip39Wordlist,
+        )
+        .unwrap_err();
+        assert!(matches!(err, super::EngineError::InvalidInput(_)));
     }
 
     #[test]
