@@ -15,7 +15,7 @@ on your own machine, with no internet involved.
 ## What a chela card looks like
 
 Each printed card has a title at the top, a "Required to recover" line, a
-card code like `CHELA-3058-1-3-5-40`, a numbered list of words, and short
+card code like `CHELA-3058-13-3-5-27`, a numbered list of words, and short
 recovery instructions printed at the bottom:
 
 ![Example of a chela paper card](docs/recovery/11-paper-card.png)
@@ -28,11 +28,17 @@ You'll need:
 
 - **A computer** running Windows, Mac, or Linux, with any modern web browser
   (Chrome, Edge, Firefox, Safari — any will do).
-- **The paper cards.** Each card has a *card code* like `CHELA-3058-1-3-5-40` and a
-  list of words (12 to 40 of them, depending on what was stored).
+- **The paper cards.** Each card has a *card code* like `CHELA-3058-13-3-5-27` and a
+  list of words (anywhere from a handful for a short password to around 27 for a
+  24-word seed phrase, depending on what was stored). All cards from one backup have
+  the same number of words.
 - **A minimum number of cards** — look on the front of the card for *"M of N"*. For
   example, **3 of 5** means you need any 3 cards out of the 5 that were made. If you
   only have 2 of the 5, you can't recover yet — you need a third.
+
+The recovery program reads everything it needs from the **words** themselves. The
+card code on the label is a convenience for matching cards up; if a label is smudged
+but you can still read the words, you can still recover.
 
 You do *not* need an internet connection during the recovery itself (only to
 download the recovery program, once).
@@ -103,8 +109,10 @@ The chela main screen has three large buttons. Click the third one:
 ## Step 4 — Enter the first card
 
 The wizard will ask for **the card code** first — the dashed line near the top of
-your card, like `CHELA-3058-1-3-5-40`. The boxes on screen line up with the dashes:
-type each part into its matching box.
+your card, like `CHELA-3058-13-3-5-27`. The boxes on screen line up with the dashes:
+type each part into its matching box. (The code is just a convenience for grouping
+cards; the words carry everything recovery needs. Copy the numbers exactly as
+printed — don't worry if they don't look "in order".)
 
 ![Entering the card code from card #1](docs/recovery/07-card-code.png)
 
@@ -124,10 +132,12 @@ When all the words are typed and green, click **Save Share, Next Card**.
 ## Step 5 — Repeat for each remaining card
 
 For every card after the first, the wizard pre-fills most of the card code for you
-— you only need to type the **card #** (the second number in the dashed line, e.g.
-`2` in `CHELA-3058-2-3-5-40`):
+— you only need to type the **second number** in the dashed line (the one right
+after the four-character group). That number is *this card's coordinate*: a value
+unique to each card, **not** its position in the set. The second card you enter will
+usually not show `2` there — just copy whatever number is printed:
 
-![Card #2: only the card number needs typing](docs/recovery/09-second-card-prefilled.png)
+![Entering a second card: copy its second code number](docs/recovery/09-second-card-prefilled.png)
 
 Then type that card's words, click **Save Share, Next Card**, and continue until
 you've entered the minimum number ("M of N") that the cards say is required.
@@ -174,12 +184,19 @@ and type the full word.
 If a whole word is unreadable, you can sometimes still recover by trying the most
 likely candidates one at a time — but you may need help from someone technical.
 
-### "The wizard says 'Recovery failed' or 'Bundle corrupt'"
+### "The wizard says the shares failed a checksum, or won't combine"
 
-This usually means one of the cards has a typo. Click **← Back** repeatedly to
-return to that card's words, look carefully for any mis-typed words (the green ✓
-catches single-word typos, but not when you type a *different* valid word by
-mistake), correct them, and continue.
+Two common messages:
+
+- **"failed the per-card checksum — likely a typo"** — one card has a mistyped
+  word. Click **← Back** to that card's words and look carefully (the green ✓ catches
+  a misspelled word, but not when you type a *different* valid word by mistake).
+- **"shares are from different splits"** — one of the cards isn't from this backup.
+  Check that every card shows the **same four-character group** in its code (e.g.
+  `3058`); a card with a different group belongs to another backup and can't be mixed
+  in.
+
+Correct the offending card and continue.
 
 ### "My browser opened the file as raw code instead of a web page"
 
