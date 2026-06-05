@@ -16,12 +16,12 @@ pub fn share_json_filename(share: &Share) -> String {
     format!("share-{}.share.json", share.x)
 }
 
-/// Bundle filename: `chela-<setID>-shares.json`.
+/// Bundle filename: `chela-<setID>-shares.json` (`setID` = the 4-hex generation nonce).
 #[must_use]
 pub fn shares_bundle_filename(shares: &[Share]) -> String {
-    let id = shares.first().map_or("0000".to_owned(), |s| {
-        format!("{:02X}{:02X}", s.identifier[0], s.identifier[1])
-    });
+    let id = shares
+        .first()
+        .map_or("0000".to_owned(), |s| format!("{:04X}", s.nonce & 0x7FF));
     format!("chela-{id}-shares.json")
 }
 
@@ -134,24 +134,25 @@ pub(crate) fn write_share_json_object(out: &mut String, share: &Share, meta: &Ba
     out.push(',');
 
     out.push_str("\"set_id\":");
-    json_string(
-        out,
-        &format!("{:02X}{:02X}", share.identifier[0], share.identifier[1]),
-    );
+    json_string(out, &format!("{:04X}", share.nonce & 0x7FF));
     out.push(',');
 
     let _ = write!(out, "\"card_number\":{},", share.x);
     let _ = write!(out, "\"threshold\":{},", share.threshold);
-    let _ = write!(out, "\"total\":{},", share.total);
+    if let Some(n) = share.total {
+        let _ = write!(out, "\"total\":{n},");
+    }
     let _ = write!(out, "\"word_count\":{},", share.word_indices.len());
 
     out.push_str("\"scheme\":");
     json_string(out, scheme_name(share.scheme));
     out.push(',');
 
-    out.push_str("\"payload_kind\":");
-    json_string(out, payload_kind_name(share.kind));
-    out.push(',');
+    if let Some(kind) = share.kind {
+        out.push_str("\"payload_kind\":");
+        json_string(out, payload_kind_name(kind));
+        out.push(',');
+    }
 
     out.push_str("\"words\":[");
     let mut first = true;
@@ -226,36 +227,50 @@ fn payload_kind_name(k: PayloadKind) -> &'static str {
 mod tests {
     use super::*;
     use crate::extract_shares_from_json;
+    use alloc::string::String;
     use alloc::vec::Vec;
-    use chela_engine::{OutputMode, PayloadKind, Share};
+    use chela_engine::{split_secret, OutputMode, Share, SplitInput};
+
+    /// A real 3-share 2-of-3 generation; words decode and pass the CRC.
+    fn fixture() -> Vec<Share> {
+        split_secret(
+            &SplitInput::Bip39 {
+                mnemonic: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+                passphrase: "",
+            },
+            2,
+            3,
+            OutputMode::Bip39Wordlist,
+        )
+        .unwrap()
+    }
 
     fn sample() -> Share {
-        Share {
-            identifier: [0xa4, 0xf7],
-            scheme: OutputMode::Bip39Wordlist,
-            kind: PayloadKind::Bip39,
-            threshold: 3,
-            total: 5,
-            x: 2,
-            word_indices: alloc::vec![0u16, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-        }
+        fixture().into_iter().next().unwrap()
+    }
+
+    fn set_id(s: &Share) -> String {
+        alloc::format!("{:04X}", s.nonce & 0x7FF)
     }
 
     #[test]
     fn share_json_filename_format() {
         let s = sample();
-        assert_eq!(share_json_filename(&s), "share-2.share.json");
+        assert_eq!(
+            share_json_filename(&s),
+            alloc::format!("share-{}.share.json", s.x)
+        );
     }
 
     #[test]
     fn bundle_filename_includes_set_id() {
-        let s = sample();
-        assert_eq!(shares_bundle_filename(&[s]), "chela-A4F7-shares.json");
+        let shares = fixture();
+        let expected = alloc::format!("chela-{}-shares.json", set_id(&shares[0]));
+        assert_eq!(shares_bundle_filename(&shares), expected);
     }
 
     #[test]
     fn bundle_filename_empty_input_falls_back() {
-        // Defensive: don't panic if called with no shares.
         assert_eq!(shares_bundle_filename(&[]), "chela-0000-shares.json");
     }
 
@@ -263,7 +278,6 @@ mod tests {
     fn render_share_json_round_trips_to_share() {
         let original = sample();
         let json = render_share_json(&original, &BackupMeta::default());
-        // Must parse, exactly one share.
         let result = extract_shares_from_json(&json).unwrap();
         assert_eq!(result.len(), 1);
         let parsed = result.into_iter().next().unwrap().unwrap();
@@ -271,26 +285,41 @@ mod tests {
     }
 
     #[test]
-    fn render_share_json_emits_schema_sentinel() {
-        let json = render_share_json(&sample(), &BackupMeta::default());
+    fn render_share_json_emits_schema_sentinel_and_card_code() {
+        let s = sample();
+        let card_code = format_share(&s).lines().next().unwrap().to_owned();
+        let json = render_share_json(&s, &BackupMeta::default());
         assert!(json.contains(r#""type":"chela.share.v1""#));
-        assert!(json.contains(r#""card_code":"CHELA-A4F7-2-3-5-12""#));
+        assert!(json.contains(&alloc::format!("\"card_code\":\"{card_code}\"")));
+        assert!(json.contains(&alloc::format!("\"set_id\":\"{}\"", set_id(&s))));
         assert!(json.ends_with('\n'));
     }
 
     #[test]
+    fn render_share_json_omits_total_and_kind_when_none() {
+        let mut s = sample();
+        s.total = None;
+        s.kind = None;
+        let json = render_share_json(&s, &BackupMeta::default());
+        assert!(!json.contains("\"total\""));
+        assert!(!json.contains("\"payload_kind\""));
+        // Still round-trips with both left unknown.
+        let parsed = extract_shares_from_json(&json)
+            .unwrap()
+            .into_iter()
+            .next()
+            .unwrap()
+            .unwrap();
+        assert_eq!(parsed, s);
+    }
+
+    #[test]
     fn render_shares_json_round_trips_to_shares() {
-        let shares: Vec<Share> = (1u8..=5u8)
-            .map(|x| {
-                let mut s = sample();
-                s.x = x;
-                s
-            })
-            .collect();
+        let shares = fixture();
         let json = render_shares_json(&shares, &BackupMeta::default());
         assert!(json.contains(r#""type":"chela.shares.v1""#));
         let extracted = extract_shares_from_json(&json).unwrap();
-        assert_eq!(extracted.len(), 5);
+        assert_eq!(extracted.len(), shares.len());
         for (i, r) in extracted.into_iter().enumerate() {
             assert_eq!(r.unwrap(), shares[i]);
         }
@@ -298,25 +327,21 @@ mod tests {
 
     #[test]
     fn render_json_folder_writes_per_share_files_plus_bundle() {
-        let shares: Vec<Share> = (1u8..=3u8)
-            .map(|x| {
-                let mut s = sample();
-                s.x = x;
-                s
-            })
-            .collect();
+        let shares = fixture();
         let folder = render_json_folder(&shares, &BackupMeta::default());
 
-        assert_eq!(folder.shares.len(), 3);
+        assert_eq!(folder.shares.len(), shares.len());
         for (i, share) in shares.iter().enumerate() {
             assert_eq!(folder.shares[i].0, share_json_filename(share));
         }
 
-        assert_eq!(folder.bundle.0, "chela-A4F7-shares.json");
+        assert_eq!(
+            folder.bundle.0,
+            alloc::format!("chela-{}-shares.json", set_id(&shares[0]))
+        );
         let extracted = extract_shares_from_json(&folder.bundle.1).unwrap();
-        assert_eq!(extracted.len(), 3);
+        assert_eq!(extracted.len(), shares.len());
 
-        // Each per-share file is independently parseable.
         for (filename, contents) in &folder.shares {
             let parsed = extract_shares_from_json(contents).unwrap();
             assert_eq!(parsed.len(), 1, "{filename} should hold one share");
@@ -325,75 +350,53 @@ mod tests {
 
     #[test]
     fn render_json_preserves_optional_metadata() {
-        let names = alloc::vec!["A".to_owned(), "B".to_owned(), "C".to_owned()];
+        let shares = fixture();
+        let names: Vec<String> = (0..shares.len())
+            .map(|i| alloc::format!("Holder{i}"))
+            .collect();
         let meta = BackupMeta {
             backup_name: Some("Test wallet"),
             description: Some("multi\nline"),
             shareholder_names: Some(&names),
         };
-        let shares: Vec<Share> = (1u8..=3u8)
-            .map(|x| {
-                let mut s = sample();
-                s.x = x;
-                s
-            })
-            .collect();
         let json = render_shares_json(&shares, &meta);
         assert!(json.contains(r#""backup_name":"Test wallet""#));
         assert!(json.contains(r#""description":"multi\nline""#));
-        assert!(json.contains(r#""shareholder_names":["A","B","C"]"#));
+        assert!(json.contains(r#""shareholder_names":["Holder0","Holder1","Holder2"]"#));
     }
 
     #[test]
     fn json_escapes_user_supplied_script_close_tag() {
-        // Same security property as the HTML embedder: user-supplied text
-        // can't break out of a surrounding `<script>` if this JSON is
-        // later inlined into HTML. The `<` escape is always emitted.
+        let s = sample();
         let meta = BackupMeta {
             backup_name: Some("oops </script><script>alert(1)</script>"),
             ..BackupMeta::default()
         };
-        let json = render_share_json(&sample(), &meta);
-        // Raw `</script` substring must NOT appear — every `<` was escaped.
+        let json = render_share_json(&s, &meta);
         assert!(!json.contains("</script"));
-        // Escaped form (`</script`) IS present — the attack payload made
-        // it through the encoder intact, just neutralised for HTML embedding.
         assert!(json.contains("\\u003c/script"));
-        // And the resulting JSON still round-trips to the original backup_name.
         let extracted = crate::extract_shares_from_json(&json)
             .unwrap()
             .into_iter()
             .next()
             .unwrap()
             .unwrap();
-        assert_eq!(extracted, sample());
+        assert_eq!(extracted, s);
     }
 
     #[test]
     fn render_combined_folder_emits_both_formats() {
-        let shares: Vec<Share> = (1u8..=3u8)
-            .map(|x| {
-                let mut s = sample();
-                s.x = x;
-                s
-            })
-            .collect();
+        let shares = fixture();
         let combined = render_combined_folder(&shares, &BackupMeta::default());
 
-        // Per-share files, both formats.
-        assert_eq!(combined.paper.shares.len(), 3);
-        assert_eq!(combined.json.shares.len(), 3);
-        // No filename collisions: paper is `.html`, json is `.share.json`.
-        // (Lowercase-only literals here — no need for case-insensitive checks;
-        // we own the encoder and always emit lowercase. Allow the lint for
-        // this test only.)
+        assert_eq!(combined.paper.shares.len(), shares.len());
+        assert_eq!(combined.json.shares.len(), shares.len());
         #[allow(clippy::case_sensitive_file_extension_comparisons)]
         for ((p_name, _), (j_name, _)) in combined.paper.shares.iter().zip(&combined.json.shares) {
             assert!(p_name.ends_with(".html"));
             assert!(j_name.ends_with(".share.json"));
             assert_ne!(p_name, j_name);
         }
-        // Paper folder also has a README.
         assert!(!combined.paper.readme.is_empty());
     }
 }

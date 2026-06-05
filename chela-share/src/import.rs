@@ -28,9 +28,11 @@ pub enum ImportError {
     WordCountMismatch,
     /// `set_id` isn't a 4-character ASCII hex string.
     BadSetId,
-    /// `x`, `threshold`, or `total` violate the invariants
-    /// (`1 ≤ x ≤ total`, `2 ≤ threshold ≤ total ≤ 255`, `total ≥ 1`).
+    /// The advisory `card_number` / `threshold` / `total` / `set_id` disagree with the
+    /// values the words carry — a transcription error in the metadata.
     BadThresholdTotalOrIndex,
+    /// The `words` array failed to decode (bad CRC, reserved bit set, too few words).
+    ShareCorrupt,
 }
 
 /// Extract every chela share embedded in `html`. Order in the result matches
@@ -163,32 +165,19 @@ fn decode_share_value(v: &Value) -> Result<Share, ImportError> {
         return Err(ImportError::UnknownSchema);
     }
 
-    let set_id = v
-        .get("set_id")
-        .and_then(Value::as_str)
-        .ok_or(ImportError::BadField("set_id"))?;
-    let identifier = parse_set_id(set_id)?;
-
-    let x = v
-        .get("card_number")
-        .and_then(Value::as_u8)
-        .ok_or(ImportError::BadField("card_number"))?;
-    let threshold = v
-        .get("threshold")
-        .and_then(Value::as_u8)
-        .ok_or(ImportError::BadField("threshold"))?;
-    let total = v
-        .get("total")
-        .and_then(Value::as_u8)
-        .ok_or(ImportError::BadField("total"))?;
-    let word_count = v
-        .get("word_count")
-        .and_then(Value::as_usize)
-        .ok_or(ImportError::BadField("word_count"))?;
-
-    if x == 0 || x > total || threshold < chela_engine::MIN_THRESHOLD || threshold > total {
-        return Err(ImportError::BadThresholdTotalOrIndex);
+    // Words are authoritative: x, M, and the nonce come from them, verified by the CRC.
+    let words_arr = v
+        .get("words")
+        .and_then(Value::as_array)
+        .ok_or(ImportError::BadField("words"))?;
+    let mut word_indices = Vec::with_capacity(words_arr.len());
+    for w in words_arr {
+        let word_str = w.as_str().ok_or(ImportError::BadField("words"))?;
+        let idx = chela_bip39::word_to_index(word_str).ok_or(ImportError::UnknownWord)?;
+        word_indices.push(idx);
     }
+    let d =
+        chela_engine::decode_share_words(&word_indices).map_err(|_| ImportError::ShareCorrupt)?;
 
     let scheme = v
         .get("scheme")
@@ -199,49 +188,55 @@ fn decode_share_value(v: &Value) -> Result<Share, ImportError> {
         _ => return Err(ImportError::UnknownScheme),
     };
 
-    let payload_kind = v
-        .get("payload_kind")
-        .and_then(Value::as_str)
-        .ok_or(ImportError::BadField("payload_kind"))?;
-    let kind = match payload_kind {
-        "bip39" => PayloadKind::Bip39,
-        "text" => PayloadKind::Text,
-        _ => return Err(ImportError::UnknownPayloadKind),
+    // Everything below is advisory: present to help humans, cross-checked against the
+    // words to catch transcription errors, never trusted over them.
+    if let Some(set_id) = v.get("set_id").and_then(Value::as_str) {
+        let nonce = parse_set_id(set_id)?;
+        if nonce != d.nonce {
+            return Err(ImportError::BadThresholdTotalOrIndex);
+        }
+    }
+    if let Some(cn) = v.get("card_number").and_then(Value::as_u8) {
+        if cn != d.x {
+            return Err(ImportError::BadThresholdTotalOrIndex);
+        }
+    }
+    if let Some(th) = v.get("threshold").and_then(Value::as_u8) {
+        if th != d.threshold {
+            return Err(ImportError::BadThresholdTotalOrIndex);
+        }
+    }
+    if let Some(wc) = v.get("word_count").and_then(Value::as_usize) {
+        if wc != word_indices.len() {
+            return Err(ImportError::WordCountMismatch);
+        }
+    }
+    let total = v.get("total").and_then(Value::as_u8);
+    let kind = match v.get("payload_kind").and_then(Value::as_str) {
+        Some("bip39") => Some(PayloadKind::Bip39),
+        Some("text") => Some(PayloadKind::Text),
+        Some(_) => return Err(ImportError::UnknownPayloadKind),
+        None => None,
     };
 
-    let words_arr = v
-        .get("words")
-        .and_then(Value::as_array)
-        .ok_or(ImportError::BadField("words"))?;
-    if words_arr.len() != word_count {
-        return Err(ImportError::WordCountMismatch);
-    }
-    let mut word_indices = Vec::with_capacity(words_arr.len());
-    for w in words_arr {
-        let word_str = w.as_str().ok_or(ImportError::BadField("words"))?;
-        let idx = chela_bip39::word_to_index(word_str).ok_or(ImportError::UnknownWord)?;
-        word_indices.push(idx);
-    }
-
     Ok(Share {
-        identifier,
         scheme,
-        kind,
-        threshold,
+        x: d.x,
+        threshold: d.threshold,
+        nonce: d.nonce,
         total,
-        x,
+        kind,
         word_indices,
     })
 }
 
-/// Parse a 4-hex-char `set_id` like `"3058"` into `[u8; 2]`. Case-insensitive.
-fn parse_set_id(s: &str) -> Result<[u8; 2], ImportError> {
+/// Parse a 4-hex-char `set_id` like `"3058"` into the 11-bit nonce. Case-insensitive.
+fn parse_set_id(s: &str) -> Result<u16, ImportError> {
     if s.len() != 4 || !s.is_ascii() {
         return Err(ImportError::BadSetId);
     }
-    let hi = u8::from_str_radix(&s[..2], 16).map_err(|_| ImportError::BadSetId)?;
-    let lo = u8::from_str_radix(&s[2..], 16).map_err(|_| ImportError::BadSetId)?;
-    Ok([hi, lo])
+    let n = u16::from_str_radix(s, 16).map_err(|_| ImportError::BadSetId)?;
+    Ok(n & 0x7FF)
 }
 
 /// Case-insensitive substring search on bytes (lowercases the needle once,
@@ -335,8 +330,9 @@ impl core::fmt::Display for ImportError {
             Self::WordCountMismatch => f.write_str("words array length doesn't match word_count"),
             Self::BadSetId => f.write_str("set_id is not 4 hex characters"),
             Self::BadThresholdTotalOrIndex => {
-                f.write_str("card_number / threshold / total violate invariants")
+                f.write_str("advisory set_id / card_number / threshold disagree with the words")
             }
+            Self::ShareCorrupt => f.write_str("share words failed to decode (bad checksum)"),
         }
     }
 }
@@ -347,22 +343,40 @@ mod tests {
         decode_share_json, extract_shares_from_html, extract_shares_strict,
         find_chela_share_blocks, ImportError,
     };
-    use crate::{render_paper_folder, render_paper_html, BackupMeta};
+    use crate::{render_paper_folder, render_paper_html, render_share_json, BackupMeta};
     use alloc::borrow::ToOwned;
+    use alloc::string::String;
     use alloc::vec::Vec;
-    use chela_engine::{OutputMode, PayloadKind, Share};
+    use chela_engine::{split_secret, OutputMode, Share, SplitInput};
+
+    /// A real 3-share 2-of-3 generation; words decode and pass the CRC.
+    fn fixture() -> Vec<Share> {
+        split_secret(
+            &SplitInput::Bip39 {
+                mnemonic: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+                passphrase: "test passphrase",
+            },
+            2,
+            3,
+            OutputMode::Bip39Wordlist,
+        )
+        .unwrap()
+    }
 
     fn sample() -> Share {
-        Share {
-            identifier: [0xa4, 0xf7],
-            scheme: OutputMode::Bip39Wordlist,
-            kind: PayloadKind::Bip39,
-            threshold: 3,
-            total: 5,
-            x: 2,
-            // First 12 BIP-39 words.
-            word_indices: alloc::vec![0u16, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-        }
+        fixture().into_iter().next().unwrap()
+    }
+
+    /// The bare `chela.share.v1` JSON object for a share (no trailing newline).
+    fn share_json(s: &Share) -> String {
+        let mut out = String::new();
+        crate::export::write_share_json_object(&mut out, s, &BackupMeta::default());
+        out
+    }
+
+    /// Wrap a JSON object in a chela-share `<script>` block.
+    fn wrap_block(json: &str) -> String {
+        alloc::format!("<script type=\"application/json\" class=\"chela-share\">{json}</script>")
     }
 
     #[test]
@@ -374,16 +388,10 @@ mod tests {
 
     #[test]
     fn finds_n_blocks_in_multi_card_html() {
-        let shares: Vec<Share> = (1u8..=4u8)
-            .map(|x| {
-                let mut s = sample();
-                s.x = x;
-                s
-            })
-            .collect();
+        let shares = fixture();
         let html = render_paper_html(&shares, &BackupMeta::default());
         let blocks = find_chela_share_blocks(&html);
-        assert_eq!(blocks.len(), 4);
+        assert_eq!(blocks.len(), 3);
     }
 
     #[test]
@@ -397,15 +405,8 @@ mod tests {
 
     #[test]
     fn round_trip_paper_folder_extracts_every_share() {
-        let shares: Vec<Share> = (1u8..=5u8)
-            .map(|x| {
-                let mut s = sample();
-                s.x = x;
-                s
-            })
-            .collect();
+        let shares = fixture();
         let folder = render_paper_folder(&shares, &BackupMeta::default());
-        // Each share-N.html in the folder has exactly one block.
         for (i, (_filename, html)) in folder.shares.iter().enumerate() {
             let extracted = extract_shares_strict(html).unwrap();
             assert_eq!(extracted.len(), 1);
@@ -417,13 +418,7 @@ mod tests {
     fn round_trip_with_metadata_preserves_words_and_share_fields() {
         // Presentation metadata isn't part of Share, but the JSON should still
         // decode the share correctly when those fields are present.
-        let names = alloc::vec![
-            "Alice".to_owned(),
-            "Bob".to_owned(),
-            "Carol".to_owned(),
-            "Dan".to_owned(),
-            "Eve".to_owned(),
-        ];
+        let names = alloc::vec!["Alice".to_owned(), "Bob".to_owned(), "Carol".to_owned(),];
         let original = sample();
         let html = crate::html::render_share_card_html(
             &original,
@@ -452,8 +447,6 @@ mod tests {
 
     #[test]
     fn unrelated_script_tags_are_ignored() {
-        // A page with a normal `<script>` tag (no class="chela-share") must not
-        // be mistaken for an import source.
         let html = "<!doctype html><html><body><script>alert('hi')</script></body></html>";
         let err = extract_shares_from_html(html).unwrap_err();
         assert_eq!(err, ImportError::NoChelaSharesFound);
@@ -463,71 +456,107 @@ mod tests {
     fn attribute_order_tolerated() {
         // `class` before `type` — our encoder uses the opposite order, but the
         // scanner shouldn't care.
-        let html = r#"<script class="chela-share" type="application/json">
-            {"type":"chela.share.v1","card_code":"CHELA-A4F7-2-3-5-12","set_id":"A4F7","card_number":2,"threshold":3,"total":5,"word_count":12,"scheme":"bip39-wordlist","payload_kind":"bip39","words":["abandon","ability","able","about","above","absent","absorb","abstract","absurd","abuse","access","accident"]}
-        </script>"#;
-        let shares = extract_shares_strict(html).unwrap();
+        let s = sample();
+        let json = share_json(&s);
+        let html = alloc::format!(
+            "<script class=\"chela-share\" type=\"application/json\">{json}</script>"
+        );
+        let shares = extract_shares_strict(&html).unwrap();
         assert_eq!(shares.len(), 1);
-        assert_eq!(shares[0].x, 2);
+        assert_eq!(shares[0], s);
     }
 
     #[test]
     fn single_quoted_attributes_tolerated() {
-        let html = r#"<script class='chela-share' type='application/json'>
-            {"type":"chela.share.v1","card_code":"CHELA-A4F7-2-3-5-12","set_id":"A4F7","card_number":2,"threshold":3,"total":5,"word_count":12,"scheme":"bip39-wordlist","payload_kind":"bip39","words":["abandon","ability","able","about","above","absent","absorb","abstract","absurd","abuse","access","accident"]}
-        </script>"#;
-        let shares = extract_shares_strict(html).unwrap();
+        let s = sample();
+        let json = share_json(&s);
+        let html =
+            alloc::format!("<script class='chela-share' type='application/json'>{json}</script>");
+        let shares = extract_shares_strict(&html).unwrap();
         assert_eq!(shares.len(), 1);
     }
 
     #[test]
     fn malformed_json_surfaces_per_block_error() {
-        let html =
-            r#"<script type="application/json" class="chela-share">{not valid json}</script>"#;
-        let result = extract_shares_from_html(html).unwrap();
+        let html = wrap_block("{not valid json}");
+        let result = extract_shares_from_html(&html).unwrap();
         assert_eq!(result.len(), 1);
         assert!(matches!(result[0], Err(ImportError::BadJson(_))));
     }
 
     #[test]
     fn wrong_schema_version_rejected() {
-        let html = r#"<script type="application/json" class="chela-share">{"type":"chela.share.v9","card_code":"x","set_id":"A4F7","card_number":1,"threshold":3,"total":5,"word_count":12,"scheme":"bip39-wordlist","payload_kind":"bip39","words":["abandon","ability","able","about","above","absent","absorb","abstract","absurd","abuse","access","accident"]}</script>"#;
-        let result = extract_shares_from_html(html).unwrap();
+        let json = share_json(&sample()).replace("chela.share.v1", "chela.share.v9");
+        let html = wrap_block(&json);
+        let result = extract_shares_from_html(&html).unwrap();
         assert!(matches!(result[0], Err(ImportError::UnknownSchema)));
     }
 
     #[test]
-    fn missing_required_field_rejected() {
-        let html = r#"<script type="application/json" class="chela-share">{"type":"chela.share.v1","set_id":"A4F7","card_number":1,"threshold":3,"total":5,"word_count":12,"scheme":"bip39-wordlist","payload_kind":"bip39"}</script>"#;
-        let result = extract_shares_from_html(html).unwrap();
+    fn missing_words_field_rejected() {
+        // Drop the whole "words":[...] array; everything else is well-formed.
+        let json = share_json(&sample());
+        let cut = json.find(",\"words\":[").expect("words field present");
+        let trimmed = alloc::format!("{}}}", &json[..cut]);
+        let html = wrap_block(&trimmed);
+        let result = extract_shares_from_html(&html).unwrap();
         assert!(matches!(result[0], Err(ImportError::BadField("words"))));
     }
 
     #[test]
     fn word_count_mismatch_rejected() {
-        let html = r#"<script type="application/json" class="chela-share">{"type":"chela.share.v1","card_code":"x","set_id":"A4F7","card_number":1,"threshold":3,"total":5,"word_count":12,"scheme":"bip39-wordlist","payload_kind":"bip39","words":["abandon","ability"]}</script>"#;
-        let result = extract_shares_from_html(html).unwrap();
+        // A word_count that disagrees with the actual words array.
+        let s = sample();
+        let json = share_json(&s).replace(
+            &alloc::format!("\"word_count\":{}", s.word_indices.len()),
+            "\"word_count\":99",
+        );
+        let html = wrap_block(&json);
+        let result = extract_shares_from_html(&html).unwrap();
         assert!(matches!(result[0], Err(ImportError::WordCountMismatch)));
     }
 
     #[test]
     fn unknown_word_rejected() {
-        let html = r#"<script type="application/json" class="chela-share">{"type":"chela.share.v1","card_code":"x","set_id":"A4F7","card_number":1,"threshold":3,"total":5,"word_count":12,"scheme":"bip39-wordlist","payload_kind":"bip39","words":["abandon","ability","able","about","above","absent","absorb","abstract","absurd","abuse","access","notarealbip39word"]}</script>"#;
-        let result = extract_shares_from_html(html).unwrap();
+        // Replace the first real word with a non-wordlist token.
+        let s = sample();
+        let first = chela_bip39::index_to_word(s.word_indices[0]).unwrap();
+        let json =
+            share_json(&s).replacen(&alloc::format!("\"{first}\""), "\"notarealbip39word\"", 1);
+        let html = wrap_block(&json);
+        let result = extract_shares_from_html(&html).unwrap();
         assert!(matches!(result[0], Err(ImportError::UnknownWord)));
     }
 
     #[test]
+    fn corrupt_words_rejected() {
+        // Flip one Y word to a different valid wordlist index → CRC fails.
+        let mut s = sample();
+        s.word_indices[2] ^= 1;
+        let html = wrap_block(&share_json(&s));
+        let result = extract_shares_from_html(&html).unwrap();
+        assert!(matches!(result[0], Err(ImportError::ShareCorrupt)));
+    }
+
+    #[test]
     fn unknown_scheme_rejected() {
-        let html = r#"<script type="application/json" class="chela-share">{"type":"chela.share.v1","card_code":"x","set_id":"A4F7","card_number":1,"threshold":3,"total":5,"word_count":12,"scheme":"future-wordlist","payload_kind":"bip39","words":["abandon","ability","able","about","above","absent","absorb","abstract","absurd","abuse","access","accident"]}</script>"#;
-        let result = extract_shares_from_html(html).unwrap();
+        let json = share_json(&sample()).replace("bip39-wordlist", "future-wordlist");
+        let html = wrap_block(&json);
+        let result = extract_shares_from_html(&html).unwrap();
         assert!(matches!(result[0], Err(ImportError::UnknownScheme)));
     }
 
     #[test]
-    fn out_of_range_card_number_rejected() {
-        let html = r#"<script type="application/json" class="chela-share">{"type":"chela.share.v1","card_code":"x","set_id":"A4F7","card_number":7,"threshold":3,"total":5,"word_count":12,"scheme":"bip39-wordlist","payload_kind":"bip39","words":["abandon","ability","able","about","above","absent","absorb","abstract","absurd","abuse","access","accident"]}</script>"#;
-        let result = extract_shares_from_html(html).unwrap();
+    fn advisory_card_number_mismatch_rejected() {
+        // card_number that disagrees with the words is a transcription error.
+        let s = sample();
+        let wrong = (s.x % 32) + 1;
+        let json = share_json(&s).replace(
+            &alloc::format!("\"card_number\":{}", s.x),
+            &alloc::format!("\"card_number\":{wrong}"),
+        );
+        let html = wrap_block(&json);
+        let result = extract_shares_from_html(&html).unwrap();
         assert!(matches!(
             result[0],
             Err(ImportError::BadThresholdTotalOrIndex)
@@ -535,9 +564,13 @@ mod tests {
     }
 
     #[test]
-    fn zero_card_number_rejected() {
-        let html = r#"<script type="application/json" class="chela-share">{"type":"chela.share.v1","card_code":"x","set_id":"A4F7","card_number":0,"threshold":3,"total":5,"word_count":12,"scheme":"bip39-wordlist","payload_kind":"bip39","words":["abandon","ability","able","about","above","absent","absorb","abstract","absurd","abuse","access","accident"]}</script>"#;
-        let result = extract_shares_from_html(html).unwrap();
+    fn advisory_set_id_mismatch_rejected() {
+        let s = sample();
+        let real = alloc::format!("\"set_id\":\"{:04X}\"", s.nonce & 0x7FF);
+        let wrong = alloc::format!("\"set_id\":\"{:04X}\"", (s.nonce ^ 1) & 0x7FF);
+        let json = share_json(&s).replace(&real, &wrong);
+        let html = wrap_block(&json);
+        let result = extract_shares_from_html(&html).unwrap();
         assert!(matches!(
             result[0],
             Err(ImportError::BadThresholdTotalOrIndex)
@@ -546,26 +579,27 @@ mod tests {
 
     #[test]
     fn bad_set_id_rejected() {
-        let html = r#"<script type="application/json" class="chela-share">{"type":"chela.share.v1","card_code":"x","set_id":"ZZZZ","card_number":1,"threshold":3,"total":5,"word_count":12,"scheme":"bip39-wordlist","payload_kind":"bip39","words":["abandon","ability","able","about","above","absent","absorb","abstract","absurd","abuse","access","accident"]}</script>"#;
-        let result = extract_shares_from_html(html).unwrap();
+        let s = sample();
+        let real = alloc::format!("\"set_id\":\"{:04X}\"", s.nonce & 0x7FF);
+        let json = share_json(&s).replace(&real, "\"set_id\":\"ZZZZ\"");
+        let html = wrap_block(&json);
+        let result = extract_shares_from_html(&html).unwrap();
         assert!(matches!(result[0], Err(ImportError::BadSetId)));
     }
 
     #[test]
     fn extract_strict_fails_on_first_bad_block() {
-        // Mix one good, one bad — strict mode rejects the whole batch.
         let good = crate::html::render_share_card_html(&sample(), &BackupMeta::default());
-        let bad_block = r#"<script type="application/json" class="chela-share">{}</script>"#;
+        let bad_block = wrap_block("{}");
         let mixed = alloc::format!("{good}{bad_block}");
         let err = extract_shares_strict(&mixed).unwrap_err();
-        // The first block was good, second is bad → strict reports the failure.
         assert!(matches!(err, ImportError::UnknownSchema));
     }
 
     #[test]
     fn extract_non_strict_returns_both_successes_and_failures() {
         let good = crate::html::render_share_card_html(&sample(), &BackupMeta::default());
-        let bad_block = r#"<script type="application/json" class="chela-share">{}</script>"#;
+        let bad_block = wrap_block("{}");
         let mixed = alloc::format!("{good}{bad_block}");
         let result = extract_shares_from_html(&mixed).unwrap();
         assert_eq!(result.len(), 2);
@@ -575,9 +609,6 @@ mod tests {
 
     #[test]
     fn injected_close_script_in_user_strings_does_not_break_extraction() {
-        // The encoder escapes `<` to `<` inside JSON strings, so a
-        // backup_name containing `</script>` cannot prematurely close the
-        // wrapping tag. Round-trip verifies extraction still works.
         let original = sample();
         let attack = "oops </script><script>alert(1)</script>";
         let html = crate::html::render_share_card_html(
@@ -587,7 +618,6 @@ mod tests {
                 ..BackupMeta::default()
             },
         );
-        // Only one script open tag in the rendered HTML — the attack didn't escape.
         assert_eq!(html.matches("<script").count(), 1);
         let shares = extract_shares_strict(&html).unwrap();
         assert_eq!(shares.len(), 1);
@@ -608,16 +638,32 @@ mod tests {
 
     #[test]
     fn decode_share_json_directly() {
-        let json = r#"{"type":"chela.share.v1","card_code":"CHELA-A4F7-2-3-5-12","set_id":"A4F7","card_number":2,"threshold":3,"total":5,"word_count":12,"scheme":"bip39-wordlist","payload_kind":"bip39","words":["abandon","ability","able","about","above","absent","absorb","abstract","absurd","abuse","access","accident"]}"#;
-        let share = decode_share_json(json).unwrap();
-        assert_eq!(share, sample());
+        let s = sample();
+        let json = render_share_json(&s, &BackupMeta::default());
+        let share = decode_share_json(&json).unwrap();
+        assert_eq!(share, s);
+    }
+
+    #[test]
+    fn import_omits_total_and_kind_when_absent() {
+        // A words-only export carries neither total nor payload_kind; import leaves both None.
+        let mut s = sample();
+        s.total = None;
+        s.kind = None;
+        let json = render_share_json(&s, &BackupMeta::default());
+        assert!(!json.contains("\"total\""));
+        assert!(!json.contains("\"payload_kind\""));
+        let decoded = decode_share_json(&json).unwrap();
+        assert_eq!(decoded.total, None);
+        assert_eq!(decoded.kind, None);
+        assert_eq!(decoded, s);
     }
 
     #[test]
     fn extracted_shares_pass_through_recover_secret_end_to_end() {
         // Highest-confidence test: real split → render to paper HTML → import
         // every card via this module → recover the original secret.
-        use chela_engine::{recover_secret, split_secret, OutputMode, SplitInput};
+        use chela_engine::recover_secret;
 
         let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
         let passphrase = "test passphrase";
@@ -632,7 +678,6 @@ mod tests {
         )
         .unwrap();
 
-        // Render to the multi-page paper-backup HTML.
         let html = render_paper_html(
             &shares,
             &BackupMeta {
@@ -640,11 +685,9 @@ mod tests {
                 ..BackupMeta::default()
             },
         );
-        // Extract every share back from the HTML.
         let extracted = extract_shares_strict(&html).unwrap();
         assert_eq!(extracted.len(), 3);
 
-        // Recover using any threshold-sized subset of the extracted shares.
         let subset = alloc::vec![extracted[0].clone(), extracted[2].clone()];
         let recovered = recover_secret(&subset).unwrap();
         match &recovered {
