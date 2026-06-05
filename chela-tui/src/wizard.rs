@@ -846,29 +846,16 @@ pub(crate) fn run_recover() -> io::Result<()> {
             Some(first) => {
                 let need = usize::from(first.threshold);
                 let have = shares.len();
-                // The remaining-card list only makes sense when the total `N` is known;
-                // a words-only set carries no total, so allow any x in 1..=32.
-                let x_upper = first.total.unwrap_or(MAX_SHARES);
-                if let Some(total) = first.total {
-                    let remaining_display = (1..=total)
-                        .filter(|n| !shares.iter().any(|s| s.x == *n))
-                        .map(|n| n.to_string())
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    info(&format!(
-                        "Recovery set {:04X} · {have} of {need} cards entered — card numbers still available: {remaining_display}.",
-                        first.nonce & 0x7FF,
-                    ));
-                } else {
-                    info(&format!(
-                        "Recovery set {:04X} · {have} of {need} cards entered.",
-                        first.nonce & 0x7FF,
-                    ));
-                }
+                // v2 cards carry a random x in 1..=32 (not a sequential 1..N index), so we
+                // can't enumerate which card numbers remain — just show progress.
+                info(&format!(
+                    "Recovery set {:04X} · {have} of {need} required cards entered.",
+                    first.nonce & 0x7FF,
+                ));
                 let Some(x) = prompt_u8_in_range(
-                    &format!("Card # printed on the next card (1-{x_upper}): "),
+                    &format!("Card # printed on the next card (1-{MAX_SHARES}): "),
                     1,
-                    x_upper,
+                    MAX_SHARES,
                 )?
                 else {
                     break;
@@ -1290,9 +1277,7 @@ impl ParsedHeader {
             if n < threshold || n > MAX_SHARES {
                 return Err(FormatError::BadThresholdTotal);
             }
-            if x > n {
-                return Err(FormatError::BadShareIndex);
-            }
+            // `x` is a random coordinate in 1..=32, independent of `N`, so x may exceed N.
             Some(n)
         };
         let word_count: usize = parts[4].parse().map_err(|_| FormatError::BadWordCount)?;
@@ -1344,4 +1329,31 @@ fn collect_words_interactive(n: usize) -> io::Result<Option<Vec<String>>> {
         }
     }
     Ok(Some(words))
+}
+
+#[cfg(test)]
+mod parsed_header_tests {
+    use super::ParsedHeader;
+
+    #[test]
+    fn accepts_random_x_greater_than_total() {
+        // v2: x is a random coordinate in 1..=32, independent of N, so x may exceed N.
+        // A card with x=20 in a 3-share set is valid and must parse.
+        let h = ParsedHeader::from_str("CHELA-02C9-20-2-3-6").expect("x>N must parse in v2");
+        assert_eq!(h.x, 20);
+        assert_eq!(h.threshold, 2);
+        assert_eq!(h.total, Some(3));
+    }
+
+    #[test]
+    fn rejects_x_above_32() {
+        assert!(ParsedHeader::from_str("CHELA-02C9-33-2-3-6").is_err());
+    }
+
+    #[test]
+    fn accepts_unknown_total_words_only() {
+        let h = ParsedHeader::from_str("CHELA-02C9-20-2-?-6").unwrap();
+        assert_eq!(h.total, None);
+        assert_eq!(h.x, 20);
+    }
 }
