@@ -19,11 +19,11 @@ pub use export::{
 pub use import::{extract_shares_from_html, extract_shares_from_json, ImportError};
 
 use alloc::format;
-use alloc::string::String;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use core::fmt::Write as _;
 
-use chela_engine::{OutputMode, PayloadKind, Share};
+use chela_engine::{OutputMode, Share};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FormatError {
@@ -35,6 +35,11 @@ pub enum FormatError {
     UnknownWord,
     MissingWords,
     WordCountMismatch,
+    /// The words decoded cleanly but the advisory header disagrees on x/M/nonce —
+    /// a transcription error on the human-readable label.
+    HeaderWordsMismatch,
+    /// The words failed to decode (bad CRC, reserved bit set, too few words).
+    ShareCorrupt,
 }
 
 /// A folder-worth of paper-backup files. Pure strings — no filesystem access (this crate
@@ -97,9 +102,11 @@ fn render_readme(
     let Some(first) = shares.first() else {
         return String::new();
     };
-    let id = format!("{:02X}{:02X}", first.identifier[0], first.identifier[1]);
+    let id = format!("{:04X}", first.nonce & 0x7FF);
     let threshold = first.threshold;
-    let total = first.total;
+    let total = first
+        .total
+        .map_or_else(|| "?".into(), |n: u8| n.to_string());
 
     let title = match meta.backup_name {
         Some(name) if !name.trim().is_empty() => {
@@ -153,9 +160,13 @@ fn render_readme(
 /// Render a [`Share`] as the canonical two-line text format:
 ///
 /// ```text
-/// CHELA-<ID>-<x>-<M>-<N>-<W>
+/// CHELA-<NONCE>-<x>-<M>-<N>-<W>
 /// word1 word2 word3 ... wordW
 /// ```
+///
+/// `<NONCE>` is the 11-bit generation nonce in 4 hex digits (high bits zero). The
+/// header is advisory: the words alone carry x, M, and the nonce. `<N>` is `?` when
+/// the total is unknown (a words-only or single-share context).
 ///
 /// # Panics
 /// Panics only on a hand-constructed `Share` with a word index outside `0..2048`.
@@ -164,9 +175,14 @@ pub fn format_share(share: &Share) -> String {
     let _ = (share.scheme, share.kind);
 
     let word_count = share.word_indices.len();
+    let total = share.total.map_or_else(|| "?".into(), |n| n.to_string());
     let mut out = format!(
-        "CHELA-{:02X}{:02X}-{}-{}-{}-{}\n",
-        share.identifier[0], share.identifier[1], share.x, share.threshold, share.total, word_count,
+        "CHELA-{:04X}-{}-{}-{}-{}\n",
+        share.nonce & 0x7FF,
+        share.x,
+        share.threshold,
+        total,
+        word_count,
     );
     let mut first = true;
     for &idx in &share.word_indices {
@@ -181,63 +197,60 @@ pub fn format_share(share: &Share) -> String {
     out
 }
 
-/// Parse a single share from a header line and a words line. Header is case-insensitive;
-/// the header's word count must match the actual words on the second line.
+/// Parse a single share from a header line and a words line. The words are
+/// authoritative — they alone carry x, M, and the nonce. The header is advisory:
+/// it is cross-checked against the decoded words (a disagreement is a transcription
+/// error, [`FormatError::HeaderWordsMismatch`]) and supplies the total `N`.
+///
+/// Header is case-insensitive.
 pub fn parse_share(header: &str, words_line: &str) -> Result<Share, FormatError> {
-    let header_trim = header.trim();
-    let upper = uppercase_ascii(header_trim);
+    let mut share = parse_share_words(words_line)?;
+
+    let upper = uppercase_ascii(header.trim());
     let body = upper.strip_prefix("CHELA-").ok_or(FormatError::BadHeader)?;
     let parts: Vec<&str> = body.split('-').collect();
     if parts.len() != 5 {
         return Err(FormatError::BadHeader);
     }
-    let id_hex = parts[0];
-    // ASCII guard: `&id_hex[..2]` byte-indexes a &str and panics if not on a char
-    // boundary. Without is_ascii(), a 4-byte non-ASCII slice (e.g. "\u{FFFD}W")
-    // passes the length check and crashes the slicer — the fuzz harness originally
-    // tripped on this exact case.
-    if id_hex.len() != 4 || !id_hex.is_ascii() {
-        return Err(FormatError::BadIdentifier);
-    }
-    let id_hi = parse_hex_byte(&id_hex[..2]).ok_or(FormatError::BadIdentifier)?;
-    let id_lo = parse_hex_byte(&id_hex[2..]).ok_or(FormatError::BadIdentifier)?;
-    let x: u8 = parts[1].parse().map_err(|_| FormatError::BadShareIndex)?;
-    if x == 0 {
-        return Err(FormatError::BadShareIndex);
-    }
-    let threshold: u8 = parts[2]
+    let h_nonce = u16::from_str_radix(parts[0], 16).map_err(|_| FormatError::BadIdentifier)?;
+    let h_x: u8 = parts[1].parse().map_err(|_| FormatError::BadShareIndex)?;
+    let h_m: u8 = parts[2]
         .parse()
         .map_err(|_| FormatError::BadThresholdTotal)?;
-    let total: u8 = parts[3]
-        .parse()
-        .map_err(|_| FormatError::BadThresholdTotal)?;
-    if threshold < chela_engine::MIN_THRESHOLD || total < threshold {
-        return Err(FormatError::BadThresholdTotal);
+    if (h_nonce & 0x7FF) != share.nonce || h_x != share.x || h_m != share.threshold {
+        return Err(FormatError::HeaderWordsMismatch);
     }
-    if x > total {
-        return Err(FormatError::BadShareIndex);
+    // `N` is `?` for a words-only / single-share label; otherwise it's the total.
+    if parts[3] != "?" {
+        let h_n: u8 = parts[3]
+            .parse()
+            .map_err(|_| FormatError::BadThresholdTotal)?;
+        share.total = Some(h_n);
     }
-    let declared_words: usize = parts[4].parse().map_err(|_| FormatError::BadWordCount)?;
+    Ok(share)
+}
 
+/// Recover a share from its BIP-39 words alone — no header. This is the
+/// authoritative path for words-only backups: the words carry x, M, and the nonce,
+/// verified by the per-share CRC. `total` and `kind` stay `None` (a lone share's
+/// words reveal neither).
+pub fn parse_share_words(words_line: &str) -> Result<Share, FormatError> {
     let mut word_indices = Vec::new();
     for w in words_line.split_whitespace() {
-        let idx = chela_bip39::word_to_index(w).ok_or(FormatError::UnknownWord)?;
-        word_indices.push(idx);
+        word_indices.push(chela_bip39::word_to_index(w).ok_or(FormatError::UnknownWord)?);
     }
     if word_indices.is_empty() {
         return Err(FormatError::MissingWords);
     }
-    if word_indices.len() != declared_words {
-        return Err(FormatError::WordCountMismatch);
-    }
-
+    let d =
+        chela_engine::decode_share_words(&word_indices).map_err(|_| FormatError::ShareCorrupt)?;
     Ok(Share {
-        identifier: [id_hi, id_lo],
         scheme: OutputMode::Bip39Wordlist,
-        kind: PayloadKind::Bip39,
-        threshold,
-        total,
-        x,
+        x: d.x,
+        threshold: d.threshold,
+        nonce: d.nonce,
+        total: None,
+        kind: None,
         word_indices,
     })
 }
@@ -271,113 +284,188 @@ pub fn parse_shares(input: &str) -> Result<Vec<Share>, FormatError> {
     Ok(shares)
 }
 
-fn parse_hex_byte(s: &str) -> Option<u8> {
-    if s.len() != 2 {
-        return None;
-    }
-    u8::from_str_radix(s, 16).ok()
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{format_share, parse_share, parse_shares, FormatError};
-    use chela_engine::{OutputMode, PayloadKind, Share};
+    use super::{format_share, parse_share, parse_share_words, parse_shares, FormatError};
+    use alloc::string::String;
+    use chela_engine::{split_secret, OutputMode, Share, SplitInput};
 
-    fn sample_share() -> Share {
-        Share {
-            identifier: [0xa4, 0xf7],
-            scheme: OutputMode::Bip39Wordlist,
-            kind: PayloadKind::Bip39,
-            threshold: 3,
-            total: 5,
-            x: 2,
-            word_indices: alloc::vec![0u16, 1, 2, 3, 4, 2047],
-        }
+    /// A real 2-of-3 generation. The words carry x/M/nonce; fixtures are never hand-built.
+    fn fixture() -> alloc::vec::Vec<Share> {
+        split_secret(
+            &SplitInput::Text {
+                text: "correct horse battery staple",
+            },
+            2,
+            3,
+            OutputMode::Bip39Wordlist,
+        )
+        .unwrap()
+    }
+
+    /// The words line (no header) for a share.
+    fn words_line(s: &Share) -> String {
+        let txt = format_share(s);
+        txt.lines().nth(1).unwrap().into()
     }
 
     #[test]
     fn round_trip_format_then_parse() {
-        let s = sample_share();
-        let txt = format_share(&s);
+        let s = &fixture()[0];
+        let txt = format_share(s);
         let mut lines = txt.lines();
         let header = lines.next().unwrap();
         let words = lines.next().unwrap();
-        assert!(lines.next().is_none() || lines.next().unwrap().is_empty());
         let parsed = parse_share(header, words).unwrap();
-        assert_eq!(parsed, s);
+        // The advisory header carried the total; otherwise the share is reproduced.
+        assert_eq!(parsed.x, s.x);
+        assert_eq!(parsed.threshold, s.threshold);
+        assert_eq!(parsed.nonce, s.nonce);
+        assert_eq!(parsed.total, s.total);
+        assert_eq!(parsed.word_indices, s.word_indices);
     }
 
     #[test]
-    fn format_emits_expected_header() {
-        let s = sample_share();
-        let txt = format_share(&s);
-        assert!(txt.starts_with("CHELA-A4F7-2-3-5-6\n"));
-        assert!(txt.contains("abandon ability able about above zoo"));
+    fn format_emits_nonce_x_m_n_w_header() {
+        let s = &fixture()[0];
+        let header: String = format_share(s).lines().next().unwrap().into();
+        let expected: String = alloc::format!(
+            "CHELA-{:04X}-{}-{}-{}-{}",
+            s.nonce & 0x7FF,
+            s.x,
+            s.threshold,
+            s.total.unwrap(),
+            s.word_indices.len(),
+        );
+        assert_eq!(header, expected);
     }
 
     #[test]
-    fn parse_share_rejects_non_ascii_identifier_with_4_byte_len() {
-        // Fuzz crash 8c3bfb86: parts[0] = "\u{FFFD}W" has byte len 4 but isn't ASCII.
-        // Pre-fix, &id_hex[..2] panicked on the char-boundary check.
-        let header = "CHELA-\u{FFFD}W-1-2-3-1";
-        assert!(matches!(
-            parse_share(header, "abandon"),
-            Err(FormatError::BadIdentifier)
-        ));
+    fn format_uses_question_mark_for_unknown_total() {
+        let mut s = fixture().into_iter().next().unwrap();
+        s.total = None;
+        let header: String = format_share(&s).lines().next().unwrap().into();
+        let expected: String = alloc::format!(
+            "CHELA-{:04X}-{}-{}-?-{}",
+            s.nonce & 0x7FF,
+            s.x,
+            s.threshold,
+            s.word_indices.len(),
+        );
+        assert_eq!(header, expected);
     }
 
     #[test]
-    fn parse_header_is_case_insensitive_on_prefix_and_hex() {
-        let s = sample_share();
-        let words = "abandon ability able about above zoo";
-        let parsed = parse_share("chela-a4f7-2-3-5-6", words).unwrap();
-        assert_eq!(parsed, s);
-        let parsed = parse_share("Chela-A4f7-2-3-5-6", words).unwrap();
-        assert_eq!(parsed, s);
+    fn words_alone_recover_share_without_header() {
+        let s = &fixture()[0];
+        let parsed = parse_share_words(&words_line(s)).unwrap();
+        assert_eq!(parsed.x, s.x);
+        assert_eq!(parsed.threshold, s.threshold);
+        assert_eq!(parsed.nonce, s.nonce);
+        assert_eq!(parsed.total, None);
+        assert_eq!(parsed.kind, None);
+        assert_eq!(parsed.word_indices, s.word_indices);
+    }
+
+    #[test]
+    fn header_is_advisory_and_cross_checked() {
+        let s = &fixture()[0];
+        let words = words_line(s);
+        // A header that disagrees with the words on x is a transcription error.
+        let wrong_x = (s.x % 32) + 1;
+        let bad = alloc::format!(
+            "CHELA-{:04X}-{}-{}-{}-{}",
+            s.nonce & 0x7FF,
+            wrong_x,
+            s.threshold,
+            s.total.unwrap(),
+            s.word_indices.len(),
+        );
+        assert_eq!(
+            parse_share(&bad, &words).unwrap_err(),
+            FormatError::HeaderWordsMismatch,
+        );
+    }
+
+    #[test]
+    fn header_question_mark_total_leaves_total_unknown() {
+        let s = &fixture()[0];
+        let words = words_line(s);
+        let header = alloc::format!(
+            "CHELA-{:04X}-{}-{}-?-{}",
+            s.nonce & 0x7FF,
+            s.x,
+            s.threshold,
+            s.word_indices.len(),
+        );
+        let parsed = parse_share(&header, &words).unwrap();
+        assert_eq!(parsed.total, None);
+    }
+
+    #[test]
+    fn parse_header_is_case_insensitive() {
+        let s = &fixture()[0];
+        let header = format_share(s).lines().next().unwrap().to_lowercase();
+        let words = words_line(s);
+        let parsed = parse_share(&header, &words).unwrap();
+        assert_eq!(parsed.nonce, s.nonce);
+        assert_eq!(parsed.total, s.total);
     }
 
     #[test]
     fn parse_shares_handles_multiple_blocks() {
-        let s1 = sample_share();
-        let mut s2 = sample_share();
-        s2.x = 4;
-        let combined = format_share(&s1) + "\n" + &format_share(&s2);
+        let shares = fixture();
+        let combined = format_share(&shares[0]) + "\n" + &format_share(&shares[1]);
         let parsed = parse_shares(&combined).unwrap();
         assert_eq!(parsed.len(), 2);
-        assert_eq!(parsed[0].x, 2);
-        assert_eq!(parsed[1].x, 4);
+        assert_eq!(parsed[0].x, shares[0].x);
+        assert_eq!(parsed[1].x, shares[1].x);
+    }
+
+    #[test]
+    fn parse_share_rejects_non_ascii_header_without_panicking() {
+        // Fuzz crash 8c3bfb86: a 4-byte non-ASCII nonce field must not crash the parser.
+        let s = &fixture()[0];
+        let words = words_line(s);
+        let header = "CHELA-\u{FFFD}W-1-2-3-1";
+        assert!(parse_share(header, &words).is_err());
     }
 
     #[test]
     fn parse_share_rejects_bad_header() {
-        let err = parse_share("not-a-chela-header", "abandon").unwrap_err();
+        let s = &fixture()[0];
+        let err = parse_share("not-a-chela-header", &words_line(s)).unwrap_err();
         assert_eq!(err, FormatError::BadHeader);
     }
 
     #[test]
     fn parse_share_rejects_unknown_word() {
-        let err = parse_share("CHELA-A4F7-2-3-5-2", "abandon notarealwordatall").unwrap_err();
+        let err = parse_share_words("abandon notarealwordatall").unwrap_err();
         assert_eq!(err, FormatError::UnknownWord);
     }
 
     #[test]
-    fn parse_share_rejects_word_count_mismatch() {
-        let err =
-            parse_share("CHELA-A4F7-2-3-5-6", "abandon ability able about above").unwrap_err();
-        assert_eq!(err, FormatError::WordCountMismatch);
+    fn parse_share_words_rejects_empty() {
+        assert_eq!(
+            parse_share_words("   ").unwrap_err(),
+            FormatError::MissingWords
+        );
     }
 
     #[test]
-    fn parse_share_rejects_zero_share_index() {
-        let err =
-            parse_share("CHELA-A4F7-0-3-5-6", "abandon ability able about above zoo").unwrap_err();
-        assert_eq!(err, FormatError::BadShareIndex);
-    }
-
-    #[test]
-    fn parse_share_rejects_threshold_greater_than_total() {
-        let err =
-            parse_share("CHELA-A4F7-2-5-3-6", "abandon ability able about above zoo").unwrap_err();
-        assert_eq!(err, FormatError::BadThresholdTotal);
+    fn parse_share_words_rejects_corrupt_words() {
+        // Real words, single transcription flip → CRC rejects.
+        let s = &fixture()[0];
+        let mut idx = s.word_indices.clone();
+        idx[2] ^= 1;
+        let line = idx
+            .iter()
+            .map(|&i| chela_bip39::index_to_word(i).unwrap())
+            .collect::<alloc::vec::Vec<_>>()
+            .join(" ");
+        assert_eq!(
+            parse_share_words(&line).unwrap_err(),
+            FormatError::ShareCorrupt
+        );
     }
 }
