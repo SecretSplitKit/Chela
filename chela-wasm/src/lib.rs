@@ -45,7 +45,7 @@ use chela_engine::{
 };
 use chela_share::{
     extract_shares_from_html, extract_shares_from_json, format_share, parse_share,
-    render_paper_html, render_shares_json, BackupMeta, FormatError, ImportError,
+    parse_share_words, render_paper_html, render_shares_json, BackupMeta, FormatError, ImportError,
 };
 
 /// Pack a `(ptr, len)` pair into a single `u64` for the FFI return value. High 32 bits
@@ -118,9 +118,12 @@ pub unsafe extern "C" fn chela_dealloc(ptr: u32, len: u32) {
 /// documented in `request::SplitRequest`; output is a JSON object:
 ///
 /// ```json
-/// { "ok": true, "shares": [{ "x": 1, "threshold": 3, "total": 5, "identifier": "9DA3",
-///     "card_code": "CHELA-9DA3-1-3-5-25", "words": ["..."] }, ...] }
+/// { "ok": true, "shares": [{ "x": 1, "threshold": 3, "total": 5, "set_id": "5A3",
+///     "card_code": "CHELA-05A3-1-3-5-25", "words": ["..."] }, ...] }
 /// ```
+///
+/// `total` is present only when the split knows it; `set_id` is the 11-bit nonce in
+/// 4 hex digits.
 ///
 /// or on error:
 ///
@@ -174,13 +177,12 @@ pub(crate) fn do_split(input: &[u8]) -> Result<String, String> {
             out.push(',');
         }
         out.push('{');
-        let _ = write!(
-            out,
-            "\"x\":{},\"threshold\":{},\"total\":{}",
-            share.x, share.threshold, share.total
-        );
-        let id_hex = format!("{:02X}{:02X}", share.identifier[0], share.identifier[1]);
-        let _ = write!(out, ",\"identifier\":{}", json::str(&id_hex));
+        let _ = write!(out, "\"x\":{},\"threshold\":{}", share.x, share.threshold);
+        if let Some(n) = share.total {
+            let _ = write!(out, ",\"total\":{n}");
+        }
+        let set_id = format!("{:04X}", share.nonce & 0x7FF);
+        let _ = write!(out, ",\"set_id\":{}", json::str(&set_id));
         let card_text = format_share(share);
         let mut lines = card_text.lines();
         let header = lines.next().unwrap_or("");
@@ -232,8 +234,13 @@ pub(crate) fn do_recover(input: &[u8]) -> Result<String, String> {
     let req = request::RecoverRequest::decode(input).map_err(|e| format!("bad request: {e}"))?;
     let mut shares = Vec::with_capacity(req.shares.len());
     for (i, raw) in req.shares.iter().enumerate() {
-        let share = parse_share(&raw.header, &raw.words)
-            .map_err(|e| format!("share #{}: {}", i + 1, format_error_to_string(&e)))?;
+        // Words are authoritative; a blank header means a words-only recovery.
+        let share = if raw.header.trim().is_empty() {
+            parse_share_words(&raw.words)
+        } else {
+            parse_share(&raw.header, &raw.words)
+        }
+        .map_err(|e| format!("share #{}: {}", i + 1, format_error_to_string(&e)))?;
         shares.push(share);
     }
     let recovered = recover_secret(&shares).map_err(|e| engine_error_to_string(&e))?;
@@ -342,7 +349,7 @@ pub(crate) fn do_render_shares_json(input: &[u8]) -> Result<Vec<u8>, String> {
 ///   "ok": true,
 ///   "shares": [
 ///     {"ok": true, "x": 1, "threshold": 3, "total": 5,
-///      "identifier": "3058", "card_code": "CHELA-3058-1-3-5-40",
+///      "set_id": "058", "card_code": "CHELA-0058-1-3-5-40",
 ///      "words": ["security", "moment", ...]},
 ///     {"ok": false, "error": "embedded JSON did not parse: …"}
 ///   ]
@@ -404,13 +411,12 @@ pub(crate) fn do_extract_shares(input: &[u8]) -> Result<String, String> {
         match result {
             Ok(share) => {
                 out.push_str("{\"ok\":true");
-                let _ = write!(
-                    out,
-                    ",\"x\":{},\"threshold\":{},\"total\":{}",
-                    share.x, share.threshold, share.total,
-                );
-                let id_hex = format!("{:02X}{:02X}", share.identifier[0], share.identifier[1]);
-                let _ = write!(out, ",\"identifier\":{}", json::str(&id_hex));
+                let _ = write!(out, ",\"x\":{},\"threshold\":{}", share.x, share.threshold);
+                if let Some(n) = share.total {
+                    let _ = write!(out, ",\"total\":{n}");
+                }
+                let set_id = format!("{:04X}", share.nonce & 0x7FF);
+                let _ = write!(out, ",\"set_id\":{}", json::str(&set_id));
                 let card_text = format_share(share);
                 let mut lines = card_text.lines();
                 let header = lines.next().unwrap_or("");
@@ -506,6 +512,12 @@ fn format_error_to_string(e: &FormatError) -> String {
         FormatError::MissingWords => "share has no words on the second line".to_string(),
         FormatError::WordCountMismatch => {
             "number of words doesn't match the header's word count".to_string()
+        }
+        FormatError::HeaderWordsMismatch => {
+            "the CHELA-… label disagrees with the words — likely a mistyped header".to_string()
+        }
+        FormatError::ShareCorrupt => {
+            "share failed its per-card checksum — likely a typo in the words".to_string()
         }
     }
 }
@@ -627,6 +639,33 @@ mod tests {
 
         assert!(rec_json.contains("\"kind\":\"text\""));
         assert!(rec_json.contains("\"text\":\"correct horse battery staple\""));
+    }
+
+    #[test]
+    fn split_json_uses_set_id_and_keeps_total() {
+        let split_json = do_split(&build_split_text(2, 3, "alpha")).unwrap();
+        // v2: set_id is the 4-hex nonce; the old `identifier` key is gone.
+        assert!(split_json.contains("\"set_id\":\""), "got: {split_json}");
+        assert!(!split_json.contains("\"identifier\""));
+        // The split knows N, so `total` is present.
+        assert!(split_json.contains("\"total\":3"));
+        // set_id must match the nonce printed in the card header.
+        let cards = parse_split_cards(&split_json);
+        let set_id = cards[0].0.split('-').nth(1).unwrap();
+        assert!(split_json.contains(&format!("\"set_id\":\"{set_id}\"")));
+    }
+
+    #[test]
+    fn recover_from_words_only_no_header() {
+        // Empty header per card forces the words-only parse path.
+        let cards = parse_split_cards(&do_split(&build_split_text(2, 3, "words only")).unwrap());
+        let subset: Vec<(&str, &str)> = [&cards[0], &cards[1]]
+            .iter()
+            .map(|(_, w)| ("", w.as_str()))
+            .collect();
+        let rec_json = do_recover(&build_recover(&subset)).expect("recover ok");
+        assert!(rec_json.contains("\"kind\":\"text\""));
+        assert!(rec_json.contains("\"text\":\"words only\""));
     }
 
     #[test]
@@ -803,7 +842,12 @@ mod tests {
         let single = &bundle_text[start..end];
 
         let extracted = do_extract_shares(single.as_bytes()).expect("extract ok");
-        assert!(extracted.contains("\"x\":1"));
+        // v2 x is a random field element + 1, not sequential — assert it round-trips
+        // from the source object's card_number rather than hard-coding x == 1.
+        let cn_start = single.find("\"card_number\":").unwrap() + "\"card_number\":".len();
+        let cn_end = single[cn_start..].find(',').unwrap();
+        let card_number = &single[cn_start..cn_start + cn_end];
+        assert!(extracted.contains(&format!("\"x\":{card_number}")));
         let block_count = extracted.matches("\"x\":").count();
         assert_eq!(block_count, 1);
     }

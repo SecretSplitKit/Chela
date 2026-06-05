@@ -1383,7 +1383,7 @@ function runSplit() {
   }
 
   state.result = {
-    setId: resp.shares[0].identifier,
+    setId: resp.shares[0].set_id,
     total: resp.shares.length,
     threshold: resp.shares[0].threshold,
     paperHtml,
@@ -1463,13 +1463,13 @@ async function handleHtmlImport(ev) {
       // (and threshold/total) — otherwise recovery would mix unrelated splits.
       if (state.data.expected) {
         const e = state.data.expected;
-        if (block.identifier !== e.id || block.threshold !== e.threshold || block.total !== e.total) {
+        if (block.set_id !== e.id || block.threshold !== e.threshold || block.total !== e.total) {
           mismatched++;
           continue;
         }
       } else {
         state.data.expected = {
-          id: block.identifier,
+          id: block.set_id,
           threshold: block.threshold,
           total: block.total,
           wordCount: block.words.length,
