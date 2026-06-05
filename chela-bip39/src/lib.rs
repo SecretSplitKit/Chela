@@ -28,9 +28,7 @@ impl core::fmt::Display for Bip39Error {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::InvalidEntropyLength => f.write_str("entropy is not 16/20/24/28/32 bytes"),
-            Self::InvalidMnemonicLength => {
-                f.write_str("not a 12/15/18/21/24-word BIP-39 mnemonic")
-            }
+            Self::InvalidMnemonicLength => f.write_str("not a 12/15/18/21/24-word BIP-39 mnemonic"),
             Self::UnknownWord => {
                 f.write_str("a word is not in the BIP-39 word list (check spelling)")
             }

@@ -694,6 +694,9 @@ fn subcommand_help_flag_prints_usage() {
             String::from_utf8_lossy(&output.stderr),
         );
         let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(stdout.contains("USAGE:"), "{cmd} --help missing usage:\n{stdout}");
+        assert!(
+            stdout.contains("USAGE:"),
+            "{cmd} --help missing usage:\n{stdout}"
+        );
     }
 }
