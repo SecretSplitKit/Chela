@@ -220,7 +220,7 @@ fn write_paper_outputs(
 
     if let Some(path) = flags.paper_path {
         let html = render_paper_html(shares, &meta);
-        std::fs::write(path, html).map_err(|e| format!("writing {path}: {e}"))?;
+        write_private(path, html).map_err(|e| format!("writing {path}: {e}"))?;
         eprintln!("Wrote paper backup to {path}");
     }
 
@@ -232,7 +232,7 @@ fn write_paper_outputs(
 
     if let Some(path) = flags.json_path {
         let json = render_shares_json(shares, &meta);
-        std::fs::write(path, json).map_err(|e| format!("writing {path}: {e}"))?;
+        write_private(path, json).map_err(|e| format!("writing {path}: {e}"))?;
         eprintln!("Wrote JSON share bundle to {path}");
     }
 
@@ -253,11 +253,11 @@ fn write_paper_outputs(
 fn write_paper_folder(dir: &Path, folder: &PaperFolder) -> Result<(), String> {
     std::fs::create_dir_all(dir).map_err(|e| format!("creating {}: {e}", dir.display()))?;
     let readme_path = dir.join("README.txt");
-    std::fs::write(&readme_path, &folder.readme)
+    write_private(&readme_path, &folder.readme)
         .map_err(|e| format!("writing {}: {e}", readme_path.display()))?;
     for (filename, contents) in &folder.shares {
         let path = dir.join(filename);
-        std::fs::write(&path, contents).map_err(|e| format!("writing {}: {e}", path.display()))?;
+        write_private(&path, contents).map_err(|e| format!("writing {}: {e}", path.display()))?;
     }
     Ok(())
 }
@@ -267,13 +267,36 @@ fn write_paper_folder(dir: &Path, folder: &PaperFolder) -> Result<(), String> {
 fn write_json_folder(dir: &Path, folder: &JsonFolder) -> Result<(), String> {
     std::fs::create_dir_all(dir).map_err(|e| format!("creating {}: {e}", dir.display()))?;
     let bundle_path = dir.join(&folder.bundle.0);
-    std::fs::write(&bundle_path, &folder.bundle.1)
+    write_private(&bundle_path, &folder.bundle.1)
         .map_err(|e| format!("writing {}: {e}", bundle_path.display()))?;
     for (filename, contents) in &folder.shares {
         let path = dir.join(filename);
-        std::fs::write(&path, contents).map_err(|e| format!("writing {}: {e}", path.display()))?;
+        write_private(&path, contents).map_err(|e| format!("writing {}: {e}", path.display()))?;
     }
     Ok(())
+}
+
+/// Write `contents` to `path` with owner-only (0600) permissions on Unix, so share
+/// material doesn't land world-readable at the default umask. Other platforms use the
+/// filesystem default.
+fn write_private(path: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> std::io::Result<()> {
+    let path = path.as_ref();
+    #[cfg(unix)]
+    {
+        use std::io::Write as _;
+        use std::os::unix::fs::OpenOptionsExt as _;
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(path)?;
+        f.write_all(contents.as_ref())
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::write(path, contents.as_ref())
+    }
 }
 
 fn cmd_recover(file_paths: &[String]) -> Result<(), String> {
@@ -326,23 +349,26 @@ fn cmd_recover(file_paths: &[String]) -> Result<(), String> {
                 // from share bytes — attacker-influenceable if any cards were forged —
                 // so escape control sequences before display to prevent terminal-escape
                 // injection (OSC 52 clipboard write, window-title spoof, etc.).
-                let mnemonic_safe = sanitize_for_terminal(mnemonic);
-                let passphrase_safe = sanitize_for_terminal(passphrase);
+                let mnemonic_safe =
+                    chela_primitives::zeroize::Zeroizing::new(sanitize_for_terminal(mnemonic));
+                let passphrase_safe =
+                    chela_primitives::zeroize::Zeroizing::new(sanitize_for_terminal(passphrase));
                 writeln!(out, "kind: BIP-39 mnemonic").map_err(|e| e.to_string())?;
                 writeln!(out, "mnemonic:").map_err(|e| e.to_string())?;
-                writeln!(out, "{mnemonic_safe}").map_err(|e| e.to_string())?;
+                writeln!(out, "{}", *mnemonic_safe).map_err(|e| e.to_string())?;
                 if passphrase.is_empty() {
                     writeln!(out, "passphrase: (none)").map_err(|e| e.to_string())?;
                 } else {
                     writeln!(out, "passphrase:").map_err(|e| e.to_string())?;
-                    writeln!(out, "{passphrase_safe}").map_err(|e| e.to_string())?;
+                    writeln!(out, "{}", *passphrase_safe).map_err(|e| e.to_string())?;
                 }
             }
             RecoveredSecret::Text { text } => {
-                let text_safe = sanitize_for_terminal(text);
+                let text_safe =
+                    chela_primitives::zeroize::Zeroizing::new(sanitize_for_terminal(text));
                 writeln!(out, "kind: text").map_err(|e| e.to_string())?;
                 writeln!(out, "text:").map_err(|e| e.to_string())?;
-                writeln!(out, "{text_safe}").map_err(|e| e.to_string())?;
+                writeln!(out, "{}", *text_safe).map_err(|e| e.to_string())?;
             }
         }
         Ok(())

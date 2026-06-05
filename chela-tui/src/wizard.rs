@@ -384,8 +384,13 @@ pub(crate) fn run_split(kind: SplitKind) -> io::Result<()> {
             info("Backup save cancelled.");
             println!();
             // Shares are already generated/recorded — still show completion.
-            wait_for_exit_or_menu()?;
-            return Ok(());
+            return match wait_for_exit_or_menu()? {
+                AfterComplete::Menu => Ok(()),
+                AfterComplete::Exit => {
+                    drop(shares); // wipe share material (Share's Drop) before exiting
+                    std::process::exit(0);
+                }
+            };
         };
         let trimmed = raw_path.trim();
         if !trimmed.is_empty() {
@@ -428,8 +433,13 @@ pub(crate) fn run_split(kind: SplitKind) -> io::Result<()> {
         }
     }
 
-    wait_for_exit_or_menu()?;
-    Ok(())
+    match wait_for_exit_or_menu()? {
+        AfterComplete::Menu => Ok(()),
+        AfterComplete::Exit => {
+            drop(shares); // wipe share material (Share's Drop) before exiting
+            std::process::exit(0);
+        }
+    }
 }
 
 /// Bail out when `read_secret` reports no masked input is available; we never fall
@@ -443,9 +453,16 @@ fn refuse_unmasked_input() -> io::Result<()> {
     Ok(())
 }
 
-/// End-of-flow prompt: Enter returns to the menu, Esc exits chela. Direct process exit
-/// is safe here — no Drop-sensitive guards are held in the call stack at this point.
-fn wait_for_exit_or_menu() -> io::Result<()> {
+/// What [`wait_for_exit_or_menu`] decided: return to the menu, or exit chela.
+enum AfterComplete {
+    Menu,
+    Exit,
+}
+
+/// End-of-flow choice: Enter returns to the menu, Esc/Ctrl-C/EOF exits chela. Returns the
+/// choice rather than calling `process::exit` itself, so the caller can wipe secrets and
+/// drop terminal guards before the process ends (`process::exit` runs no destructors).
+fn wait_for_exit_or_menu() -> io::Result<AfterComplete> {
     println!();
     for line in COMPLETE_BANNER.lines() {
         println!("  {GREEN}{BOLD}{line}{RESET}");
@@ -459,19 +476,19 @@ fn wait_for_exit_or_menu() -> io::Result<()> {
     if let Some(_guard) = crate::term::raw_termios::enter_full_raw() {
         loop {
             match crate::screen::read_key()? {
-                crate::screen::Key::Enter => return Ok(()),
+                crate::screen::Key::Enter => return Ok(AfterComplete::Menu),
                 crate::screen::Key::Escape
                 | crate::screen::Key::CtrlC
                 | crate::screen::Key::Eof => {
                     println!();
-                    std::process::exit(0);
+                    return Ok(AfterComplete::Exit);
                 }
                 _ => {}
             }
         }
     } else {
         let _ = prompt("❯ ")?;
-        Ok(())
+        Ok(AfterComplete::Menu)
     }
 }
 
@@ -661,9 +678,9 @@ fn step_header(step: u32, total: Option<u32>, action: &str) {
 fn write_paper_folder(dir: &str, folder: &chela_share::PaperFolder) -> io::Result<()> {
     let path = std::path::Path::new(dir);
     std::fs::create_dir_all(path)?;
-    std::fs::write(path.join("README.txt"), &folder.readme)?;
+    write_private(path.join("README.txt"), &folder.readme)?;
     for (filename, contents) in &folder.shares {
-        std::fs::write(path.join(filename), contents)?;
+        write_private(path.join(filename), contents)?;
     }
     Ok(())
 }
@@ -671,9 +688,9 @@ fn write_paper_folder(dir: &str, folder: &chela_share::PaperFolder) -> io::Resul
 fn write_json_folder(dir: &str, folder: &chela_share::JsonFolder) -> io::Result<()> {
     let path = std::path::Path::new(dir);
     std::fs::create_dir_all(path)?;
-    std::fs::write(path.join(&folder.bundle.0), &folder.bundle.1)?;
+    write_private(path.join(&folder.bundle.0), &folder.bundle.1)?;
     for (filename, contents) in &folder.shares {
-        std::fs::write(path.join(filename), contents)?;
+        write_private(path.join(filename), contents)?;
     }
     Ok(())
 }
@@ -688,6 +705,29 @@ fn expand_home(p: &str) -> String {
         }
     }
     p.to_owned()
+}
+
+/// Write `contents` to `path` with owner-only (0600) permissions on Unix, so share
+/// material doesn't land world-readable at the default umask. Other platforms use the
+/// filesystem default.
+fn write_private(path: impl AsRef<std::path::Path>, contents: impl AsRef<[u8]>) -> io::Result<()> {
+    let path = path.as_ref();
+    #[cfg(unix)]
+    {
+        use std::io::Write as _;
+        use std::os::unix::fs::OpenOptionsExt as _;
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(path)?;
+        f.write_all(contents.as_ref())
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::write(path, contents.as_ref())
+    }
 }
 
 fn display_share(share: &Share) {
@@ -945,29 +985,31 @@ pub(crate) fn run_recover() -> io::Result<()> {
             // Mnemonic words come from the BIP-39 wordlist (ASCII-only by construction),
             // but the passphrase is arbitrary UTF-8 derived from attacker-influenceable
             // share bytes if any cards were forged — sanitize before display.
-            let mnemonic_safe = sanitize_for_terminal(mnemonic);
+            let mnemonic_safe =
+                chela_primitives::zeroize::Zeroizing::new(sanitize_for_terminal(mnemonic));
             println!("{BOLD}Kind:{RESET} BIP-39 mnemonic");
             println!("{BOLD}Mnemonic:{RESET}");
-            println!("  {GREEN}{mnemonic_safe}{RESET}");
+            println!("  {GREEN}{}{RESET}", *mnemonic_safe);
             println!();
             if passphrase.is_empty() {
                 println!("{BOLD}Passphrase:{RESET} (none)");
             } else {
-                let passphrase_safe = sanitize_for_terminal(passphrase);
+                let passphrase_safe =
+                    chela_primitives::zeroize::Zeroizing::new(sanitize_for_terminal(passphrase));
                 println!("{BOLD}Passphrase:{RESET}");
-                println!("  {GREEN}{passphrase_safe}{RESET}");
+                println!("  {GREEN}{}{RESET}", *passphrase_safe);
             }
         }
         RecoveredSecret::Text { text } => {
-            let text_safe = sanitize_for_terminal(text);
+            let text_safe = chela_primitives::zeroize::Zeroizing::new(sanitize_for_terminal(text));
             println!("{BOLD}Kind:{RESET} text");
             println!("{BOLD}Text:{RESET}");
-            println!("  {GREEN}{text_safe}{RESET}");
+            println!("  {GREEN}{}{RESET}", *text_safe);
         }
     }
     println!();
     info("Use the values above to recover access to the wallet or account.");
-    wait_for_exit_or_menu()?;
+    let choice = wait_for_exit_or_menu()?;
     wipe_recovered(&mut recovered);
 
     // Drop the alt-screen guard first — that swaps back to the normal terminal
@@ -976,6 +1018,11 @@ pub(crate) fn run_recover() -> io::Result<()> {
     drop(alt_screen);
     if !in_alt_screen {
         crate::term::clear_with_scrollback();
+    }
+    // Exit only after the secret is wiped and the terminal is restored above
+    // (process::exit runs no destructors).
+    if matches!(choice, AfterComplete::Exit) {
+        std::process::exit(0);
     }
     Ok(())
 }
@@ -1220,6 +1267,9 @@ impl ParsedHeader {
             .map_err(|_| FormatError::BadThresholdTotal)?;
         if threshold == 0 || total < threshold {
             return Err(FormatError::BadThresholdTotal);
+        }
+        if x > total {
+            return Err(FormatError::BadShareIndex);
         }
         let word_count: usize = parts[4].parse().map_err(|_| FormatError::BadWordCount)?;
         if word_count == 0 {

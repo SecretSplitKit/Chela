@@ -479,7 +479,9 @@ pub(crate) fn read_secret(p: &str) -> io::Result<Result<SecretString, SecretRead
 
     let stdin = io::stdin();
     let mut handle = stdin.lock();
-    let mut buf: Vec<u8> = Vec::with_capacity(64);
+    // Pre-size to the 255-byte secret ceiling so the buffer never reallocates mid-entry;
+    // a reallocation would orphan an un-wiped copy of the partial secret in freed heap.
+    let mut buf: Vec<u8> = Vec::with_capacity(256);
     let mut byte = [0u8; 1];
     let mut masked = true;
     // Count of non-continuation bytes drawn on screen, for Tab-toggle erase math.
