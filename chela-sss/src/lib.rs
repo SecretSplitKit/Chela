@@ -38,12 +38,10 @@ impl RandomSource for OsRng {
 
 /// Split `secret` into `total` shares with reconstruction threshold `threshold`.
 ///
-/// `out_x` (len `total`) receives x-coordinates `1..=total`. `out_shares` (outer len
-/// `total`, inner len `secret.len()`) receives the share byte strings.
-///
-/// # Panics
-/// Cannot panic in practice: the `total <= 255` and `threshold <= total` checks above
-/// rule out the `u8::try_from` and slice-index expects that follow.
+/// `out_x` (len `total`) is an input: the caller's chosen x-coordinates, which must be
+/// non-zero and distinct (x = 0 is the secret; Lagrange needs distinct points).
+/// `out_shares` (outer len `total`, inner len `secret.len()`) receives the share byte
+/// strings.
 pub fn split(
     secret: &[u8],
     threshold: u8,
@@ -67,8 +65,12 @@ pub fn split(
         }
     }
 
-    for (i, x_slot) in out_x.iter_mut().enumerate() {
-        *x_slot = u8::try_from(i + 1).expect("total <= 255 (u8::MAX)");
+    // Caller supplies the x-coordinates in `out_x`; they MUST be non-zero and distinct
+    // (x = 0 is the secret; Lagrange needs distinct points).
+    for (i, &xi) in out_x.iter().enumerate() {
+        if xi == 0 || out_x[i + 1..].contains(&xi) {
+            return Err(SssError::DuplicateXCoordinate);
+        }
     }
 
     let mut coeffs = [Gf256::ZERO; MAX_THRESHOLD as usize];
@@ -210,7 +212,7 @@ mod tests {
         total: u8,
         rng: &mut dyn RandomSource,
     ) -> Result<(Vec<u8>, Vec<Vec<u8>>), SssError> {
-        let mut xs = vec![0u8; total as usize];
+        let mut xs: Vec<u8> = (1..=total).collect();
         let mut shares: Vec<Vec<u8>> = vec![vec![0u8; secret.len()]; total as usize];
         {
             let mut share_refs: Vec<&mut [u8]> = shares.iter_mut().map(Vec::as_mut_slice).collect();
@@ -329,6 +331,42 @@ mod tests {
         let mut refs: Vec<&mut [u8]> = data.iter_mut().map(<[u8; 4]>::as_mut_slice).collect();
         let err = split(b"data", 5, 2, &mut rng, &mut xs, &mut refs).unwrap_err();
         assert_eq!(err, SssError::InvalidThreshold);
+    }
+
+    #[test]
+    fn split_uses_caller_supplied_x() {
+        let mut rng = DeterministicRng::new(&[0x5a; 64]);
+        let mut xs = [7u8, 3u8, 200u8]; // caller-chosen, distinct, non-sequential
+        let mut data = [[0u8; 4]; 3];
+        let mut refs: Vec<&mut [u8]> = data.iter_mut().map(<[u8; 4]>::as_mut_slice).collect();
+        split(b"data", 2, 3, &mut rng, &mut xs, &mut refs).unwrap();
+        assert_eq!(xs, [7, 3, 200], "split must not overwrite caller x-coordinates");
+
+        let recovered =
+            do_combine(&[xs[0], xs[1]], &[data[0].to_vec(), data[1].to_vec()], 4).unwrap();
+        assert_eq!(recovered.as_slice(), b"data");
+    }
+
+    #[test]
+    fn split_rejects_zero_or_duplicate_caller_x() {
+        let mut rng = DeterministicRng::new(&[0x5a; 64]);
+        let mut data = [[0u8; 4]; 2];
+        {
+            let mut xs = [0u8, 1u8];
+            let mut refs: Vec<&mut [u8]> = data.iter_mut().map(<[u8; 4]>::as_mut_slice).collect();
+            assert_eq!(
+                split(b"data", 2, 2, &mut rng, &mut xs, &mut refs).unwrap_err(),
+                SssError::DuplicateXCoordinate
+            );
+        }
+        {
+            let mut xs = [5u8, 5u8];
+            let mut refs: Vec<&mut [u8]> = data.iter_mut().map(<[u8; 4]>::as_mut_slice).collect();
+            assert_eq!(
+                split(b"data", 2, 2, &mut rng, &mut xs, &mut refs).unwrap_err(),
+                SssError::DuplicateXCoordinate
+            );
+        }
     }
 
     #[test]
