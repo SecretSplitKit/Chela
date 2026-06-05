@@ -11,7 +11,7 @@ file is for an agent that can run shell commands.
 ## Repo orientation
 
 ```
-chela-primitives/   SHA-256, ct_eq, volatile zeroize, OS RNG
+chela-primitives/   SHA-256 (BIP-39 checksum only), CRC-11, ct_eq, volatile zeroize, OS RNG
 chela-field/        constant-time GF(2^8)
 chela-sss/          Shamir split / combine
 chela-bip39/        BIP-0039 codec + English wordlist

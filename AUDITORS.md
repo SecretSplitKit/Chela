@@ -15,7 +15,10 @@ chela defends against:
 - **A single transcription error** in a recovered card — per-share checksums
   catch this before Lagrange is invoked.
 - **Cross-split share contamination** — shares from two unrelated splits never
-  silently combine.
+  silently combine. Each split carries a random generation nonce (§ 9); a
+  mismatch is `MismatchedShares`. Because the nonce is drawn per generation, even
+  two splits of the *same* secret carry different nonces and are correctly
+  refused (SPEC.md § 3.2).
 
 chela does **not** defend against:
 
@@ -39,7 +42,10 @@ choice that isn't obvious from the spec.
 
 ### 1. `chela-primitives/src/sha256.rs` — SHA-256
 
-Implements FIPS 180-4 § 6.2.
+Implements FIPS 180-4 § 6.2. **Scope:** consumed only by `chela-bip39` to
+validate a mnemonic's built-in checksum (§ 7). It is *not* used by the
+split/recover engine — there is no SHA identifier and no SHA per-share checksum
+(the per-share checksum is CRC-11, § 4a). SPEC.md § 1.3.
 
 - The 8 initial hash values, the 64 round constants, the message schedule, and
   the compression function should all match the FIPS document verbatim.
@@ -84,6 +90,16 @@ host import `chela.random_bytes(ptr, len) -> i32` that the embedder wires to
 grep -rn 'thread_rng\|rand::\|OsRng::default' chela-*/src
 ```
 Must be empty.
+
+### 4a. `chela-primitives/src/crc.rs` — CRC-11/UMTS
+
+The per-share transcription checksum (the last word of every share). Poly
+`0x307` (`x¹¹+x⁹+x⁸+x²+x+1`, implicit `x¹¹`), `init 0`, non-reflected
+(`refin/refout = false`), `xorout 0` — textbook GF(2) long division, auditable by
+hand and reproducible by any standard CRC tool. KAT: `crc11_umts("123456789") ==
+0x061` (reveng catalogue check value). An 11-bit register detects every
+transcription error that flips a single word (one word = a burst of ≤ 11 bits).
+SPEC.md § 1.2 / § 8.2.
 
 ### 5. `chela-field/src/gf256.rs` — constant-time GF(2^8)
 
@@ -130,30 +146,35 @@ diff \
   <(awk -F'"' '/^    "/ {print $2}' chela-bip39/src/wordlist.rs)
 ```
 
-### 9. `chela-engine/src/lib.rs` — bundle codec, identifier, per-share checksum
+### 9. `chela-engine/src/lib.rs` — body codec, generation nonce, per-share checksum
 
-The orchestration layer. Five things matter here:
+The orchestration layer. There is **no SHA-256 anywhere in this file** — neither
+an identifier nor a per-share checksum. Five things matter here:
 
-1. **What SSS splits is just the body.** No magic byte, no in-bundle version,
-   no in-bundle kind tag, no in-bundle checksum. For BIP-39: raw entropy
-   followed by optional passphrase bytes. For text: raw UTF-8.
-2. **The 16-bit identifier is `SHA-256(body || kind_byte)[..2]`.** `kind_byte`
-   is a 1-byte tag (payload type × entropy length × passphrase presence) mixed
-   into the hash but never written into the body. At recover time the engine
-   enumerates the ≤11 candidate `kind_byte` values that fit the observed body
-   length, recomputes the identifier, and picks the match. False-positive rate
-   ≈ 11/65 536.
-3. **The 16-bit per-share checksum is `SHA-256(share || identifier || x)[..2]`.**
-   Without it, a single transcription error propagates through Lagrange into a
-   wrong but identifier-validating secret. Binding to `identifier` and `x`
-   also catches a card swapped between positions of the same split, or between
-   two splits.
-4. **Word-count ambiguity.** Several byte counts pack into the same 11-bit
-   word count (e.g. 36 and 37 bytes both pack into 27 words). Recovery
-   enumerates the candidate byte counts and picks the one whose per-share
-   checksum verifies for every share.
-5. **Allocation lives here, not in `chela-sss`.** The engine builds the
-   `Vec<&mut [u8]>` of slice refs that `chela-sss::split` needs.
+1. **What SSS splits is `body = payload ‖ [kind_byte]`.** The kind tag is
+   *appended to the body and split with it*, so a single share's words reveal
+   nothing about the payload type. No magic byte, no in-bundle version, no
+   in-bundle checksum. For BIP-39 the payload is raw entropy followed by optional
+   passphrase bytes; for text, raw UTF-8.
+2. **Recovery reads the kind from the recovered body's last byte.** After
+   combine reconstructs `body`, `kind = body[len-1]` and `payload = body[..len-1]`
+   (no enumeration, no hashing). The kind is decoded via the table and rejected
+   (`BundleCorrupt`) unless the payload length fits. SPEC.md § 2.3.
+3. **The generation nonce is an 11-bit CSPRNG value (`sample_nonce`).** Drawn
+   once per split and written identically into every share of that generation
+   (word 1). It binds one *generation*, not the secret — re-splitting the same
+   secret draws an independent nonce, so shares from two runs carry different
+   nonces and recovery refuses them (`MismatchedShares`). This replaces the old
+   SHA identifier; there is no hash of the secret anywhere.
+4. **The per-share checksum is CRC-11/UMTS (§ 4a), not a hash.** Computed over
+   `[x, M] ‖ nonce_be ‖ Y_bytes` (poly `0x307`). It is the last word of the
+   share and catches a single transcription error before Lagrange is invoked.
+5. **Candidate-length disambiguation is resolved by CRC.** Several body lengths
+   pack into the same Y-word count; `decode_share_bip39_v2` tries each candidate
+   length from longest to shortest and keeps the one whose CRC-11 matches the
+   stored checksum word. SPEC.md § 4.3. (Allocation also lives here, not in
+   `chela-sss` — the engine builds the `Vec<&mut [u8]>` of slice refs that
+   `chela-sss::split` needs.)
 
 ### 10. `chela-share/` — share text format + JSON + paper-backup HTML
 
@@ -167,7 +188,7 @@ embedded CSS. The user prints to PDF from the browser. A PDF library would
 have pulled in dependencies; static HTML survives offline indefinitely.
 
 The JSON share schema (`chela.share.v1` / `chela.shares.v1`) is documented in
-`SPEC.md` § 5.2.
+`SPEC.md` § 6.2.
 
 ### 11. `chela-wasm/src/lib.rs` — browser FFI
 
@@ -189,7 +210,7 @@ optimiser may elide it.
 |-------------------------------------------|------------------------------------------------------------------------------------------|
 | `chela-sss::split`                        | RNG scratch, polynomial coefficients (`wipe_coeffs`)                                     |
 | `chela-engine::split_with_rng`            | body (joined secret), per-share `sb` after consumption, BIP-39 `indices`, `entropy` Vec — pre-sized to defeat `extend_from_slice` realloc orphaning |
-| `chela-engine::{encode,decode}_share_bip39` | SHA-256 digest scratch, decoded share `buf`                                            |
+| `chela-engine::{encode_share_bip39_v2, decode_share_bip39_v2}` | CRC input (holds the Y bytes), wrapped in `Zeroizing`; decoded share `body` buffer  |
 | `chela-engine::recover_secret`            | body (recovered secret), all share payload `Vec`s                                        |
 | `chela-engine::interpret_body`            | re-encoded mnemonic `indices`                                                            |
 | `chela-tui::wizard`                       | input mnemonic (via `SecretString`), recovered secret on reveal-decline and post-display |

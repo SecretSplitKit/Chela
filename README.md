@@ -11,10 +11,11 @@ any `M` of which can reconstruct the original. Designed for inheritance and disa
 recovery — distribute shares across family members; recover the wallet (or a
 password-manager master password) when any threshold of shareholders cooperate.
 
-The cryptographic core has no external dependencies beyond the OS RNG: SHA-256,
-constant-time GF(2^8), Shamir's split/combine, and BIP-39 are implemented in this
-repository so every line can be audited in-tree. See [AUDITORS.md](./AUDITORS.md)
-for provenance and a guided walk-through.
+The cryptographic core has no external dependencies beyond the OS RNG:
+constant-time GF(2^8), Shamir's split/combine, CRC-11, BIP-39, and SHA-256
+(BIP-39 mnemonic checksum only) are implemented in this repository so every line
+can be audited in-tree. See [AUDITORS.md](./AUDITORS.md) for provenance and a
+guided walk-through.
 
 ## Recovering shares — for family members
 
@@ -110,21 +111,28 @@ The standalone bundle is one self-contained HTML file. Open it in any modern bro
 Each share is two lines:
 
 ```
-CHELA-<ID>-<x>-<M>-<N>-<W>
+CHELA-<NONCE>-<x>-<M>-<N>-<W>
 word1 word2 ... wordW
 ```
 
-- `<ID>` — 4-hex-char set tag; recovery uses it to detect cards from different splits.
-- `<x>` — this share's number (1..N).
+- `<NONCE>` — 4-hex random generation nonce, identical on every card of one
+  split. It groups cards from the same generation; re-splitting the same secret
+  draws a fresh nonce.
+- `<x>` — this card's coordinate, a random distinct value in 1..32 (not
+  sequential, never leaks `N` or position).
 - `<M>` / `<N>` — recovery threshold and total share count.
 - `<W>` — word count on line 2 (printed for hand-typing).
 - words — drawn from the BIP-39 English wordlist; count depends on payload size.
+
+The header line is **advisory**. A share recovers from its transcribed BIP-39
+words alone — `x`, `M`, and the nonce all live in the words; no label and no JSON
+are required.
 
 Full wire-format spec for a re-implementation in another language:
 [SPEC.md](./SPEC.md). To recover from cards if chela itself is unavailable:
 [MANUAL_RECOVERY.md](./MANUAL_RECOVERY.md).
 
-A single share alone reveals nothing about the secret.
+A single share alone reveals nothing about the secret — not even its payload type.
 
 ## Verifying a release
 
