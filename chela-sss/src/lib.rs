@@ -340,7 +340,11 @@ mod tests {
         let mut data = [[0u8; 4]; 3];
         let mut refs: Vec<&mut [u8]> = data.iter_mut().map(<[u8; 4]>::as_mut_slice).collect();
         split(b"data", 2, 3, &mut rng, &mut xs, &mut refs).unwrap();
-        assert_eq!(xs, [7, 3, 200], "split must not overwrite caller x-coordinates");
+        assert_eq!(
+            xs,
+            [7, 3, 200],
+            "split must not overwrite caller x-coordinates"
+        );
 
         let recovered =
             do_combine(&[xs[0], xs[1]], &[data[0].to_vec(), data[1].to_vec()], 4).unwrap();
