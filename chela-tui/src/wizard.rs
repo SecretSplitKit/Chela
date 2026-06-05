@@ -6,7 +6,10 @@
 use std::fmt::Write as _;
 use std::io;
 
-use chela_engine::{recover_secret, split_secret, OutputMode, RecoveredSecret, Share, SplitInput};
+use chela_engine::{
+    recover_secret, split_secret, OutputMode, RecoveredSecret, Share, SplitInput, MAX_SHARES,
+    MIN_THRESHOLD,
+};
 use chela_share::{
     extract_shares_from_html, extract_shares_from_json, parse_share, parse_shares, FormatError,
 };
@@ -17,9 +20,8 @@ use crate::term::{
     SecretReadCancel, SecretString, BOLD, BRIGHT_CYAN, CYAN, DIM, GREEN, RED, RESET, REVERSE,
 };
 
-// Max = GF(2^8) non-zero x-coordinate count. Min = 2 (1-of-N is just N copies of the secret).
-const MAX_THRESHOLD: u8 = 255;
-const MIN_THRESHOLD: u8 = 2;
+// v2 caps the set at 32 shares (5-bit x field). Min = 2; 1-of-N is just N copies of the secret.
+const MAX_THRESHOLD: u8 = MAX_SHARES;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum SplitKind {
@@ -372,10 +374,7 @@ pub(crate) fn run_split(kind: SplitKind) -> io::Result<()> {
     let want_html = matches!(save_choice, 0 | 1);
     let want_json = matches!(save_choice, 0 | 2);
     if want_html || want_json {
-        let id_hex = format!(
-            "{:02X}{:02X}",
-            shares[0].identifier[0], shares[0].identifier[1]
-        );
+        let id_hex = format!("{:04X}", shares[0].nonce & 0x7FF);
         let default_dir = format!("~/chela-backup-{id_hex}");
         println!();
         println!("Where to save the folder?");
@@ -733,8 +732,12 @@ fn write_private(path: impl AsRef<std::path::Path>, contents: impl AsRef<[u8]>) 
 fn display_share(share: &Share) {
     let word_count = share.word_indices.len();
     let header = format!(
-        "CHELA-{:02X}{:02X}-{}-{}-{}-{}",
-        share.identifier[0], share.identifier[1], share.x, share.threshold, share.total, word_count,
+        "CHELA-{:04X}-{}-{}-{}-{}",
+        share.nonce & 0x7FF,
+        share.x,
+        share.threshold,
+        share.total.unwrap_or(0),
+        word_count,
     );
     // Top rail IS the parseable header: what's shown = what gets typed back at recovery.
     let pad = 67usize.saturating_sub(header.len() + 4);
@@ -806,7 +809,7 @@ pub(crate) fn run_recover() -> io::Result<()> {
         info("Enter each card by typing its card code, then its words one at a time.");
         println!();
         println!("The card code is the dashed line near the top of each card (e.g.");
-        println!("CHELA-9DA3-1-3-5-34) — it identifies the recovery set, which card this is,");
+        println!("CHELA-05DA-1-3-5-34) — it identifies the recovery set, which card this is,");
         println!("how many are needed, and how many words to expect. The wizard will then");
         println!("prompt for each word in turn.");
         println!();
@@ -833,7 +836,7 @@ pub(crate) fn run_recover() -> io::Result<()> {
                     Ok(m) => (header_line, m),
                     Err(e) => {
                         error(&format!(
-                            "Card code didn't parse: {}. Expected CHELA-9DA3-1-3-5-34 — recovery set, card #, required, total, word count.",
+                            "Card code didn't parse: {}. Expected CHELA-05DA-1-3-5-34 — recovery set, card #, required, total, word count.",
                             describe_format_error(&e),
                         ));
                         continue;
@@ -843,30 +846,43 @@ pub(crate) fn run_recover() -> io::Result<()> {
             Some(first) => {
                 let need = usize::from(first.threshold);
                 let have = shares.len();
-                let remaining_numbers: Vec<u8> = (1..=first.total)
-                    .filter(|n| !shares.iter().any(|s| s.x == *n))
-                    .collect();
-                let remaining_display = remaining_numbers
-                    .iter()
-                    .map(u8::to_string)
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                info(&format!(
-                    "Recovery set {:02X}{:02X} · {have} of {need} cards entered — card numbers still available: {remaining_display}.",
-                    first.id[0], first.id[1],
-                ));
+                // The remaining-card list only makes sense when the total `N` is known;
+                // a words-only set carries no total, so allow any x in 1..=32.
+                let x_upper = first.total.unwrap_or(MAX_SHARES);
+                if let Some(total) = first.total {
+                    let remaining_display = (1..=total)
+                        .filter(|n| !shares.iter().any(|s| s.x == *n))
+                        .map(|n| n.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    info(&format!(
+                        "Recovery set {:04X} · {have} of {need} cards entered — card numbers still available: {remaining_display}.",
+                        first.nonce & 0x7FF,
+                    ));
+                } else {
+                    info(&format!(
+                        "Recovery set {:04X} · {have} of {need} cards entered.",
+                        first.nonce & 0x7FF,
+                    ));
+                }
                 let Some(x) = prompt_u8_in_range(
-                    &format!("Card # printed on the next card (1-{}): ", first.total),
+                    &format!("Card # printed on the next card (1-{x_upper}): "),
                     1,
-                    first.total,
+                    x_upper,
                 )?
                 else {
                     break;
                 };
-                // parse_share re-validates the (header, words) pair end-to-end.
+                // parse_share re-validates the (header, words) pair end-to-end. `N` is
+                // `?` when the set's total is unknown (words-only).
+                let total = first.total.map_or_else(|| "?".into(), |n| n.to_string());
                 let header_line = format!(
-                    "CHELA-{:02X}{:02X}-{}-{}-{}-{}",
-                    first.id[0], first.id[1], x, first.threshold, first.total, first.word_count,
+                    "CHELA-{:04X}-{}-{}-{}-{}",
+                    first.nonce & 0x7FF,
+                    x,
+                    first.threshold,
+                    total,
+                    first.word_count,
                 );
                 (header_line, ParsedHeader { x, ..first })
             }
@@ -881,9 +897,13 @@ pub(crate) fn run_recover() -> io::Result<()> {
         }
 
         println!();
+        let of_total = meta.total.map_or_else(String::new, |n| format!(" of {n}"));
         info(&format!(
-            "Recovery set {:02X}{:02X} · card {} of {} · {} required to recover · {} words.",
-            meta.id[0], meta.id[1], meta.x, meta.total, meta.threshold, meta.word_count,
+            "Recovery set {:04X} · card {}{of_total} · {} required to recover · {} words.",
+            meta.nonce & 0x7FF,
+            meta.x,
+            meta.threshold,
+            meta.word_count,
         ));
         println!();
 
@@ -1032,7 +1052,7 @@ pub(crate) fn run_recover() -> io::Result<()> {
 /// asks for the remaining card numbers.
 fn parsed_header_from_share(share: &Share) -> ParsedHeader {
     ParsedHeader {
-        id: share.identifier,
+        nonce: share.nonce,
         x: share.x,
         threshold: share.threshold,
         total: share.total,
@@ -1101,24 +1121,19 @@ fn import_html_phase() -> io::Result<Option<Vec<Share>>> {
         }
 
         // Sanity: every share in the batch (and across files) must agree on the
-        // recovery set / scheme / kind / threshold / total. Catch mismatched
-        // sets BEFORE recovery so the user gets a clear file-level error.
+        // recovery set and threshold. `kind`/`total` are advisory `Option`s a
+        // words-only share may omit, so they aren't part of the set identity.
         for s in &from_file {
             let bad = if let Some(first) = expected_first_share.as_ref() {
-                first.identifier != s.identifier
-                    || first.scheme != s.scheme
-                    || first.kind != s.kind
-                    || first.threshold != s.threshold
-                    || first.total != s.total
+                first.nonce != s.nonce || first.scheme != s.scheme || first.threshold != s.threshold
             } else {
                 false
             };
             if bad {
                 error(&format!(
-                    "{path}: share belongs to a different recovery set (set {:02X}{:02X} vs the {:02X}{:02X} we're recovering). Skipped this file.",
-                    s.identifier[0], s.identifier[1],
-                    expected_first_share.as_ref().unwrap().identifier[0],
-                    expected_first_share.as_ref().unwrap().identifier[1],
+                    "{path}: share belongs to a different recovery set (set {:04X} vs the {:04X} we're recovering). Skipped this file.",
+                    s.nonce & 0x7FF,
+                    expected_first_share.as_ref().unwrap().nonce & 0x7FF,
                 ));
                 // Skip the whole file — don't partially import a mismatched set.
                 continue;
@@ -1133,9 +1148,12 @@ fn import_html_phase() -> io::Result<Option<Vec<Share>>> {
             if expected_first_share.is_none() {
                 expected_first_share = Some(s.clone());
             }
+            let of_total = s.total.map_or_else(String::new, |n| format!(" of {n}"));
             success(&format!(
-                "Imported card #{} from set {:02X}{:02X} ({} of {} required).",
-                s.x, s.identifier[0], s.identifier[1], s.threshold, s.total,
+                "Imported card #{}{of_total} from set {:04X} ({} required).",
+                s.x,
+                s.nonce & 0x7FF,
+                s.threshold,
             ));
             shares.push(s.clone());
         }
@@ -1151,8 +1169,8 @@ fn import_html_phase() -> io::Result<Option<Vec<Share>>> {
             } else {
                 println!();
                 info(&format!(
-                    "Have {have} of {need} cards from set {:02X}{:02X}. Add another file, or press Enter to switch to typing the rest by hand.",
-                    first.identifier[0], first.identifier[1],
+                    "Have {have} of {need} cards from set {:04X}. Add another file, or press Enter to switch to typing the rest by hand.",
+                    first.nonce & 0x7FF,
                 ));
             }
         }
@@ -1206,8 +1224,8 @@ fn wipe_recovered(r: &mut RecoveredSecret) {
 
 fn describe_format_error(e: &FormatError) -> &'static str {
     match e {
-        FormatError::BadHeader => "card code should look like CHELA-9DA3-1-3-5-34",
-        FormatError::BadIdentifier => "recovery set must be four hex digits (e.g. 9DA3)",
+        FormatError::BadHeader => "card code should look like CHELA-05DA-1-3-5-34",
+        FormatError::BadIdentifier => "recovery set must be four hex digits (e.g. 05DA)",
         FormatError::BadThresholdTotal => {
             "required and total must be small whole numbers, and required cannot exceed total"
         }
@@ -1218,6 +1236,10 @@ fn describe_format_error(e: &FormatError) -> &'static str {
         FormatError::WordCountMismatch => {
             "number of words doesn't match the word count in the card code"
         }
+        FormatError::HeaderWordsMismatch => {
+            "the card code doesn't match the words — check for a transcription error"
+        }
+        FormatError::ShareCorrupt => "the words failed their checksum — re-check each one",
     }
 }
 
@@ -1225,10 +1247,10 @@ fn describe_format_error(e: &FormatError) -> &'static str {
 /// prompting for its words.
 #[derive(Debug, Clone, Copy)]
 struct ParsedHeader {
-    id: [u8; 2],
+    nonce: u16,
     x: u8,
     threshold: u8,
-    total: u8,
+    total: Option<u8>,
     word_count: usize,
 }
 
@@ -1244,39 +1266,41 @@ impl ParsedHeader {
         if parts.len() != 5 {
             return Err(FormatError::BadHeader);
         }
-        // ASCII guard: byte-indexing `&parts[0][..2]` panics on a non-char-boundary
-        // slice. A 4-byte non-ASCII identifier (e.g. `\u{FFFD}W`) satisfies the length
-        // check and crashes the slicer. Mirrors the chela-share `parse_share` fix
-        // (fuzz crash 8c3bfb86).
-        if parts[0].len() != 4 || !parts[0].is_ascii() {
-            return Err(FormatError::BadIdentifier);
-        }
-        let id_hi =
-            u8::from_str_radix(&parts[0][..2], 16).map_err(|_| FormatError::BadIdentifier)?;
-        let id_lo =
-            u8::from_str_radix(&parts[0][2..], 16).map_err(|_| FormatError::BadIdentifier)?;
+        // The nonce is 4 hex digits (11-bit value, high bits zero). `from_str_radix`
+        // rejects non-ASCII before any byte-indexing, so no char-boundary panic.
+        let nonce = u16::from_str_radix(parts[0], 16).map_err(|_| FormatError::BadIdentifier)?;
         let x: u8 = parts[1].parse().map_err(|_| FormatError::BadShareIndex)?;
-        if x == 0 {
+        if x == 0 || x > MAX_SHARES {
             return Err(FormatError::BadShareIndex);
         }
         let threshold: u8 = parts[2]
             .parse()
             .map_err(|_| FormatError::BadThresholdTotal)?;
-        let total: u8 = parts[3]
-            .parse()
-            .map_err(|_| FormatError::BadThresholdTotal)?;
-        if threshold < MIN_THRESHOLD || total < threshold {
+        if !(MIN_THRESHOLD..=MAX_SHARES).contains(&threshold) {
             return Err(FormatError::BadThresholdTotal);
         }
-        if x > total {
-            return Err(FormatError::BadShareIndex);
-        }
+        // `N` is advisory and may be `?` (words-only / single-share). When present it
+        // must be a real total: >= threshold and within the 32-share cap.
+        let total: Option<u8> = if parts[3] == "?" {
+            None
+        } else {
+            let n: u8 = parts[3]
+                .parse()
+                .map_err(|_| FormatError::BadThresholdTotal)?;
+            if n < threshold || n > MAX_SHARES {
+                return Err(FormatError::BadThresholdTotal);
+            }
+            if x > n {
+                return Err(FormatError::BadShareIndex);
+            }
+            Some(n)
+        };
         let word_count: usize = parts[4].parse().map_err(|_| FormatError::BadWordCount)?;
         if word_count == 0 {
             return Err(FormatError::BadWordCount);
         }
         Ok(Self {
-            id: [id_hi, id_lo],
+            nonce,
             x,
             threshold,
             total,
