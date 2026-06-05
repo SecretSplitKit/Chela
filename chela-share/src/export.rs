@@ -280,7 +280,13 @@ mod tests {
 
     #[test]
     fn render_shares_json_round_trips_to_shares() {
-        let shares: Vec<Share> = (1u8..=5u8).map(|x| Share { x, ..sample() }).collect();
+        let shares: Vec<Share> = (1u8..=5u8)
+            .map(|x| {
+                let mut s = sample();
+                s.x = x;
+                s
+            })
+            .collect();
         let json = render_shares_json(&shares, &BackupMeta::default());
         assert!(json.contains(r#""type":"chela.shares.v1""#));
         let extracted = extract_shares_from_json(&json).unwrap();
@@ -292,7 +298,13 @@ mod tests {
 
     #[test]
     fn render_json_folder_writes_per_share_files_plus_bundle() {
-        let shares: Vec<Share> = (1u8..=3u8).map(|x| Share { x, ..sample() }).collect();
+        let shares: Vec<Share> = (1u8..=3u8)
+            .map(|x| {
+                let mut s = sample();
+                s.x = x;
+                s
+            })
+            .collect();
         let folder = render_json_folder(&shares, &BackupMeta::default());
 
         assert_eq!(folder.shares.len(), 3);
@@ -319,7 +331,13 @@ mod tests {
             description: Some("multi\nline"),
             shareholder_names: Some(&names),
         };
-        let shares: Vec<Share> = (1u8..=3u8).map(|x| Share { x, ..sample() }).collect();
+        let shares: Vec<Share> = (1u8..=3u8)
+            .map(|x| {
+                let mut s = sample();
+                s.x = x;
+                s
+            })
+            .collect();
         let json = render_shares_json(&shares, &meta);
         assert!(json.contains(r#""backup_name":"Test wallet""#));
         assert!(json.contains(r#""description":"multi\nline""#));
@@ -353,7 +371,13 @@ mod tests {
 
     #[test]
     fn render_combined_folder_emits_both_formats() {
-        let shares: Vec<Share> = (1u8..=3u8).map(|x| Share { x, ..sample() }).collect();
+        let shares: Vec<Share> = (1u8..=3u8)
+            .map(|x| {
+                let mut s = sample();
+                s.x = x;
+                s
+            })
+            .collect();
         let combined = render_combined_folder(&shares, &BackupMeta::default());
 
         // Per-share files, both formats.

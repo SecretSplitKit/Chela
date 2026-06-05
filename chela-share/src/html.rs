@@ -728,7 +728,11 @@ mod tests {
         ];
         let folder = crate::render_paper_folder(
             &(1u8..=5u8)
-                .map(|x| Share { x, ..sample() })
+                .map(|x| {
+                    let mut s = sample();
+                    s.x = x;
+                    s
+                })
                 .collect::<alloc::vec::Vec<_>>(),
             &BackupMeta {
                 shareholder_names: Some(&names),
@@ -759,7 +763,11 @@ mod tests {
         let names = ["Alice".to_owned()];
         let folder = crate::render_paper_folder(
             &(1u8..=5u8)
-                .map(|x| Share { x, ..sample() })
+                .map(|x| {
+                    let mut s = sample();
+                    s.x = x;
+                    s
+                })
                 .collect::<alloc::vec::Vec<_>>(),
             &BackupMeta {
                 shareholder_names: Some(&names),

@@ -237,20 +237,21 @@ pub(crate) fn do_recover(input: &[u8]) -> Result<String, String> {
         shares.push(share);
     }
     let recovered = recover_secret(&shares).map_err(|e| engine_error_to_string(&e))?;
-    let json = match recovered {
+    let json = match &recovered {
         RecoveredSecret::Bip39 {
             mnemonic,
             passphrase,
         } => format!(
             "{{\"ok\":true,\"kind\":\"bip39\",\"mnemonic\":{},\"passphrase\":{}}}",
-            json::str(&mnemonic),
-            json::str(&passphrase),
+            json::str(mnemonic),
+            json::str(passphrase),
         ),
         RecoveredSecret::Text { text } => format!(
             "{{\"ok\":true,\"kind\":\"text\",\"text\":{}}}",
-            json::str(&text),
+            json::str(text),
         ),
     };
+    // `recovered` wipes its plaintext fields here on drop (RecoveredSecret's Drop impl).
     Ok(json)
 }
 

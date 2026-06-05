@@ -374,7 +374,13 @@ mod tests {
 
     #[test]
     fn finds_n_blocks_in_multi_card_html() {
-        let shares: Vec<Share> = (1u8..=4u8).map(|x| Share { x, ..sample() }).collect();
+        let shares: Vec<Share> = (1u8..=4u8)
+            .map(|x| {
+                let mut s = sample();
+                s.x = x;
+                s
+            })
+            .collect();
         let html = render_paper_html(&shares, &BackupMeta::default());
         let blocks = find_chela_share_blocks(&html);
         assert_eq!(blocks.len(), 4);
@@ -391,7 +397,13 @@ mod tests {
 
     #[test]
     fn round_trip_paper_folder_extracts_every_share() {
-        let shares: Vec<Share> = (1u8..=5u8).map(|x| Share { x, ..sample() }).collect();
+        let shares: Vec<Share> = (1u8..=5u8)
+            .map(|x| {
+                let mut s = sample();
+                s.x = x;
+                s
+            })
+            .collect();
         let folder = render_paper_folder(&shares, &BackupMeta::default());
         // Each share-N.html in the folder has exactly one block.
         for (i, (_filename, html)) in folder.shares.iter().enumerate() {
@@ -635,7 +647,7 @@ mod tests {
         // Recover using any threshold-sized subset of the extracted shares.
         let subset = alloc::vec![extracted[0].clone(), extracted[2].clone()];
         let recovered = recover_secret(&subset).unwrap();
-        match recovered {
+        match &recovered {
             chela_engine::RecoveredSecret::Bip39 {
                 mnemonic: m,
                 passphrase: p,

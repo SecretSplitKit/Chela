@@ -188,6 +188,13 @@ pub struct Share {
     pub word_indices: Vec<u16>,
 }
 
+impl Drop for Share {
+    fn drop(&mut self) {
+        // `word_indices` is share material: a threshold of shares reconstructs the secret.
+        chela_primitives::zeroize::Zeroize::zeroize(&mut self.word_indices);
+    }
+}
+
 /// What `split` was given as input.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SplitInput<'a> {
@@ -212,6 +219,22 @@ pub enum RecoveredSecret {
     },
 }
 
+impl Drop for RecoveredSecret {
+    fn drop(&mut self) {
+        use chela_primitives::zeroize::Zeroize as _;
+        match self {
+            RecoveredSecret::Bip39 {
+                mnemonic,
+                passphrase,
+            } => {
+                mnemonic.zeroize();
+                passphrase.zeroize();
+            }
+            RecoveredSecret::Text { text } => text.zeroize(),
+        }
+    }
+}
+
 /// Build the body bytes SSS will split, plus the `kind_byte` (folded into the identifier
 /// hash, never in the body itself).
 fn build_bundle(input: &SplitInput<'_>) -> Result<(Vec<u8>, u8), EngineError> {
@@ -220,20 +243,23 @@ fn build_bundle(input: &SplitInput<'_>) -> Result<(Vec<u8>, u8), EngineError> {
             mnemonic,
             passphrase,
         } => {
-            let mut indices: Vec<u16> = mnemonic
-                .split_whitespace()
-                .map(|w| chela_bip39::word_to_index(w).ok_or(EngineError::UnknownWord))
-                .collect::<Result<_, _>>()?;
+            // `indices` and `entropy` are secret-derived. Wrap them in `Zeroizing` so they
+            // wipe on every exit — including the `?` early returns below, which a mistyped
+            // word of a real seed (bad BIP-39 checksum) reaches.
+            let indices = chela_primitives::zeroize::Zeroizing::new(
+                mnemonic
+                    .split_whitespace()
+                    .map(|w| chela_bip39::word_to_index(w).ok_or(EngineError::UnknownWord))
+                    .collect::<Result<Vec<u16>, _>>()?,
+            );
             let entropy_bytes = chela_bip39::entropy_bytes_for_words(indices.len()).ok_or(
                 EngineError::InvalidInput("not a 12/15/18/21/24-word mnemonic"),
             )?;
             let word_count = indices.len();
-            let mut entropy = vec![0u8; entropy_bytes];
-            chela_bip39::decode_indices_to_entropy(&indices, &mut entropy)?;
-            chela_primitives::zeroize::Zeroize::zeroize(&mut indices);
+            let mut entropy = chela_primitives::zeroize::Zeroizing::new(vec![0u8; entropy_bytes]);
+            chela_bip39::decode_indices_to_entropy(&indices[..], &mut entropy[..])?;
 
             if passphrase.len() > MAX_PASSPHRASE_LEN {
-                chela_primitives::zeroize::volatile_set(&mut entropy);
                 return Err(EngineError::InvalidInput("passphrase exceeds 255 bytes"));
             }
 
@@ -241,21 +267,16 @@ fn build_bundle(input: &SplitInput<'_>) -> Result<(Vec<u8>, u8), EngineError> {
             let kind_byte = encode_bip39_kind_byte(word_count, has_passphrase)
                 .expect("word_count validated by entropy_bytes_for_words above");
 
-            // Pre-size `body` to its final length so `extend_from_slice` cannot trigger
-            // a Vec reallocation. The naïve `body = entropy; body.extend_from_slice(...)`
-            // pattern reallocates because `vec![0u8; N]` produces capacity == length,
-            // and the orphaned (entropy-holding) heap buffer is freed without being
-            // wiped — that's the zeroize gap this branch avoids.
+            // Pre-size `body` to its final length so `extend_from_slice` cannot trigger a
+            // Vec reallocation that would orphan an un-wiped, entropy-holding buffer.
             let passphrase_bytes = if has_passphrase {
                 passphrase.as_bytes()
             } else {
                 &[][..]
             };
             let mut body: Vec<u8> = Vec::with_capacity(entropy_bytes + passphrase_bytes.len());
-            body.extend_from_slice(&entropy);
+            body.extend_from_slice(&entropy[..]);
             body.extend_from_slice(passphrase_bytes);
-            chela_primitives::zeroize::volatile_set(&mut entropy);
-            drop(entropy);
             Ok((body, kind_byte))
         }
         SplitInput::Text { text } => {
@@ -466,19 +487,29 @@ pub fn split_with_rng(
     rng: &mut dyn RandomSource,
 ) -> Result<Vec<Share>, EngineError> {
     let (body, kind_byte) = build_bundle(input)?;
+    // `body` is the full plaintext secret; `Zeroizing` wipes it on every exit, including
+    // the BundleTooLarge and split-error early returns below.
+    let body = chela_primitives::zeroize::Zeroizing::new(body);
     if body.len() > MAX_PASSPHRASE_LEN + 32 {
         // 32 entropy + 255 passphrase is the largest legitimate body.
         return Err(EngineError::BundleTooLarge);
     }
 
-    let id = compute_identifier(&body, kind_byte);
+    let id = compute_identifier(&body[..], kind_byte);
 
     let mut xs = vec![0u8; total as usize];
     let mut share_bytes: Vec<Vec<u8>> = vec![vec![0u8; body.len()]; total as usize];
-    {
+    let split_result = {
         let mut share_refs: Vec<&mut [u8]> =
             share_bytes.iter_mut().map(Vec::as_mut_slice).collect();
-        split(&body, threshold, total, rng, &mut xs, &mut share_refs)?;
+        split(&body[..], threshold, total, rng, &mut xs, &mut share_refs)
+    };
+    if let Err(e) = split_result {
+        // share_bytes holds partial share material after a mid-split RNG failure; wipe it.
+        for sb in &mut share_bytes {
+            chela_primitives::zeroize::Zeroize::zeroize(sb);
+        }
+        return Err(e.into());
     }
 
     let coarse_kind = match input {
@@ -503,9 +534,6 @@ pub fn split_with_rng(
             word_indices,
         });
     }
-
-    let mut body_wipe = body;
-    chela_primitives::zeroize::volatile_set(&mut body_wipe);
 
     Ok(out)
 }
@@ -569,6 +597,14 @@ pub fn recover_secret(shares: &[Share]) -> Result<RecoveredSecret, EngineError> 
     }
     let (payload_len, mut payloads) = chosen.ok_or(EngineError::ShareCorrupt)?;
     let xs: Vec<u8> = shares.iter().map(|s| s.x).collect();
+
+    // Defense in depth: reject duplicate or zero x before combine. `combine` enforces this
+    // too, but the engine owns the Share structs and shouldn't depend on the inner layer.
+    for (i, &xi) in xs.iter().enumerate() {
+        if xi == 0 || xs[i + 1..].contains(&xi) {
+            return Err(EngineError::Sss(chela_sss::SssError::DuplicateXCoordinate));
+        }
+    }
 
     let mut body = vec![0u8; payload_len];
     {
@@ -642,7 +678,7 @@ mod tests {
         }
 
         let recovered = recover_secret(&shares[..3]).unwrap();
-        match recovered {
+        match &recovered {
             RecoveredSecret::Bip39 {
                 mnemonic: m,
                 passphrase,
@@ -656,7 +692,7 @@ mod tests {
         // Different subset (0, 2, 4) must also recover.
         let subset = alloc::vec![shares[0].clone(), shares[2].clone(), shares[4].clone()];
         let recovered = recover_secret(&subset).unwrap();
-        match recovered {
+        match &recovered {
             RecoveredSecret::Bip39 { mnemonic: m, .. } => assert_eq!(m, mnemonic),
             RecoveredSecret::Text { .. } => panic!("expected Bip39 recovery"),
         }
@@ -677,7 +713,7 @@ mod tests {
         )
         .unwrap();
         let recovered = recover_secret(&shares[..2]).unwrap();
-        match recovered {
+        match &recovered {
             RecoveredSecret::Bip39 {
                 mnemonic: m,
                 passphrase: p,
@@ -695,7 +731,7 @@ mod tests {
         let shares =
             split_secret(&SplitInput::Text { text }, 3, 5, OutputMode::Bip39Wordlist).unwrap();
         let recovered = recover_secret(&shares[..3]).unwrap();
-        match recovered {
+        match &recovered {
             RecoveredSecret::Text { text: t } => assert_eq!(t, text),
             RecoveredSecret::Bip39 { .. } => panic!("expected Text recovery"),
         }
@@ -815,8 +851,8 @@ mod tests {
             .unwrap_or_else(|e| panic!("split failed at len {text_len}: {e:?}"));
             let recovered = recover_secret(&shares[..2])
                 .unwrap_or_else(|e| panic!("recover failed at len {text_len}: {e:?}"));
-            match recovered {
-                RecoveredSecret::Text { text: t } => assert_eq!(t, text, "len {text_len}"),
+            match &recovered {
+                RecoveredSecret::Text { text: t } => assert_eq!(t, &text, "len {text_len}"),
                 RecoveredSecret::Bip39 { .. } => panic!("expected Text recovery at len {text_len}"),
             }
         }
