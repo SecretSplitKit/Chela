@@ -102,10 +102,10 @@ fn parse_split_args(args: Vec<String>) -> Result<SplitArgs, String> {
             "--json-dir" => a.json_dir = Some(needs_value(it.next(), "--json-dir")?),
             "--name" => a.backup_name = Some(needs_value(it.next(), "--name")?),
             "--description" => {
-                a.description_override = Some(needs_value(it.next(), "--description")?)
+                a.description_override = Some(needs_value(it.next(), "--description")?);
             }
             "--shareholders" => {
-                a.shareholders_csv = Some(needs_value(it.next(), "--shareholders")?)
+                a.shareholders_csv = Some(needs_value(it.next(), "--shareholders")?);
             }
             "-m" | "--threshold" => a.threshold = Some(parse_count(it.next(), &arg)?),
             "-n" | "--total" => a.total = Some(parse_count(it.next(), &arg)?),
