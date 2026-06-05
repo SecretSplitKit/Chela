@@ -3,6 +3,7 @@
 #![no_std]
 #![deny(unsafe_code)]
 
+pub mod crc;
 pub mod ct;
 pub mod rng;
 pub mod sha256;
