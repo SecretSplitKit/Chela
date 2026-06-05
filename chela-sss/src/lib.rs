@@ -23,6 +23,21 @@ pub enum SssError {
     RngFailed,
 }
 
+impl core::fmt::Display for SssError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::InvalidThreshold => f.write_str("threshold (-m) cannot exceed total (-n)"),
+            Self::InvalidShareCount => f.write_str("total (-n) must be at least 1"),
+            Self::DuplicateXCoordinate => {
+                f.write_str("the same share was supplied twice; provide distinct shares")
+            }
+            Self::InsufficientShares => f.write_str("not enough shares to recover"),
+            Self::InconsistentLength => f.write_str("shares have inconsistent lengths"),
+            Self::RngFailed => f.write_str("the system random number generator failed"),
+        }
+    }
+}
+
 /// Source of cryptographically-secure random bytes used by [`split`].
 pub trait RandomSource {
     fn fill_random(&mut self, buf: &mut [u8]) -> Result<(), SssError>;

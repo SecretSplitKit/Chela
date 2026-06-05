@@ -179,6 +179,33 @@ pub enum EngineError {
     Utf8,
 }
 
+impl core::fmt::Display for EngineError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::InvalidInput(msg) => f.write_str(msg),
+            Self::Sss(e) => e.fmt(f),
+            Self::Bip39(e) => e.fmt(f),
+            Self::BundleTooLarge => f.write_str("the secret is too large to split"),
+            Self::BundleCorrupt => f.write_str(
+                "the recovered secret is invalid — this is usually the wrong set of shares",
+            ),
+            Self::MismatchedShares => f.write_str(
+                "these shares are not from the same split (different nonce or threshold) — do not mix shares from two separate splits",
+            ),
+            Self::ShareCorrupt => f.write_str(
+                "a share failed its built-in checksum: one of its words was mistyped, or the share has the wrong number of words",
+            ),
+            Self::UnknownWord => {
+                f.write_str("a share contains a word that is not in the BIP-39 word list (check spelling)")
+            }
+            Self::InsufficientShares => {
+                f.write_str("not enough shares to recover: you provided fewer than the threshold this secret needs")
+            }
+            Self::Utf8 => f.write_str("the recovered secret is not valid UTF-8 text"),
+        }
+    }
+}
+
 impl From<SssError> for EngineError {
     fn from(e: SssError) -> Self {
         Self::Sss(e)

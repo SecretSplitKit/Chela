@@ -180,8 +180,8 @@ fn sub_threshold_recovery_fails_cleanly() {
     );
     let msg = format!("{stdout}{stderr}");
     assert!(
-        msg.contains("InsufficientShares"),
-        "expected InsufficientShares in error output:\n{msg}",
+        msg.contains("not enough shares to recover"),
+        "expected insufficient-shares error in output:\n{msg}",
     );
 }
 
@@ -200,8 +200,10 @@ fn mixed_shares_from_different_splits_rejected() {
     assert!(!status.success(), "expected non-zero exit");
     let msg = format!("{stdout}{stderr}");
     assert!(
-        msg.contains("BundleCorrupt") || msg.contains("MismatchedShares") || msg.contains("parse:"),
-        "expected BundleCorrupt / MismatchedShares / parse error, got:\n{msg}",
+        msg.contains("not from the same split")
+            || msg.contains("the wrong set of shares")
+            || msg.contains("parse:"),
+        "expected mismatched-shares / wrong-set / parse error, got:\n{msg}",
     );
 }
 
@@ -646,4 +648,52 @@ fn invalid_mnemonic_word_rejected_at_split_time() {
         !output.status.success(),
         "expected non-zero exit on invalid mnemonic"
     );
+}
+
+#[test]
+fn shareholder_count_mismatch_emits_no_share_material() {
+    // Metadata is validated before any secret is generated: a bad --shareholders count
+    // must fail with no share words on stdout, so a scripted caller can't scrape cards
+    // from a command that exited non-zero.
+    let output = Command::new(CHELA_CLI)
+        .args([
+            "split",
+            "--mnemonic",
+            ABANDON_24,
+            "-m",
+            "2",
+            "-n",
+            "3",
+            "--shareholders",
+            "Alice,Bob",
+        ])
+        .output()
+        .expect("spawn chela-cli");
+    assert!(!output.status.success(), "expected non-zero exit");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.trim().is_empty() && !stdout.contains("CHELA-"),
+        "no share cards must be written before the validation error:\n{stdout}",
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("counts must match"), "stderr: {stderr}");
+}
+
+#[test]
+fn subcommand_help_flag_prints_usage() {
+    // `split --help` and `recover --help` must print usage and exit 0 — not error on an
+    // unknown flag, and (recover) not treat --help as a filename to read.
+    for cmd in ["split", "recover"] {
+        let output = Command::new(CHELA_CLI)
+            .args([cmd, "--help"])
+            .output()
+            .expect("spawn chela-cli");
+        assert!(
+            output.status.success(),
+            "{cmd} --help exited non-zero: {}",
+            String::from_utf8_lossy(&output.stderr),
+        );
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("USAGE:"), "{cmd} --help missing usage:\n{stdout}");
+    }
 }

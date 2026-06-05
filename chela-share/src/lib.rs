@@ -42,6 +42,33 @@ pub enum FormatError {
     ShareCorrupt,
 }
 
+impl core::fmt::Display for FormatError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::BadHeader => f.write_str("a CHELA header line is malformed"),
+            Self::BadIdentifier => f.write_str("the CHELA header's set id is not 4 hex characters"),
+            Self::BadThresholdTotal => {
+                f.write_str("the CHELA header's threshold/total fields are malformed")
+            }
+            Self::BadShareIndex => f.write_str("the CHELA header's card number is malformed"),
+            Self::BadWordCount => f.write_str("the CHELA header's word count is malformed"),
+            Self::UnknownWord => {
+                f.write_str("a share contains a word that is not in the BIP-39 word list (check spelling)")
+            }
+            Self::MissingWords => f.write_str("a share has no words"),
+            Self::WordCountMismatch => {
+                f.write_str("a share's word count doesn't match its CHELA header")
+            }
+            Self::HeaderWordsMismatch => f.write_str(
+                "a share's CHELA header disagrees with its words (a label was mistranscribed)",
+            ),
+            Self::ShareCorrupt => f.write_str(
+                "a share failed its built-in checksum: one of its words was mistyped, or the share has the wrong number of words",
+            ),
+        }
+    }
+}
+
 /// A folder-worth of paper-backup files. Pure strings — no filesystem access (this crate
 /// is `#![no_std]`); the binaries write each `(filename, contents)` pair to disk.
 #[derive(Debug, Clone, PartialEq, Eq)]

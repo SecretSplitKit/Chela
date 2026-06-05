@@ -49,7 +49,7 @@ fn print_usage() {
     println!("  {exe} split    --text \"<utf-8 text up to 255 bytes>\" -m <threshold> -n <total> [paper flags]");
     println!("  {exe} recover                                  # reads share text from stdin");
     println!(
-        "  {exe} recover  share-1.html share-2.html ...   # imports from chela paper-backup HTML"
+        "  {exe} recover  backup-dir/share-*.html         # imports from chela paper-backup HTML"
     );
     println!();
     println!("OUTPUT FLAGS (any combination; can be used together):");
@@ -71,54 +71,71 @@ fn print_usage() {
     println!("                            now identifies the whole shareholder set.");
 }
 
-fn cmd_split(args: Vec<String>) -> Result<(), String> {
-    let mut mnemonic: Option<String> = None;
-    let mut passphrase: String = String::new();
-    let mut text: Option<String> = None;
-    let mut threshold: Option<u8> = None;
-    let mut total: Option<u8> = None;
-    let mut paper_path: Option<String> = None;
-    let mut paper_dir: Option<String> = None;
-    let mut json_path: Option<String> = None;
-    let mut json_dir: Option<String> = None;
-    let mut backup_name: Option<String> = None;
-    let mut description_override: Option<String> = None;
-    let mut shareholders_csv: Option<String> = None;
+/// Raw, unvalidated `split` flags as parsed from argv.
+#[derive(Default)]
+struct SplitArgs {
+    mnemonic: Option<String>,
+    passphrase: String,
+    text: Option<String>,
+    threshold: Option<u8>,
+    total: Option<u8>,
+    paper_path: Option<String>,
+    paper_dir: Option<String>,
+    json_path: Option<String>,
+    json_dir: Option<String>,
+    backup_name: Option<String>,
+    description_override: Option<String>,
+    shareholders_csv: Option<String>,
+}
 
+fn parse_split_args(args: Vec<String>) -> Result<SplitArgs, String> {
+    let mut a = SplitArgs::default();
     let mut it = args.into_iter();
     while let Some(arg) = it.next() {
         match arg.as_str() {
-            "--mnemonic" => mnemonic = Some(needs_value(it.next(), "--mnemonic")?),
-            "--passphrase" => passphrase = needs_value(it.next(), "--passphrase")?,
-            "--text" => text = Some(needs_value(it.next(), "--text")?),
-            "--paper" => paper_path = Some(needs_value(it.next(), "--paper")?),
-            "--paper-dir" => paper_dir = Some(needs_value(it.next(), "--paper-dir")?),
-            "--json" => json_path = Some(needs_value(it.next(), "--json")?),
-            "--json-dir" => json_dir = Some(needs_value(it.next(), "--json-dir")?),
-            "--name" => backup_name = Some(needs_value(it.next(), "--name")?),
-            "--description" => {
-                description_override = Some(needs_value(it.next(), "--description")?);
-            }
-            "--shareholders" => {
-                shareholders_csv = Some(needs_value(it.next(), "--shareholders")?);
-            }
-            "-m" | "--threshold" => {
-                threshold = Some(
-                    needs_value(it.next(), arg.as_str())?
-                        .parse()
-                        .map_err(|_| format!("{arg} must be a small positive integer"))?,
-                );
-            }
-            "-n" | "--total" => {
-                total = Some(
-                    needs_value(it.next(), arg.as_str())?
-                        .parse()
-                        .map_err(|_| format!("{arg} must be a small positive integer"))?,
-                );
-            }
+            "--mnemonic" => a.mnemonic = Some(needs_value(it.next(), "--mnemonic")?),
+            "--passphrase" => a.passphrase = needs_value(it.next(), "--passphrase")?,
+            "--text" => a.text = Some(needs_value(it.next(), "--text")?),
+            "--paper" => a.paper_path = Some(needs_value(it.next(), "--paper")?),
+            "--paper-dir" => a.paper_dir = Some(needs_value(it.next(), "--paper-dir")?),
+            "--json" => a.json_path = Some(needs_value(it.next(), "--json")?),
+            "--json-dir" => a.json_dir = Some(needs_value(it.next(), "--json-dir")?),
+            "--name" => a.backup_name = Some(needs_value(it.next(), "--name")?),
+            "--description" => a.description_override = Some(needs_value(it.next(), "--description")?),
+            "--shareholders" => a.shareholders_csv = Some(needs_value(it.next(), "--shareholders")?),
+            "-m" | "--threshold" => a.threshold = Some(parse_count(it.next(), &arg)?),
+            "-n" | "--total" => a.total = Some(parse_count(it.next(), &arg)?),
             other => return Err(format!("unknown flag {other:?}")),
         }
     }
+    Ok(a)
+}
+
+fn parse_count(v: Option<String>, flag: &str) -> Result<u8, String> {
+    needs_value(v, flag)?
+        .parse()
+        .map_err(|_| format!("{flag} must be a small positive integer"))
+}
+
+fn cmd_split(args: Vec<String>) -> Result<(), String> {
+    if args.iter().any(|a| a == "-h" || a == "--help") {
+        print_usage();
+        return Ok(());
+    }
+    let SplitArgs {
+        mnemonic,
+        mut passphrase,
+        text,
+        threshold,
+        total,
+        paper_path,
+        paper_dir,
+        json_path,
+        json_dir,
+        backup_name,
+        description_override,
+        shareholders_csv,
+    } = parse_split_args(args)?;
 
     let threshold = threshold.ok_or("missing -m / --threshold")?;
     let total = total.ok_or("missing -n / --total")?;
@@ -131,6 +148,10 @@ fn cmd_split(args: Vec<String>) -> Result<(), String> {
     if total > chela_engine::MAX_SHARES {
         return Err("total (-n) must be at most 32".into());
     }
+
+    // Validate metadata before generating any secret material — a count mismatch must fail
+    // before share words are flushed to stdout.
+    let shareholders = parse_shareholders(shareholders_csv.as_deref(), total)?;
 
     let input = match (mnemonic.as_deref(), text.as_deref()) {
         (Some(m), None) => SplitInput::Bip39 {
@@ -158,7 +179,6 @@ fn cmd_split(args: Vec<String>) -> Result<(), String> {
     let _ = threshold;
     let result = write_paper_outputs(
         &shares,
-        total,
         PaperFlags {
             paper_path: paper_path.as_deref(),
             paper_dir: paper_dir.as_deref(),
@@ -166,7 +186,7 @@ fn cmd_split(args: Vec<String>) -> Result<(), String> {
             json_dir: json_dir.as_deref(),
             backup_name: backup_name.as_deref(),
             description_override,
-            shareholders_csv,
+            shareholders,
         },
     );
 
@@ -189,7 +209,26 @@ struct PaperFlags<'a> {
     json_dir: Option<&'a str>,
     backup_name: Option<&'a str>,
     description_override: Option<String>,
-    shareholders_csv: Option<String>,
+    shareholders: Option<Vec<String>>,
+}
+
+/// Parse the `--shareholders` CSV and check its count against `total`. Run before any
+/// share material is generated so a mismatch fails before words reach stdout.
+fn parse_shareholders(csv: Option<&str>, total: u8) -> Result<Option<Vec<String>>, String> {
+    let Some(csv) = csv else { return Ok(None) };
+    let names: Vec<String> = csv
+        .split(',')
+        .map(|s| s.trim().to_owned())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if names.len() != usize::from(total) {
+        return Err(format!(
+            "--shareholders has {} names but -n is {}; counts must match",
+            names.len(),
+            total,
+        ));
+    }
+    Ok(Some(names))
 }
 
 /// Build a [`BackupMeta`] and dispatch every requested output flag. Any
@@ -197,29 +236,10 @@ struct PaperFlags<'a> {
 /// supplied; they're independent.
 fn write_paper_outputs(
     shares: &[chela_engine::Share],
-    total: u8,
     flags: PaperFlags<'_>,
 ) -> Result<(), String> {
     let description: Option<String> = flags.description_override;
-
-    let shareholders: Option<Vec<String>> = match flags.shareholders_csv {
-        None => None,
-        Some(csv) => {
-            let names: Vec<String> = csv
-                .split(',')
-                .map(|s| s.trim().to_owned())
-                .filter(|s| !s.is_empty())
-                .collect();
-            if names.len() != usize::from(total) {
-                return Err(format!(
-                    "--shareholders has {} names but -n is {}; counts must match",
-                    names.len(),
-                    total,
-                ));
-            }
-            Some(names)
-        }
-    };
+    let shareholders = flags.shareholders;
 
     let meta = BackupMeta {
         backup_name: flags.backup_name,
@@ -309,13 +329,17 @@ fn write_private(path: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> std::io:
 }
 
 fn cmd_recover(file_paths: &[String]) -> Result<(), String> {
+    if file_paths.iter().any(|a| a == "-h" || a == "--help") {
+        print_usage();
+        return Ok(());
+    }
     let shares = if file_paths.is_empty() {
         // No positional args → read share text from stdin (legacy / piped flow).
         let mut buf = String::new();
         io::stdin()
             .read_to_string(&mut buf)
             .map_err(|e| format!("read stdin: {e}"))?;
-        let parsed = parse_share_text(&buf).map_err(|e| format!("parse: {e:?}"))?;
+        let parsed = parse_share_text(&buf).map_err(|e| format!("parse: {e}"))?;
         chela_primitives::zeroize::Zeroize::zeroize(&mut buf);
         if parsed.is_empty() {
             return Err("no shares found on stdin".into());
@@ -424,7 +448,7 @@ fn read_one_file(contents: &str) -> Result<Vec<chela_engine::Share>, String> {
     } else {
         // Fall through to text-share parser. Accepts both headered `CHELA-…` cards
         // and words-only backups. Empty / unrecognized input surfaces as a parse error.
-        parse_share_text(contents).map_err(|e| format!("parse share text: {e:?}"))
+        parse_share_text(contents).map_err(|e| format!("parse share text: {e}"))
     }
 }
 
@@ -490,7 +514,7 @@ fn sanitize_for_terminal(s: &str) -> String {
 }
 
 fn engine_err(e: &EngineError) -> String {
-    format!("{e:?}")
+    format!("{e}")
 }
 
 #[cfg(test)]
