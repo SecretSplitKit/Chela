@@ -95,7 +95,13 @@ impl<'a> Cursor<'a> {
     }
 
     fn need(&self, n: usize) -> Result<(), String> {
-        if self.pos + n > self.buf.len() {
+        // checked_add: on wasm32 `usize` is 32-bit, and `n` derives from an attacker/JS
+        // length prefix, so `self.pos + n` could overflow and wrap past the bounds check.
+        if self
+            .pos
+            .checked_add(n)
+            .is_none_or(|end| end > self.buf.len())
+        {
             Err(format!(
                 "unexpected end of input at byte {} (wanted {} more)",
                 self.pos, n

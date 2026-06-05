@@ -214,6 +214,9 @@ pub fn parse_share(header: &str, words_line: &str) -> Result<Share, FormatError>
     if threshold == 0 || total < threshold {
         return Err(FormatError::BadThresholdTotal);
     }
+    if x > total {
+        return Err(FormatError::BadShareIndex);
+    }
     let declared_words: usize = parts[4].parse().map_err(|_| FormatError::BadWordCount)?;
 
     let mut word_indices = Vec::new();
