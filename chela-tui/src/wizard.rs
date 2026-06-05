@@ -278,7 +278,7 @@ pub(crate) fn run_split(kind: SplitKind) -> io::Result<()> {
     let shares = match split_secret(&input, threshold, total, OutputMode::Bip39Wordlist) {
         Ok(s) => s,
         Err(e) => {
-            error(&format!("Split failed: {e:?}. Press Enter to return."));
+            error(&format!("Split failed: {e}. Press Enter to return."));
             let _ = prompt("❯ ")?;
             return Ok(());
         }
@@ -942,7 +942,7 @@ pub(crate) fn run_recover() -> io::Result<()> {
     let mut recovered = match recover_secret(&shares) {
         Ok(r) => r,
         Err(e) => {
-            error(&format!("Recovery failed: {e:?}"));
+            error(&format!("Recovery failed: {e}"));
             let _ = prompt("Press Enter to return. ")?;
             return Ok(());
         }
@@ -1179,7 +1179,7 @@ fn decode_file(contents: &str) -> Result<Vec<Share>, String> {
         let results = extract_shares_from_json(contents).map_err(|e| format!("{e}"))?;
         collect_strict(results, "share")
     } else {
-        parse_shares(contents).map_err(|e| format!("doesn't look like chela share text: {e:?}"))
+        parse_shares(contents).map_err(|e| format!("doesn't look like chela share text: {e}"))
     }
 }
 

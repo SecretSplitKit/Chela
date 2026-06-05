@@ -738,13 +738,14 @@ const phases = {
     title: "Enter the Text to Split",
     render: (body) => {
       appendAll(body,
-        E("p", { text: "Up to 255 characters; UTF-8 is supported." }),
+        E("p", { text: "Up to 255 bytes of UTF-8 text." }),
       );
       body.appendChild(buildSecretField(state.data.text, (v) => { state.data.text = v; }));
     },
     validate: () => {
       if (!state.data.text) return "Please enter the text to split.";
-      if (state.data.text.length > 255) return `Text is ${state.data.text.length} characters; the limit is 255.`;
+      const textBytes = TE.encode(state.data.text).length;
+      if (textBytes > 255) return `Text is ${textBytes} bytes; the limit is 255 bytes (UTF-8).`;
       return null;
     },
   },
