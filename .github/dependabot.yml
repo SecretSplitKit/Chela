@@ -7,6 +7,13 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10
+  # The fuzz harness is a separate workspace (excluded from the root) and holds the only
+  # external crates (libfuzzer-sys + its transitive deps); watch it for advisories too.
+  - package-ecosystem: "cargo"
+    directory: "/chela-share/fuzz"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
   - package-ecosystem: "github-actions"
     directory: "/"
     # Check for updates every Monday

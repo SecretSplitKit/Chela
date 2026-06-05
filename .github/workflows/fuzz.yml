@@ -19,6 +19,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   parse_shares:
     runs-on: ubuntu-latest

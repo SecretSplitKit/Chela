@@ -129,8 +129,11 @@ A single share alone reveals nothing about the secret.
 ## Verifying a release
 
 Every artifact on the [releases page](https://github.com/SecretSplitKit/Chela/releases)
-is signed with [minisign](https://jedisct1.github.io/minisign/) and reproducibly built
-— the same source tag will produce byte-identical binaries.
+is signed with [minisign](https://jedisct1.github.io/minisign/) and built reproducibly:
+rebuilding a given source tag on the same target and toolchain yields byte-identical
+binaries (the release workflow verifies this with a two-pass build). Builds across
+different OSes or CPU architectures produce the same software but not necessarily
+byte-identical files.
 
 ### Where to find the hashes
 

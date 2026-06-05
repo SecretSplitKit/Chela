@@ -6,6 +6,10 @@ on:
       - main
   pull_request:
 
+# Least privilege: CI only reads the repo. No job needs write scope on GITHUB_TOKEN.
+permissions:
+  contents: read
+
 # Third-party actions are pinned to commit SHAs (not mutable @v4 / @stable refs) so
 # an upstream maintainer compromise cannot silently introduce a new payload into our
 # CI runs. Version tag in the trailing comment is informational only — update via
