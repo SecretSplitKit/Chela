@@ -45,8 +45,8 @@ fn print_usage() {
     println!("chela — Shamir's Secret Sharing for BIP-39 seeds and short passwords");
     println!();
     println!("USAGE:");
-    println!("  {exe} split    --mnemonic \"<12-24 words>\" [--passphrase \"...\"] -m N -n M [paper flags]");
-    println!("  {exe} split    --text \"<utf-8 text up to 255 bytes>\" -m N -n M [paper flags]");
+    println!("  {exe} split    --mnemonic \"<12-24 words>\" [--passphrase \"...\"] -m <threshold> -n <total> [paper flags]");
+    println!("  {exe} split    --text \"<utf-8 text up to 255 bytes>\" -m <threshold> -n <total> [paper flags]");
     println!("  {exe} recover                                  # reads share text from stdin");
     println!(
         "  {exe} recover  share-1.html share-2.html ...   # imports from chela paper-backup HTML"

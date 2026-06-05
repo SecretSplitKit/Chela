@@ -1,4 +1,4 @@
-//! Cryptographic primitives for chela: SHA-256, constant-time comparison, OS RNG, and zeroization.
+//! Cryptographic primitives for chela: SHA-256, CRC-11/UMTS, constant-time comparison, OS RNG, and zeroization.
 
 #![no_std]
 #![deny(unsafe_code)]

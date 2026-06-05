@@ -1064,7 +1064,7 @@ const phases = {
       const total = parseInt(d.total, 10);
       const wc = parseInt(d.wordCount, 10);
       if (!(x >= 1 && x <= 32)) return "Card # must be between 1 and 32.";
-      if (!(threshold >= 2)) return "# Required must be 2 or higher.";
+      if (!(threshold >= 2 && threshold <= 32)) return "# Required must be between 2 and 32.";
       if (!(total >= threshold)) return "Total cards must be at least as big as # Required.";
       if (!(wc >= 1)) return "Word count must be 1 or higher.";
       if (state.data.expected) {

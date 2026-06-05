@@ -118,7 +118,7 @@ pub unsafe extern "C" fn chela_dealloc(ptr: u32, len: u32) {
 /// documented in `request::SplitRequest`; output is a JSON object:
 ///
 /// ```json
-/// { "ok": true, "shares": [{ "x": 1, "threshold": 3, "total": 5, "set_id": "5A3",
+/// { "ok": true, "shares": [{ "x": 1, "threshold": 3, "total": 5, "set_id": "05A3",
 ///     "card_code": "CHELA-05A3-1-3-5-25", "words": ["..."] }, ...] }
 /// ```
 ///
@@ -349,7 +349,7 @@ pub(crate) fn do_render_shares_json(input: &[u8]) -> Result<Vec<u8>, String> {
 ///   "ok": true,
 ///   "shares": [
 ///     {"ok": true, "x": 1, "threshold": 3, "total": 5,
-///      "set_id": "058", "card_code": "CHELA-0058-1-3-5-40",
+///      "set_id": "0058", "card_code": "CHELA-0058-1-3-5-40",
 ///      "words": ["security", "moment", ...]},
 ///     {"ok": false, "error": "embedded JSON did not parse: …"}
 ///   ]

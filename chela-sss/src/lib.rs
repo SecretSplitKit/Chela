@@ -6,8 +6,10 @@
 
 use chela_field::{Field, Gf256};
 
-/// Maximum threshold / total share count. GF(2^8) has 255 non-zero x-coordinates
-/// (`1..=255`); x=0 is the secret.
+/// Field-theoretic ceiling for this generic SSS layer: GF(2^8) has 255 non-zero
+/// x-coordinates (`1..=255`), with x=0 reserved for the secret. This is the scratch
+/// buffer size, not chela's share-count limit — the wire format caps usable shares at
+/// 32 (`chela_engine::MAX_SHARES`).
 pub const MAX_THRESHOLD: u8 = 255;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

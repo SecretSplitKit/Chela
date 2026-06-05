@@ -214,8 +214,8 @@ fn render_share_page(
 /// {
 ///   "type": "chela.share.v1",      // bump when fields change incompatibly
 ///   "card_code": "CHELA-3058-1-3-5-40",
-///   "set_id": "3058",              // 4-hex-char identifier
-///   "card_number": 1,              // 1..=total
+///   "set_id": "3058",              // 4-hex generation nonce
+///   "card_number": 1,              // x: random distinct coordinate, 1..32
 ///   "threshold": 3,
 ///   "total": 5,
 ///   "word_count": 40,

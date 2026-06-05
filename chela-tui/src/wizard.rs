@@ -508,7 +508,7 @@ fn pick_total_and_threshold_form() -> io::Result<Option<(u8, u8)>> {
 
 fn pick_total_and_threshold_fallback() -> io::Result<Option<(u8, u8)>> {
     let Some(total) = prompt_u8_in_range(
-        "How many shares should I generate? (2-255) ❯ ",
+        &format!("How many shares should I generate? (2-{MAX_THRESHOLD}) ❯ "),
         MIN_THRESHOLD,
         MAX_THRESHOLD,
     )?
