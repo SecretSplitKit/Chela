@@ -433,6 +433,13 @@ pub struct DecodedShare {
     pub body: Vec<u8>,
 }
 
+impl Drop for DecodedShare {
+    fn drop(&mut self) {
+        // `body` is per-share SSS material; wipe on every path, success or error.
+        chela_primitives::zeroize::Zeroize::zeroize(&mut self.body);
+    }
+}
+
 fn decode_share_bip39_v2(words: &[u16]) -> Result<DecodedShare, EngineError> {
     if words.len() < 4 {
         return Err(EngineError::ShareCorrupt);
@@ -613,10 +620,7 @@ pub fn recover_secret(shares: &[Share]) -> Result<RecoveredSecret, EngineError> 
         let refs: Vec<&[u8]> = decoded.iter().map(|d| d.body.as_slice()).collect();
         combine(&xs, &refs, &mut body[..])?;
     }
-    // `decoded` holds per-share SSS material; wipe before it drops.
-    for d in &mut decoded {
-        chela_primitives::zeroize::Zeroize::zeroize(&mut d.body);
-    }
+    // `decoded` holds per-share SSS material; its `Drop` wipes each body here.
     parse_bundle(&body[..])
 }
 
@@ -712,9 +716,9 @@ mod tests {
             threshold,
             nonce,
             body: got,
-        } = decode_share_bip39_v2(&words).unwrap();
-        assert_eq!((x, threshold, nonce), (9, 4, 0x2AA));
-        assert_eq!(got, body);
+        } = &decode_share_bip39_v2(&words).unwrap();
+        assert_eq!((*x, *threshold, *nonce), (9, 4, 0x2AA));
+        assert_eq!(got.as_slice(), body);
 
         // Flip one word -> CRC must reject.
         let mut bad = words.clone();
