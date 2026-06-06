@@ -60,19 +60,20 @@ return crc & 0x7FF
 BIP-0039 English wordlist verbatim, 2048 entries (0..2047); verify against the
 canonical hash (Quick reference); each index is an 11-bit value used in § 4.
 
-SHA-256 (FIPS 180-4 § 6.2, unmodified) is used **only** inside `chela-bip39` to validate a mnemonic's
-built-in checksum on recovery (§ 5). The split/recover machinery uses no SHA-256.
+SHA-256 (FIPS 180-4 § 6.2, unmodified) is used inside `chela-bip39` to validate a mnemonic's built-in
+checksum on recovery (§ 5), and to compute the body integrity tag (§ 2.1) that binds the whole secret.
 
 ## 2. Body layout
 
-SSS splits the **body** = payload bytes with a 1-byte `kind_byte` appended. No framing, no identifier,
-no checksum inside. The kind is split *with* the secret, so a single share's words reveal nothing about
-the payload type, and recovery reads the kind from the body's last byte — no enumeration, no hashing.
+SSS splits the **body** = payload bytes, a 1-byte `kind_byte`, and a 2-byte integrity tag. No framing,
+no identifier. The kind is split *with* the secret, so a single share's words reveal nothing about the
+payload type, and recovery reads the kind from the body — no enumeration. The tag binds the whole
+reconstructed secret so a wrong/foreign subset fails closed instead of returning a wrong secret (§ 5).
 
 ### 2.1 Body construction
 
 ```text
-body = payload ‖ [kind_byte]
+body = payload ‖ [kind_byte] ‖ tag      tag = SHA-256(payload ‖ kind_byte)[..2]
 ```
 
 | Payload kind        | Payload bytes                                            |
@@ -81,9 +82,17 @@ body = payload ‖ [kind_byte]
 | BIP-39 (passphrase) | `entropy_bytes ‖ passphrase_utf8` (passphrase 1..255 B) |
 | Text                | `text_utf8` (1..255 B)                                   |
 
+The **tag** is the first 2 bytes of `SHA-256(payload ‖ kind_byte)`, appended last. It is split *with*
+the body, never carried out of band. Recovery recomputes it from the reconstructed `payload ‖ kind_byte`
+and compares in constant time; a mismatch is `BundleCorrupt`. This is the only whole-secret integrity
+binder: the per-share CRC-11 (§ 4) only proves a share is internally consistent, and the nonce (§ 4.2)
+only binds a generation. A wrong subset — a same-secret nonce collision, or a corruption that still
+satisfies its own CRC — interpolates to a garbage body whose recomputed tag won't match, so recovery
+fails closed (residual ≈ 2⁻¹⁶ per wrong subset).
+
 ### 2.2 `kind_byte` table
 
-Appended as the body's final byte. Set is closed at v1 — MUST recognise all values; any other byte is `BundleCorrupt`.
+Appended after the payload, before the tag. Set is closed at v1 — MUST recognise all values; any other byte is `BundleCorrupt`.
 
 | `kind_byte` | Kind                                            |
 |-------------|-------------------------------------------------|
@@ -101,9 +110,11 @@ Appended as the body's final byte. Set is closed at v1 — MUST recognise all va
 
 ### 2.3 Reading the kind back
 
-After combine reconstructs `body`: kind = `body[len-1]`, payload = `body[..len-1]`. Decode the kind via
-the table; reject (`BundleCorrupt`) unless the payload length fits — no-pass BIP-39 = exactly `entropy_bytes`,
-with-pass = `entropy_bytes+1 .. entropy_bytes+255`, text = `1..=255` — then interpret per the kind.
+After combine reconstructs `body`: split off the trailing 2-byte tag, recompute `SHA-256(rest)[..2]`,
+and compare in constant time; mismatch → `BundleCorrupt`. Only then trust the rest: kind = `rest[len-1]`,
+payload = `rest[..len-1]`. Decode the kind via the table; reject (`BundleCorrupt`) unless the payload
+length fits — no-pass BIP-39 = exactly `entropy_bytes`, with-pass = `entropy_bytes+1 .. entropy_bytes+255`,
+text = `1..=255` — then interpret per the kind.
 
 ## 3. Shamir split / combine
 
@@ -141,7 +152,7 @@ word 1          : [ nonce:11 ]                  set id, identical across the gen
 words 2 .. W-2  : [ Y values ]                  this share's SSS output, per-share
 word W-1        : [ CRC-11 ]                     checksum
 
-W = 2 + ceil(body_len · 8 / 11) + 1             (minimum 4; body_len = payload + appended kind byte)
+W = 2 + ceil(body_len · 8 / 11) + 1             (minimum 4; body_len = payload + kind byte + 2-byte tag)
 ```
 
 **Word 0 — metadata** (11 bits, MSB-first). Bits 10..6 = `X` field, bits 5..1 = `M` field, bit 0 = reserved:
@@ -205,9 +216,10 @@ by CRC (§ 4.3); no match → `ShareCorrupt`.
 
 Across shares: all MUST agree on nonce, `M`, and `body_len`, else `MismatchedShares`. Require ≥ `M`
 shares with **distinct** `x` (fewer → `InsufficientShares`). Lagrange-interpolate at `x = 0` (§ 3.2) →
-`body`. Split off the trailing kind and validate (§ 2.3), then interpret. For BIP-39, the mnemonic's
-built-in checksum is the integrity backstop should a `1/2048` nonce collision admit a wrong subset; text
-has no inherent backstop. No identifier-driven kind search and no SHA-256 anywhere in recovery.
+`body`. Verify the body tag, split off the trailing kind, and validate (§ 2.3), then interpret. The tag
+is the whole-secret backstop for *every* kind — if a `1/2048` nonce collision admits a wrong subset, the
+recomputed tag won't match and recovery returns `BundleCorrupt` rather than a wrong secret. No
+identifier-driven kind search.
 
 ## 6. Wire formats
 

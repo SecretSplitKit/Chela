@@ -30,6 +30,23 @@ pub enum OutputMode {
 const MAX_PASSPHRASE_LEN: usize = 255;
 const MAX_TEXT_LEN: usize = 255;
 
+/// Length of the body integrity tag: the truncated `SHA-256(payload ‖ kind_byte)` appended
+/// to the body and split with the secret. It binds the *whole reconstructed secret*, not a
+/// single share: the per-share CRC-11 only proves a share is internally self-consistent, and
+/// the 11-bit nonce only binds a generation. A wrong/foreign subset (e.g. a same-secret nonce
+/// collision, or one corruption that still satisfies its own CRC) interpolates to a garbage
+/// body whose recomputed tag won't match — so recovery fails closed instead of silently
+/// returning a wrong-but-valid-looking secret. 16 bits make that residual ≈ 2⁻¹⁶ per subset.
+const TAG_LEN: usize = 2;
+
+/// `SHA-256(data)` truncated to [`TAG_LEN`] — the body integrity tag.
+fn body_tag(data: &[u8]) -> [u8; TAG_LEN] {
+    let digest = chela_primitives::sha256::Sha256::hash(data);
+    let mut tag = [0u8; TAG_LEN];
+    tag.copy_from_slice(&digest[..TAG_LEN]);
+    tag
+}
+
 /// Minimum reconstruction threshold. A threshold of 1 (any single share rebuilds the
 /// secret) gives no secret-sharing security, so the engine refuses to produce it.
 pub const MIN_THRESHOLD: u8 = 2;
@@ -335,11 +352,14 @@ fn build_bundle(input: &SplitInput<'_>) -> Result<(Vec<u8>, u8), EngineError> {
     }
 }
 
-/// Build the full SSS body: the payload bytes with the `kind_byte` appended. The kind is
-/// split with the secret (hidden per share) and read back from the recovered body.
+/// Build the full SSS body: `payload ‖ kind_byte ‖ tag`. The kind is split with the secret
+/// (hidden per share) and read back from the recovered body; the tag (§ [`TAG_LEN`]) binds the
+/// whole secret so a wrong reconstruction fails closed rather than returning a wrong secret.
 fn build_bundle_v2(input: &SplitInput<'_>) -> Result<(Vec<u8>, u8), EngineError> {
     let (mut body, kind_byte) = build_bundle(input)?;
     body.push(kind_byte);
+    let tag = body_tag(&body);
+    body.extend_from_slice(&tag);
     Ok((body, kind_byte))
 }
 
@@ -361,9 +381,17 @@ fn body_len_fits(dec: DecodedKind, body_len: usize) -> bool {
     }
 }
 
-/// Recover the secret from the SSS-combined body. The kind byte is the final body byte.
+/// Recover the secret from the SSS-combined body `payload ‖ kind_byte ‖ tag`. Verify the body
+/// tag first (§ [`TAG_LEN`]): a wrong subset interpolates to a garbage body whose recomputed
+/// tag won't match, so recovery fails closed instead of returning a wrong secret. Only then is
+/// the trailing kind byte trusted to pick a payload interpretation.
 fn parse_bundle(body: &[u8]) -> Result<RecoveredSecret, EngineError> {
-    let (&kind_byte, payload) = body.split_last().ok_or(EngineError::BundleCorrupt)?;
+    let split_at = body.len().checked_sub(TAG_LEN).ok_or(EngineError::BundleCorrupt)?;
+    let (tagged, tag) = body.split_at(split_at);
+    if !chela_primitives::ct::ct_eq(&body_tag(tagged), tag) {
+        return Err(EngineError::BundleCorrupt);
+    }
+    let (&kind_byte, payload) = tagged.split_last().ok_or(EngineError::BundleCorrupt)?;
     let dec = decode_kind_byte(kind_byte).ok_or(EngineError::BundleCorrupt)?;
     if !body_len_fits(dec, payload.len()) {
         return Err(EngineError::BundleCorrupt);
@@ -556,8 +584,8 @@ pub fn split_with_rng(
     // `body` is the full plaintext secret plus the appended kind byte; `Zeroizing` wipes it
     // on every exit, including the BundleTooLarge and split-error early returns below.
     let body = chela_primitives::zeroize::Zeroizing::new(body);
-    if body.len() > MAX_PASSPHRASE_LEN + 32 + 1 {
-        // 32 entropy + 255 passphrase + 1 kind byte is the largest legitimate body.
+    if body.len() > MAX_PASSPHRASE_LEN + 32 + 1 + TAG_LEN {
+        // 32 entropy + 255 passphrase + 1 kind byte + tag is the largest legitimate body.
         return Err(EngineError::BundleTooLarge);
     }
     if total > MAX_SHARES {
@@ -700,11 +728,24 @@ mod tests {
     }
 
     #[test]
-    fn body_carries_kind_byte_last() {
-        use super::{build_bundle_v2, SplitInput};
+    fn body_carries_kind_byte_then_tag() {
+        use super::{body_tag, build_bundle_v2, SplitInput, TAG_LEN};
         let (body, _) = build_bundle_v2(&SplitInput::Text { text: "hi" }).unwrap();
-        assert_eq!(body.last().copied(), Some(0x0Bu8)); // kind::TEXT
-        assert_eq!(&body[..body.len() - 1], b"hi");
+        // Layout is payload ‖ kind_byte ‖ tag.
+        let (tagged, tag) = body.split_at(body.len() - TAG_LEN);
+        assert_eq!(&tagged[..tagged.len() - 1], b"hi");
+        assert_eq!(tagged.last().copied(), Some(0x0Bu8)); // kind::TEXT
+        assert_eq!(tag, body_tag(tagged)); // tag binds payload ‖ kind_byte
+    }
+
+    #[test]
+    fn parse_bundle_rejects_a_flipped_tag() {
+        use super::{build_bundle_v2, parse_bundle, EngineError, SplitInput};
+        let (mut body, _) = build_bundle_v2(&SplitInput::Text { text: "hi" }).unwrap();
+        parse_bundle(&body).unwrap(); // sanity: the genuine body parses
+        // Corrupt the last (tag) byte: the recomputed tag no longer matches -> fail closed.
+        *body.last_mut().unwrap() ^= 0xFF;
+        assert_eq!(parse_bundle(&body), Err(EngineError::BundleCorrupt));
     }
 
     #[test]
@@ -812,6 +853,60 @@ mod tests {
     }
 
     #[test]
+    fn nonce_collision_cross_mix_fails_closed_via_body_tag() {
+        // The body integrity tag is what closes the silent-wrong-secret hole. The 11-bit nonce
+        // and per-share CRC cannot catch a cross-generation mix where two *different* splits
+        // happen to share a nonce (p≈1/2048) and the same threshold/body length: such a mix
+        // passes the MismatchedShares gate, interpolates a garbage body, and — without the tag
+        // — could decode to a wrong-but-valid-looking secret. Here we force that collision with
+        // two crafted RNG streams (same nonce + same x draws, different secrets/polynomials)
+        // and assert recovery fails closed with BundleCorrupt rather than returning a wrong
+        // secret. Drop the tag and this subset would decode silently — that is the bug the tag
+        // fixes.
+        let txt_a = "hello world";
+        let txt_b = "world hello"; // same length, different bytes -> different polynomials
+        assert_eq!(txt_a.len(), txt_b.len());
+        // RNG: nonce (2 B) ‖ x draws ‖ per-byte coefficients. Same nonce + same x-draw bytes in
+        // both streams force identical (nonce, x-set); the trailing coefficient bytes differ so
+        // the two splits are genuinely distinct generations that collide only on the nonce.
+        let body_len = txt_a.len() + 1 + super::TAG_LEN; // payload ‖ kind ‖ tag
+        let prefix = [0x12u8, 0x34, /* x draws -> */ 4, 9, 14]; // nonce=0x1234&0x7FF, x∈{5,10,15}
+        let stream = |coeff: u8| {
+            let mut v = alloc::vec::Vec::from(&prefix[..]);
+            v.extend(core::iter::repeat_n(coeff, body_len)); // m-1=1 coeff byte per body byte
+            v
+        };
+        let sa = stream(0x5a);
+        let sb = stream(0xa5);
+        let a = split_with_rng(
+            &SplitInput::Text { text: txt_a },
+            2,
+            3,
+            OutputMode::Bip39Wordlist,
+            &mut DeterministicRng::new(&sa),
+        )
+        .unwrap();
+        let b = split_with_rng(
+            &SplitInput::Text { text: txt_b },
+            2,
+            3,
+            OutputMode::Bip39Wordlist,
+            &mut DeterministicRng::new(&sb),
+        )
+        .unwrap();
+        // The collision really happened: same nonce, same x at each index, same body length.
+        assert_eq!(a[0].nonce, b[0].nonce);
+        assert_eq!((a[0].x, a[1].x), (b[0].x, b[1].x));
+        // Mix distinct x across the two generations -> passes MismatchedShares, reaches combine.
+        let mixed = alloc::vec![a[0].clone(), b[1].clone()];
+        assert_ne!(mixed[0].x, mixed[1].x);
+        assert_eq!(
+            recover_secret(&mixed),
+            Err(super::EngineError::BundleCorrupt)
+        );
+    }
+
+    #[test]
     fn words_alone_recovery_ignores_total_and_kind() {
         let shares = split_secret(
             &SplitInput::Text {
@@ -852,7 +947,7 @@ mod tests {
 
     #[test]
     fn share_word_counts_are_pinned() {
-        // body = payload ‖ kind_byte, then W = 2 + ceil(8 * body_len / 11) + 1.
+        // body = payload ‖ kind_byte ‖ tag (TAG_LEN=2), then W = 2 + ceil(8 * body_len / 11) + 1.
         let seed12 = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
         let s12 = split_secret(
             &SplitInput::Bip39 {
@@ -864,7 +959,7 @@ mod tests {
             OutputMode::Bip39Wordlist,
         )
         .unwrap();
-        assert_eq!(s12[0].word_indices.len(), 16); // 16 entropy + 1 kind = 17 B
+        assert_eq!(s12[0].word_indices.len(), 17); // 16 entropy + 1 kind + 2 tag = 19 B
 
         let seed24 = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art";
         let s24 = split_secret(
@@ -877,7 +972,7 @@ mod tests {
             OutputMode::Bip39Wordlist,
         )
         .unwrap();
-        assert_eq!(s24[0].word_indices.len(), 27); // 32 entropy + 1 kind = 33 B
+        assert_eq!(s24[0].word_indices.len(), 29); // 32 entropy + 1 kind + 2 tag = 35 B
 
         let t = split_secret(
             &SplitInput::Text { text: "hi" },
@@ -886,7 +981,7 @@ mod tests {
             OutputMode::Bip39Wordlist,
         )
         .unwrap();
-        assert_eq!(t[0].word_indices.len(), 6); // 2 text + 1 kind = 3 B
+        assert_eq!(t[0].word_indices.len(), 7); // 2 text + 1 kind + 2 tag = 5 B
     }
 
     #[test]
