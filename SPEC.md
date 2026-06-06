@@ -60,20 +60,21 @@ return crc & 0x7FF
 BIP-0039 English wordlist verbatim, 2048 entries (0..2047); verify against the
 canonical hash (Quick reference); each index is an 11-bit value used in § 4.
 
-SHA-256 (FIPS 180-4 § 6.2, unmodified) is used inside `chela-bip39` to validate a mnemonic's built-in
-checksum on recovery (§ 5), and to compute the body integrity tag (§ 2.1) that binds the whole secret.
+SHA-256 (FIPS 180-4 § 6.2, unmodified) is used only inside `chela-bip39`, to validate a mnemonic's
+built-in checksum on input and recompute it on recovery (§ 5). The split/recover engine uses no SHA-256.
 
 ## 2. Body layout
 
-SSS splits the **body** = payload bytes, a 1-byte `kind_byte`, and a 2-byte integrity tag. No framing,
-no identifier. The kind is split *with* the secret, so a single share's words reveal nothing about the
-payload type, and recovery reads the kind from the body — no enumeration. The tag binds the whole
-reconstructed secret so a wrong/foreign subset fails closed instead of returning a wrong secret (§ 5).
+SSS splits the **body** = payload bytes followed by a 1-byte `kind_byte`. No framing, no identifier, no
+checksum inside the body. The kind is split *with* the secret, so a single share's words reveal nothing
+about the payload type, and recovery reads the kind from the reconstructed body — no enumeration. The
+kind byte doubles as the message **terminator**: it is the body's last byte and is never `0x00`, which
+lets recovery resolve the true message length (§ 4.3, § 5).
 
 ### 2.1 Body construction
 
 ```text
-body = payload ‖ [kind_byte] ‖ tag      tag = SHA-256(payload ‖ kind_byte)[..2]
+body = payload ‖ [kind_byte]
 ```
 
 | Payload kind        | Payload bytes                                            |
@@ -82,17 +83,14 @@ body = payload ‖ [kind_byte] ‖ tag      tag = SHA-256(payload ‖ kind_byte)
 | BIP-39 (passphrase) | `entropy_bytes ‖ passphrase_utf8` (passphrase 1..255 B) |
 | Text                | `text_utf8` (1..255 B)                                   |
 
-The **tag** is the first 2 bytes of `SHA-256(payload ‖ kind_byte)`, appended last. It is split *with*
-the body, never carried out of band. Recovery recomputes it from the reconstructed `payload ‖ kind_byte`
-and compares in constant time; a mismatch is `BundleCorrupt`. This is the only whole-secret integrity
-binder: the per-share CRC-11 (§ 4) only proves a share is internally consistent, and the nonce (§ 4.2)
-only binds a generation. A wrong subset — a same-secret nonce collision, or a corruption that still
-satisfies its own CRC — interpolates to a garbage body whose recomputed tag won't match, so recovery
-fails closed (residual ≈ 2⁻¹⁶ per wrong subset).
+The `kind_byte` (`0x01..0x0B`, never `0x00`) is the body's last byte and is the message terminator:
+because an over-read padding byte is always `0x00`, recovery recovers the exact body length from the
+combined body (§ 5). There is no checksum inside the body — per-share integrity is the CRC-11 (§ 4), and
+the nonce (§ 4.2) binds a generation.
 
 ### 2.2 `kind_byte` table
 
-Appended after the payload, before the tag. Set is closed at v1 — MUST recognise all values; any other byte is `BundleCorrupt`.
+Appended after the payload as the body's last byte. Set is closed at v1 — MUST recognise all values; any other byte is `BundleCorrupt`.
 
 | `kind_byte` | Kind                                            |
 |-------------|-------------------------------------------------|
@@ -110,9 +108,8 @@ Appended after the payload, before the tag. Set is closed at v1 — MUST recogni
 
 ### 2.3 Reading the kind back
 
-After combine reconstructs `body`: split off the trailing 2-byte tag, recompute `SHA-256(rest)[..2]`,
-and compare in constant time; mismatch → `BundleCorrupt`. Only then trust the rest: kind = `rest[len-1]`,
-payload = `rest[..len-1]`. Decode the kind via the table; reject (`BundleCorrupt`) unless the payload
+After combine reconstructs `body` at its true length (§ 5): kind = `body[len-1]`, payload = `body[..len-1]`.
+Decode the kind via the table; reject (`BundleCorrupt`) unless the kind byte is known and the payload
 length fits — no-pass BIP-39 = exactly `entropy_bytes`, with-pass = `entropy_bytes+1 .. entropy_bytes+255`,
 text = `1..=255` — then interpret per the kind.
 
@@ -152,7 +149,7 @@ word 1          : [ nonce:11 ]                  set id, identical across the gen
 words 2 .. W-2  : [ Y values ]                  this share's SSS output, per-share
 word W-1        : [ CRC-11 ]                     checksum
 
-W = 2 + ceil(body_len · 8 / 11) + 1             (minimum 4; body_len = payload + kind byte + 2-byte tag)
+W = 2 + ceil(body_len · 8 / 11) + 1             (minimum 4; body_len = payload + 1-byte kind)
 ```
 
 **Word 0 — metadata** (11 bits, MSB-first). Bits 10..6 = `X` field, bits 5..1 = `M` field, bit 0 = reserved:
@@ -191,35 +188,46 @@ bias, no rejection). Sample without replacement. x is random rather than sequent
 neither the total `N` nor a share's position; x is public (it is in the words), so its randomness is a
 privacy property, not confidentiality — the coefficients (§ 3.1) are what must be perfectly random.
 
-### 4.3 Candidate-length disambiguation (decode side)
+### 4.3 Byte↔word-count ambiguity
 
-Different `body_len` values can pack into the same Y-word count; the CRC selects the right length.
-With `k = W - 3` Y words:
+8-bit bytes don't align to 11-bit words, so different `body_len` values can pack into the same Y-word
+count. With `k = W - 3` Y words the body is one of at most two lengths:
 
 ```text
 max_bytes = (k · 11) / 8                          (integer division)
 min_bytes = ceil(((k - 1) · 11 + 1) / 8)
 ```
 
-For each candidate `body_len` from `max_bytes` down to `min_bytes`: unpack the Y words MSB-first into
-`body_len` bytes, compute `CRC-11/UMTS([x, M] ‖ nonce_be ‖ body)`, and compare to the stored CRC word.
-First match → that length. None → `ShareCorrupt`. For a share decoded in isolation a wrong length passes
-with probability ≈ 1/2048; the cross-share `body_len` agreement check (§ 5) is the backstop.
+The true length is resolved at recovery by the kind-byte terminator (§ 5), deterministically for the
+whole set — not guessed per share. A share validated in isolation (no set) is merely checked, not
+length-pinned: unpack at each candidate length and accept the first whose
+`CRC-11/UMTS([x, M] ‖ nonce_be ‖ body)` matches the stored CRC word; none → `ShareCorrupt`.
 
 ## 5. Recovery from words alone
 
 A decoder MUST accept a bare list of BIP-39 words — no card label, no JSON.
 
 Per share: read `W` words (`W ≥ 4`); reject any ≥ 2048. Word 0 → `x`, `M` (reject reserved bit ≠ 0 or
-`M` field == 31). Word 1 → nonce. Word `W-1` → stored CRC. Unpack words `2..W-2` and select `body_len`
-by CRC (§ 4.3); no match → `ShareCorrupt`.
+`M` field == 31). Word 1 → nonce. Word `W-1` → stored CRC. Words `2..W-2` are the share's packed Y bytes.
 
-Across shares: all MUST agree on nonce, `M`, and `body_len`, else `MismatchedShares`. Require ≥ `M`
-shares with **distinct** `x` (fewer → `InsufficientShares`). Lagrange-interpolate at `x = 0` (§ 3.2) →
-`body`. Verify the body tag, split off the trailing kind, and validate (§ 2.3), then interpret. The tag
-is the whole-secret backstop for *every* kind — if a `1/2048` nonce collision admits a wrong subset, the
-recomputed tag won't match and recovery returns `BundleCorrupt` rather than a wrong secret. No
-identifier-driven kind search.
+Across shares: all MUST agree on nonce, `M`, and Y-word count `k`, else `MismatchedShares`. Require ≥ `M`
+shares with **distinct** `x` (fewer → `InsufficientShares`; duplicate or zero `x` → rejected).
+
+Resolve the body length for the whole set, then reconstruct:
+
+1. Unpack every share's Y to `max_bytes` (§ 4.3) and Lagrange-interpolate at `x = 0` (§ 3.2) → `body`.
+2. The kind byte (§ 2) is the body's last real byte and is never `0x00`; an over-read byte is zero
+   padding. So if `max_bytes > min_bytes` and `body[max_bytes-1] == 0x00`, the true length is `min_bytes`
+   (trim the padding byte); otherwise it is `max_bytes`. This resolves the § 4.3 ambiguity deterministically.
+3. Verify every share's `CRC-11/UMTS([x, M] ‖ nonce_be ‖ Y[..body_len])` against its stored CRC word; a
+   mismatch (a mistyped word) → `ShareCorrupt`.
+4. Read the kind from `body[body_len-1]` and validate/interpret (§ 2.3); an unknown kind or ill-fitting
+   length → `BundleCorrupt`.
+
+The nonce binds a generation, so shares from two different splits carry different nonces and are refused
+at the agreement check. In the vanishingly rare case two unrelated generations collide on the 11-bit
+nonce (≈ 1/2048) with matching `M` and length, the interpolated body is garbage and is rejected at step 4
+(its trailing byte is almost never a valid kind) — recovery never silently returns a wrong secret.
 
 ## 6. Wire formats
 
@@ -343,8 +351,10 @@ word indices (W = 6) : 256 713 835 578 1536 1965
 words                : cactus float half embark scale volcano
 ```
 
-Decode: `k = 3` Y words → candidate `body_len ∈ {3, 4}` (`max = 33/8 = 4`, `min = ceil(23/8) = 3`).
-Length 4 gives CRC `0x708` (no match); length 3 gives `0x7AD` (match) → `body = 68 69 0B` → `"hi"`, kind Text.
+Decode: `k = 3` Y words → candidates `{3, 4}` (`max = 33/8 = 4`, `min = ceil(23/8) = 3`). Unpacking to
+4 bytes gives `68 69 0B 00`; the trailing `0x00` is padding (the kind byte `0x0B` is the non-zero
+terminator), so the true length is 3 → `body = 68 69 0B` → `"hi"`, kind Text. (Single-share validation
+agrees: `CRC-11/UMTS` matches at length 3, not 4.)
 
 ### 8.4 SSS round-trip
 
