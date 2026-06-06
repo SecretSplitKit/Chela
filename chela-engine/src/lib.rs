@@ -386,7 +386,10 @@ fn body_len_fits(dec: DecodedKind, body_len: usize) -> bool {
 /// tag won't match, so recovery fails closed instead of returning a wrong secret. Only then is
 /// the trailing kind byte trusted to pick a payload interpretation.
 fn parse_bundle(body: &[u8]) -> Result<RecoveredSecret, EngineError> {
-    let split_at = body.len().checked_sub(TAG_LEN).ok_or(EngineError::BundleCorrupt)?;
+    let split_at = body
+        .len()
+        .checked_sub(TAG_LEN)
+        .ok_or(EngineError::BundleCorrupt)?;
     let (tagged, tag) = body.split_at(split_at);
     if !chela_primitives::ct::ct_eq(&body_tag(tagged), tag) {
         return Err(EngineError::BundleCorrupt);
@@ -743,7 +746,7 @@ mod tests {
         use super::{build_bundle_v2, parse_bundle, EngineError, SplitInput};
         let (mut body, _) = build_bundle_v2(&SplitInput::Text { text: "hi" }).unwrap();
         parse_bundle(&body).unwrap(); // sanity: the genuine body parses
-        // Corrupt the last (tag) byte: the recomputed tag no longer matches -> fail closed.
+                                      // Corrupt the last (tag) byte: the recomputed tag no longer matches -> fail closed.
         *body.last_mut().unwrap() ^= 0xFF;
         assert_eq!(parse_bundle(&body), Err(EngineError::BundleCorrupt));
     }
