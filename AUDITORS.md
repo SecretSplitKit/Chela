@@ -19,6 +19,10 @@ chela defends against:
   mismatch is `MismatchedShares`. Because the nonce is drawn per generation, even
   two splits of the *same* secret carry different nonces and are correctly
   refused (SPEC.md § 3.2).
+- **A wrong recombination returning a wrong secret.** A one-byte body integrity tag
+  (§ 9) binds the reconstructed secret, so a wrong share subset that slips past the
+  nonce check (for instance a ~1/2048 nonce collision) fails closed as `BundleCorrupt`
+  rather than decoding into a plausible wrong secret (SPEC.md § 5).
 
 chela does **not** defend against:
 
@@ -42,10 +46,10 @@ choice that isn't obvious from the spec.
 
 ### 1. `chela-primitives/src/sha256.rs` — SHA-256
 
-Implements FIPS 180-4 § 6.2. **Scope:** consumed only by `chela-bip39` to
-validate a mnemonic's built-in checksum (§ 7). It is *not* used by the
-split/recover engine — there is no SHA identifier and no SHA per-share checksum
-(the per-share checksum is CRC-11, § 4a). SPEC.md § 1.3.
+Implements FIPS 180-4 § 6.2. **Scope:** two callers - `chela-bip39` validates a
+mnemonic's built-in checksum (§ 7), and `chela-engine` computes the one-byte body
+integrity tag `SHA-256(payload ‖ kind_byte)[0]` (§ 9). There is no SHA identifier and
+no SHA per-share checksum (that is CRC-11, § 4a). SPEC.md § 1.3.
 
 - The 8 initial hash values, the 64 round constants, the message schedule, and
   the compression function should all match the FIPS document verbatim.
@@ -146,30 +150,37 @@ diff \
   <(awk -F'"' '/^    "/ {print $2}' chela-bip39/src/wordlist.rs)
 ```
 
-### 9. `chela-engine/src/lib.rs` — body codec, generation nonce, per-share checksum
+### 9. `chela-engine/src/lib.rs` — body codec, integrity tag, generation nonce, per-share checksum
 
-The orchestration layer. There is **no SHA-256 anywhere in this file** — neither
-an identifier nor a per-share checksum. Five things matter here:
+The orchestration layer. The only SHA-256 in this file is the one-byte body
+integrity tag (point 2); the per-share checksum is CRC-11, and the per-generation
+tag is a random nonce, not a hash. Six things matter here:
 
-1. **What SSS splits is `body = payload ‖ [kind_byte]`.** The kind tag is
-   *appended to the body and split with it*, so a single share's words reveal
-   nothing about the payload type. No magic byte, no in-bundle version, no
-   in-bundle checksum. For BIP-39 the payload is raw entropy followed by optional
-   passphrase bytes; for text, raw UTF-8.
-2. **Recovery reads the kind from the recovered body's last byte.** After
-   combine reconstructs `body`, `kind = body[len-1]` and `payload = body[..len-1]`
-   (no enumeration, no hashing). The kind is decoded via the table and rejected
-   (`BundleCorrupt`) unless the payload length fits. SPEC.md § 2.3.
-3. **The generation nonce is an 11-bit CSPRNG value (`sample_nonce`).** Drawn
-   once per split and written identically into every share of that generation
-   (word 1). It binds one *generation*, not the secret — re-splitting the same
-   secret draws an independent nonce, so shares from two runs carry different
-   nonces and recovery refuses them (`MismatchedShares`). This replaces the old
-   SHA identifier; there is no hash of the secret anywhere.
-4. **The per-share checksum is CRC-11/UMTS (§ 4a), not a hash.** Computed over
+1. **What SSS splits is `body = payload ‖ tag ‖ kind_byte`.** Both the tag and the
+   kind byte are *appended to the body and split with it*, so a single share's words
+   reveal nothing about the payload type or the tag. No magic byte, no in-bundle
+   version. For BIP-39 the payload is raw entropy followed by optional passphrase
+   bytes; for text, raw UTF-8.
+2. **The integrity tag is `SHA-256(payload ‖ kind_byte)[0]` (one byte).** It binds
+   the whole reconstructed secret: combine the wrong shares and the recovered tag
+   won't match, so recovery fails (`BundleCorrupt`) instead of returning a plausible
+   wrong secret. This is the only place the secret is hashed, and it is the only guard
+   that protects a *text* payload - a BIP-39 mnemonic re-derives from its entropy and
+   so has no checksum of its own to fall back on.
+3. **Recovery trims by the kind terminator, then checks the tag.** After combine
+   reconstructs `body`, `kind = body[len-1]`, `tag = body[len-2]`, and `payload =
+   body[..len-2]`. Reject (`BundleCorrupt`) unless the kind decodes, the payload length
+   fits it, and `ct_eq(tag, SHA-256(payload ‖ kind_byte)[0])`. SPEC.md § 5.
+4. **The generation nonce is an 11-bit CSPRNG value (`sample_nonce`).** Drawn once
+   per split and written identically into every share of that generation (word 1). It
+   binds one *generation*, not the secret - re-splitting the same secret draws an
+   independent nonce, so shares from two runs carry different nonces and recovery
+   refuses them (`MismatchedShares`). Binding the *secret* is the integrity tag's job
+   (point 2), not the nonce's.
+5. **The per-share checksum is CRC-11/UMTS (§ 4a), not a hash.** Computed over
    `[x, M] ‖ nonce_be ‖ Y_bytes` (poly `0x307`). It is the last word of the
    share and catches a single transcription error before Lagrange is invoked.
-5. **Candidate-length disambiguation is resolved by CRC.** Several body lengths
+6. **Candidate-length disambiguation is resolved by CRC.** Several body lengths
    pack into the same Y-word count; `decode_share_bip39_v2` tries each candidate
    length from longest to shortest and keeps the one whose CRC-11 matches the
    stored checksum word. SPEC.md § 4.3. (Allocation also lives here, not in
