@@ -236,7 +236,12 @@ fn parse_set_id(s: &str) -> Result<u16, ImportError> {
         return Err(ImportError::BadSetId);
     }
     let n = u16::from_str_radix(s, 16).map_err(|_| ImportError::BadSetId)?;
-    Ok(n & 0x7FF)
+    // The nonce is 11 bits; a well-formed set_id has its top 5 bits clear. Reject rather than
+    // silently mask so a corrupted/forged label can't pass as a different valid set.
+    if n > 0x7FF {
+        return Err(ImportError::BadSetId);
+    }
+    Ok(n)
 }
 
 /// Case-insensitive substring search on bytes (lowercases the needle once,
@@ -392,6 +397,15 @@ mod tests {
         let html = render_paper_html(&shares, &BackupMeta::default());
         let blocks = find_chela_share_blocks(&html);
         assert_eq!(blocks.len(), 3);
+    }
+
+    #[test]
+    fn json_set_id_above_11_bits_rejected() {
+        let s = sample();
+        let real = alloc::format!("\"set_id\":\"{:04X}\"", s.nonce & 0x7FF);
+        // 0xF800 has bits above the 11-bit nonce range; it must be rejected, not masked.
+        let json = share_json(&s).replace(&real, "\"set_id\":\"F800\"");
+        assert_eq!(decode_share_json(&json), Err(ImportError::BadSetId));
     }
 
     #[test]

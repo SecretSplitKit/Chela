@@ -254,6 +254,12 @@ pub fn parse_share(header: &str, words_line: &str) -> Result<Share, FormatError>
             .map_err(|_| FormatError::BadThresholdTotal)?;
         share.total = Some(h_n);
     }
+    // `W` (word count) is advisory like the other header fields: a disagreement with the actual
+    // words is a transcription error, flagged here instead of surfacing later as a CRC failure.
+    let h_w: usize = parts[4].parse().map_err(|_| FormatError::BadWordCount)?;
+    if h_w != share.word_indices.len() {
+        return Err(FormatError::WordCountMismatch);
+    }
     Ok(share)
 }
 
@@ -380,6 +386,35 @@ mod tests {
             s.word_indices.len(),
         );
         assert_eq!(header, expected);
+    }
+
+    #[test]
+    fn parse_share_rejects_header_word_count_mismatch() {
+        let s = &fixture()[0];
+        let txt = format_share(s);
+        let mut lines = txt.lines();
+        let header = lines.next().unwrap();
+        let words = lines.next().unwrap();
+        // Bump the trailing W field so it disagrees with the actual word count.
+        let wrong = s.word_indices.len() + 1;
+        let (head, _) = header.rsplit_once('-').unwrap();
+        let bad = alloc::format!("{head}-{wrong}");
+        assert_eq!(
+            parse_share(&bad, words),
+            Err(FormatError::WordCountMismatch)
+        );
+    }
+
+    #[test]
+    fn parse_share_rejects_malformed_header_word_count() {
+        let s = &fixture()[0];
+        let txt = format_share(s);
+        let mut lines = txt.lines();
+        let header = lines.next().unwrap();
+        let words = lines.next().unwrap();
+        let (head, _) = header.rsplit_once('-').unwrap();
+        let bad = alloc::format!("{head}-xx");
+        assert_eq!(parse_share(&bad, words), Err(FormatError::BadWordCount));
     }
 
     #[test]
