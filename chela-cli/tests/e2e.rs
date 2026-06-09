@@ -594,13 +594,13 @@ fn split_writes_all_four_outputs_when_all_flags_given() {
     let json_share_files = share_files(&json_dir, ".share.json");
     assert_eq!(json_share_files.len(), 3, "expected 3 per-share JSON files");
 
-    // The combined JSON bundle uses the chela.shares.v1 schema.
+    // The combined JSON bundle uses the chela.shares schema.
     let bundle_text = std::fs::read_to_string(&json_bundle).unwrap();
-    assert!(bundle_text.contains(r#""type":"chela.shares.v1""#));
+    assert!(bundle_text.contains(r#""type":"chela.shares""#));
 
-    // Single share files use chela.share.v1.
+    // Single share files use chela.share.
     let per_share = std::fs::read_to_string(&json_share_files[0]).unwrap();
-    assert!(per_share.contains(r#""type":"chela.share.v1""#));
+    assert!(per_share.contains(r#""type":"chela.share""#));
     // And the bundle filename includes the set ID.
     let json_entries: Vec<String> = std::fs::read_dir(&json_dir)
         .unwrap()
@@ -623,7 +623,7 @@ fn recover_rejects_corrupt_json_file_with_per_share_context() {
     let _ = std::fs::remove_dir_all(&tmpdir);
     std::fs::create_dir_all(&tmpdir).unwrap();
     let path = tmpdir.join("bad.share.json");
-    std::fs::write(&path, r#"{"type":"chela.share.v1","card_code":"x"}"#).unwrap();
+    std::fs::write(&path, r#"{"type":"chela.share","card_code":"x"}"#).unwrap();
     let p = path.to_str().unwrap().to_owned();
     let (status, stdout, stderr) = recover_with_files(&[&p]);
     assert!(!status.success(), "expected failure on corrupt JSON");

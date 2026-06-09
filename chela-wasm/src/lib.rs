@@ -299,7 +299,7 @@ pub(crate) fn do_render_paper(input: &[u8]) -> Result<Vec<u8>, String> {
     Ok(render_paper_html(&shares, &meta).into_bytes())
 }
 
-/// Render a `chela.shares.v1` JSON bundle covering every share in `req.shares`.
+/// Render a `chela.shares` JSON bundle covering every share in `req.shares`.
 /// Mirrors what the CLI's `--json FILE` flag writes. Input is the same
 /// `request::RenderPaperRequest` format as [`chela_render_paper_html`];
 /// output is the bundle text as raw bytes (UTF-8), suitable for the JS side
@@ -339,7 +339,7 @@ pub(crate) fn do_render_shares_json(input: &[u8]) -> Result<Vec<u8>, String> {
 /// (UTF-8); the function auto-detects format:
 ///
 /// - **HTML** (chela paper-backup): contains `class="chela-share"` script blocks
-/// - **JSON** (`chela.share.v1` single or `chela.shares.v1` bundle): first
+/// - **JSON** (`chela.share` single or `chela.shares` bundle): first
 ///   non-whitespace byte is `{`
 ///
 /// Output is a JSON object describing each share found:
@@ -780,7 +780,7 @@ mod tests {
     }
 
     #[test]
-    fn render_shares_json_produces_chela_shares_v1_bundle() {
+    fn render_shares_json_produces_chela_shares_bundle() {
         let split_req = build_split_bip39(2, 3, ABANDON_MNEMONIC, "");
         let cards = parse_split_cards(&do_split(&split_req).unwrap());
 
@@ -797,7 +797,7 @@ mod tests {
 
         let bytes = do_render_shares_json(&buf).expect("render ok");
         let text = String::from_utf8(bytes).unwrap();
-        assert!(text.contains(r#""type":"chela.shares.v1""#));
+        assert!(text.contains(r#""type":"chela.shares""#));
         assert!(text.contains(r#""backup_name":"Test wallet""#));
         // The bundle round-trips through chela_extract_shares.
         let extracted = do_extract_shares(text.as_bytes()).expect("extract ok");
@@ -807,7 +807,7 @@ mod tests {
 
     #[test]
     fn extract_shares_auto_detects_json_single_share() {
-        // chela.share.v1 file (single object) → one extracted share.
+        // chela.share file (single object) → one extracted share.
         let split_req = build_split_bip39(2, 3, ABANDON_MNEMONIC, "");
         let cards = parse_split_cards(&do_split(&split_req).unwrap());
         let mut buf = vec![0x04u8];
@@ -822,7 +822,7 @@ mod tests {
         let bundle_text = String::from_utf8(do_render_shares_json(&buf).unwrap()).unwrap();
 
         // Pull one share object out of the bundle to construct a single-share file.
-        let start = bundle_text.find(r#"{"type":"chela.share.v1""#).unwrap();
+        let start = bundle_text.find(r#"{"type":"chela.share""#).unwrap();
         // Walk to its matching brace (depth counting).
         let mut depth = 0i32;
         let mut end = start;

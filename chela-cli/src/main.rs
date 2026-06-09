@@ -55,10 +55,8 @@ fn print_usage() {
     println!("OUTPUT FLAGS (any combination; can be used together):");
     println!("  --paper FILE              Write a combined HTML backup (one page per share).");
     println!("  --paper-dir DIR           Write a folder of one HTML file per share plus README.");
-    println!("  --json FILE               Write a single chela.shares.v1 JSON bundle.");
-    println!(
-        "  --json-dir DIR            Write a folder of one chela.share.v1 JSON file per share"
-    );
+    println!("  --json FILE               Write a single chela.shares JSON bundle.");
+    println!("  --json-dir DIR            Write a folder of one chela.share JSON file per share");
     println!(
         "                            (filename: share-<x>.share.json) plus the combined bundle."
     );
@@ -432,7 +430,7 @@ fn needs_value(v: Option<String>, flag: &str) -> Result<String, String> {
 ///
 /// Auto-detects three formats:
 ///   - **HTML** (chela paper-backup): contains `class="chela-share"`
-///   - **JSON** (single `chela.share.v1` or bundle `chela.shares.v1`): first
+///   - **JSON** (single `chela.share` or bundle `chela.shares`): first
 ///     non-whitespace char is `{`
 ///   - **Share text** (canonical `CHELA-…` two-line cards): everything else
 ///

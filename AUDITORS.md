@@ -187,7 +187,7 @@ its absence is what the fuzz harness originally tripped.
 embedded CSS. The user prints to PDF from the browser. A PDF library would
 have pulled in dependencies; static HTML survives offline indefinitely.
 
-The JSON share schema (`chela.share.v1` / `chela.shares.v1`) is documented in
+The JSON share schema (`chela.share` / `chela.shares`) is documented in
 `SPEC.md` § 6.2.
 
 ### 11. `chela-wasm/src/lib.rs` — browser FFI

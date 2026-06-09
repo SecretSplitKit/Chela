@@ -13,7 +13,7 @@ pub enum ImportError {
     NoChelaSharesFound,
     /// The JSON inside a block failed to parse.
     BadJson(JsonError),
-    /// JSON parsed but the schema-version sentinel (`"type":"chela.share.v1"`)
+    /// JSON parsed but the schema-version sentinel (`"type":"chela.share"`)
     /// is missing or wrong.
     UnknownSchema,
     /// A required field is missing or has the wrong type.
@@ -69,9 +69,9 @@ pub fn extract_shares_strict(html: &str) -> Result<Vec<Share>, ImportError> {
 
 /// Extract shares from a standalone JSON file. Accepts either:
 ///
-/// - **A single share** (`{"type":"chela.share.v1", …}`) — returns a one-element
+/// - **A single share** (`{"type":"chela.share", …}`) — returns a one-element
 ///   vector
-/// - **A bundle** (`{"type":"chela.shares.v1", "shares":[…]}`) — returns each
+/// - **A bundle** (`{"type":"chela.shares", "shares":[…]}`) — returns each
 ///   share as a separate result (per-share validation errors preserved)
 ///
 /// The two formats are distinguished by the top-level `"type"` field. Other
@@ -88,8 +88,8 @@ pub fn extract_shares_from_json(
     let v = json::parse(json).map_err(ImportError::BadJson)?;
     let ty = v.get("type").and_then(Value::as_str);
     match ty {
-        Some("chela.share.v1") => Ok(alloc::vec![decode_share_value(&v)]),
-        Some("chela.shares.v1") => {
+        Some("chela.share") => Ok(alloc::vec![decode_share_value(&v)]),
+        Some("chela.shares") => {
             let arr = v
                 .get("shares")
                 .and_then(Value::as_array)
@@ -148,20 +148,20 @@ fn find_chela_share_blocks(html: &str) -> Vec<&str> {
     out
 }
 
-/// Decode a parsed chela.share.v1 JSON document into a [`Share`]. Used by the
+/// Decode a parsed chela.share JSON document into a [`Share`]. Used by the
 /// HTML extractor (wraps `json::parse` + this).
 fn decode_share_json(json_text: &str) -> Result<Share, ImportError> {
     let v = json::parse(json_text).map_err(ImportError::BadJson)?;
     decode_share_value(&v)
 }
 
-/// Decode a pre-parsed `Value` (a single chela.share.v1 object) into a
+/// Decode a pre-parsed `Value` (a single chela.share object) into a
 /// [`Share`]. Used by `extract_shares_from_json` for the bundle path, where
 /// each array element is already a parsed `Value` — avoids re-serializing.
 fn decode_share_value(v: &Value) -> Result<Share, ImportError> {
     // Schema version sentinel.
     let ty = v.get("type").and_then(Value::as_str);
-    if ty != Some("chela.share.v1") {
+    if ty != Some("chela.share") {
         return Err(ImportError::UnknownSchema);
     }
 
@@ -367,7 +367,7 @@ mod tests {
         fixture().into_iter().next().unwrap()
     }
 
-    /// The bare `chela.share.v1` JSON object for a share (no trailing newline).
+    /// The bare `chela.share` JSON object for a share (no trailing newline).
     fn share_json(s: &Share) -> String {
         let mut out = String::new();
         crate::export::write_share_json_object(&mut out, s, &BackupMeta::default());
@@ -486,7 +486,7 @@ mod tests {
 
     #[test]
     fn wrong_schema_version_rejected() {
-        let json = share_json(&sample()).replace("chela.share.v1", "chela.share.v9");
+        let json = share_json(&sample()).replace("\"chela.share\"", "\"chela.unknown\"");
         let html = wrap_block(&json);
         let result = extract_shares_from_html(&html).unwrap();
         assert!(matches!(result[0], Err(ImportError::UnknownSchema)));

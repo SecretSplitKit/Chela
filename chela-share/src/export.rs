@@ -1,4 +1,4 @@
-//! JSON export of chela shares: per-share `chela.share.v1` files and a combined `chela.shares.v1` bundle.
+//! JSON export of chela shares: per-share `chela.share` files and a combined `chela.shares` bundle.
 
 use alloc::borrow::ToOwned;
 use alloc::format;
@@ -25,7 +25,7 @@ pub fn shares_bundle_filename(shares: &[Share]) -> String {
     format!("chela-{id}-shares.json")
 }
 
-/// Render a single share as a standalone `chela.share.v1` JSON document (trailing newline included).
+/// Render a single share as a standalone `chela.share` JSON document (trailing newline included).
 #[must_use]
 pub fn render_share_json(share: &Share, meta: &BackupMeta<'_>) -> String {
     let mut out = String::with_capacity(1024);
@@ -34,7 +34,7 @@ pub fn render_share_json(share: &Share, meta: &BackupMeta<'_>) -> String {
     out
 }
 
-/// Render every share as a single `chela.shares.v1` bundle document (trailing newline included).
+/// Render every share as a single `chela.shares` bundle document (trailing newline included).
 #[must_use]
 pub fn render_shares_json(shares: &[Share], meta: &BackupMeta<'_>) -> String {
     let names_valid = meta
@@ -47,7 +47,7 @@ pub fn render_shares_json(shares: &[Share], meta: &BackupMeta<'_>) -> String {
 
     let mut out = String::with_capacity(2048);
     out.push('{');
-    out.push_str("\"type\":\"chela.shares.v1\",");
+    out.push_str("\"type\":\"chela.shares\",");
     out.push_str("\"shares\":[");
     for (i, share) in shares.iter().enumerate() {
         if i > 0 {
@@ -119,14 +119,14 @@ pub struct CombinedFolder {
     pub json: JsonFolder,
 }
 
-/// Write a single `chela.share.v1` JSON object (no surrounding tags / newlines) to `out`.
+/// Write a single `chela.share` JSON object (no surrounding tags / newlines) to `out`.
 ///
 /// String fields escape `<` to `<` so a user-supplied `</script>` in
 /// `description` / `backup_name` / `shareholder_names` can't break out of the
 /// surrounding `<script>` tag when this JSON is embedded in HTML.
 pub(crate) fn write_share_json_object(out: &mut String, share: &Share, meta: &BackupMeta<'_>) {
     out.push('{');
-    out.push_str("\"type\":\"chela.share.v1\",");
+    out.push_str("\"type\":\"chela.share\",");
 
     out.push_str("\"card_code\":");
     let card_code = format_share(share).lines().next().unwrap_or("").to_owned();
@@ -289,7 +289,7 @@ mod tests {
         let s = sample();
         let card_code = format_share(&s).lines().next().unwrap().to_owned();
         let json = render_share_json(&s, &BackupMeta::default());
-        assert!(json.contains(r#""type":"chela.share.v1""#));
+        assert!(json.contains(r#""type":"chela.share""#));
         assert!(json.contains(&alloc::format!("\"card_code\":\"{card_code}\"")));
         assert!(json.contains(&alloc::format!("\"set_id\":\"{}\"", set_id(&s))));
         assert!(json.ends_with('\n'));
@@ -317,7 +317,7 @@ mod tests {
     fn render_shares_json_round_trips_to_shares() {
         let shares = fixture();
         let json = render_shares_json(&shares, &BackupMeta::default());
-        assert!(json.contains(r#""type":"chela.shares.v1""#));
+        assert!(json.contains(r#""type":"chela.shares""#));
         let extracted = extract_shares_from_json(&json).unwrap();
         assert_eq!(extracted.len(), shares.len());
         for (i, r) in extracted.into_iter().enumerate() {

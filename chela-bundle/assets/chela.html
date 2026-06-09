@@ -989,8 +989,8 @@ const phases = {
         // set those directly on the elements after construction.
         const picker = E("input", { type: "file", id: "import-picker" });
         picker.multiple = true;
-        // chela paper-backup HTML (`*.html`), chela.share.v1 single (`*.share.json`),
-        // and chela.shares.v1 bundle (`*.json`) all parse via chela_extract_shares.
+        // chela paper-backup HTML (`*.html`), chela.share single (`*.share.json`),
+        // and chela.shares bundle (`*.json`) all parse via chela_extract_shares.
         picker.accept = ".html,.htm,text/html,.json,.share.json,application/json";
         picker.addEventListener("change", handleHtmlImport);
         const pickerLabel = E("label", { class: "primary import-btn", text: "Choose backup files…" });

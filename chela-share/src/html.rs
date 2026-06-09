@@ -212,7 +212,7 @@ fn render_share_page(
 ///
 /// ```json
 /// {
-///   "type": "chela.share.v1",      // bump when fields change incompatibly
+///   "type": "chela.share",
 ///   "card_code": "CHELA-3058-1-3-5-40",
 ///   "set_id": "3058",              // 4-hex generation nonce
 ///   "card_number": 1,              // x: random distinct coordinate, 1..32
@@ -616,7 +616,7 @@ mod tests {
         let card_code = format_share(&s).lines().next().unwrap().to_owned();
         let html = super::render_share_card_html(&s, &BackupMeta::default());
         let json = extract_json_block(&html);
-        assert!(json.contains(r#""type":"chela.share.v1""#));
+        assert!(json.contains(r#""type":"chela.share""#));
         assert!(json.contains(&alloc::format!("\"card_code\":\"{card_code}\"")));
         assert!(json.contains(&alloc::format!("\"set_id\":\"{}\"", set_id(&s))));
         assert!(json.contains(&alloc::format!("\"card_number\":{}", s.x)));
