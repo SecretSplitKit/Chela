@@ -615,8 +615,8 @@ pub fn split_with_rng(
     // `body` is the full plaintext secret plus the appended kind byte, already `Zeroizing` so it
     // wipes on every exit, including the BundleTooLarge and split-error early returns below.
     let (body, kind_byte) = build_bundle_v2(input)?;
-    if body.len() > MAX_PASSPHRASE_LEN + 32 + 1 {
-        // 32 entropy + 255 passphrase + 1 kind byte is the largest legitimate body.
+    if body.len() > MAX_PASSPHRASE_LEN + 32 + 2 {
+        // 32 entropy + 255 passphrase + 1 integrity tag + 1 kind byte is the largest legitimate body.
         return Err(EngineError::BundleTooLarge);
     }
     if total > MAX_SHARES {
@@ -964,6 +964,35 @@ mod tests {
         // any CRC work. word0 = (x_field=0 << 6) | (m_field=31 << 1) | reserved=0 = 62.
         let words = [62u16, 0, 0, 0];
         assert!(super::decode_share_words(&words).is_err());
+    }
+
+    #[test]
+    fn max_length_passphrase_round_trips() {
+        // 32 entropy + 255 passphrase + tag + kind = 289 bytes, the largest legitimate body.
+        // Guards the body-size bound after the integrity tag widened the body by one byte.
+        let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art";
+        let passphrase: String = core::iter::repeat('p').take(255).collect();
+        let shares = split_secret(
+            &SplitInput::Bip39 {
+                mnemonic,
+                passphrase: passphrase.as_str(),
+            },
+            2,
+            3,
+            OutputMode::Bip39Wordlist,
+        )
+        .unwrap();
+        let recovered = recover_secret(&shares[..2]).unwrap();
+        match &recovered {
+            RecoveredSecret::Bip39 {
+                mnemonic: m,
+                passphrase: p,
+            } => {
+                assert_eq!(m.as_str(), mnemonic);
+                assert_eq!(p, &passphrase);
+            }
+            _ => panic!("expected bip39"),
+        }
     }
 
     #[test]
