@@ -7,9 +7,9 @@ write an independent, compatible implementation.
 Read it top to bottom: every idea is introduced before it is used. Most steps are
 explained three ways:
 
-- **Plain terms** — what it does and why, no math.
-- **The math** — the underlying theory (only high-school algebra assumed).
-- **In bits & bytes** — how that theory becomes the actual words on a card.
+- **Plain terms** - what it does and why, no math.
+- **The math** - the underlying theory (only high-school algebra assumed).
+- **In bits & bytes** - how that theory becomes the actual words on a card.
 
 Sections 1–3 build the idea, section 4 defines a share word by word, section 5 is
 recovery, and the rest is carriers, conformance, and reference tables.
@@ -18,7 +18,7 @@ recovery, and the rest is carriers, conformance, and reference tables.
 
 ## 1. The problem Chela solves
 
-You have a **secret** worth protecting for the long term — most often a password
+You have a **secret** worth protecting for the long term - most often a password
 or a crypto wallet's recovery phrase (a *BIP-39 seed*, explained in [§ 4, the share layout](#4-a-share-word-by-word)), but it
 can be any short piece of text (up to 255 bytes). You want to back it up so
 that:
@@ -28,7 +28,7 @@ that:
 
 The do-it-yourself version fails badly. Say you tell part of your password to your
 mom, email another part to a friend, and stick the last part to your monitor. To
-put the secret back together you need every piece *and* the order they go in — lose
+put the secret back together you need every piece *and* the order they go in - lose
 one, or forget the order, and it's gone; whoever is reassembling is left trying
 orderings one by one. And every piece is part of the secret, so each person holding
 one already knows a chunk of it: less of the secret left to guess, a head start if
@@ -47,19 +47,19 @@ choose two numbers:
 The second number is where the magic lives. Suppose you make 5 shares and set
 "3 needed." Then:
 
-- **Any** 3 of the 5 rebuild the secret exactly — so two shares can be lost or
+- **Any** 3 of the 5 rebuild the secret exactly - so two shares can be lost or
   destroyed and you are still fine.
 - Hold only 2 (or 1) and you learn **nothing at all**: not a partial secret, not
-  a head start for guessing — mathematically nothing.
+  a head start for guessing - mathematically nothing.
 
 Two names used throughout this document:
 
-- **M — the threshold:** how many shares are *needed* to recover.
-- **N — the total:** how many shares were *made*. Always `M ≤ N`.
+- **M - the threshold:** how many shares are *needed* to recover.
+- **N - the total:** how many shares were *made*. Always `M ≤ N`.
 
 So "5 shares, 3 needed" means `N = 5`, `M = 3`, usually written **3-of-5**.
 
-In *Chela*, each share is written as a short **list of ordinary words** — the same
+In *Chela*, each share is written as a short **list of ordinary words** - the same
 kind of words as a wallet seed phrase.
 
 Four properties follow from the design. Each is stated here and *explained later*,
@@ -69,7 +69,7 @@ in the section that introduces the mechanism delivering it:
 |---|---|
 | One share reveals nothing | [§ 3 (Security)](#3-how-shamirs-secret-sharing-works), [§ 4.4 (The Type of Secret)](#44-the-kind-byte--what-the-secret-is-and-where-it-ends) |
 | You only need any `M` shares; the other `N − M` can be lost | [§ 3 (How Shamir's Secret Sharing Works)](#3-how-shamirs-secret-sharing-works) |
-| A share recovers from its words alone — no other knowledge is needed | [§ 4 (The Share Layout)](#4-a-share-word-by-word), [§ 5 (Recovery)](#5-recovery-from-words-alone) |
+| A share recovers from its words alone - no other knowledge is needed | [§ 4 (The Share Layout)](#4-a-share-word-by-word), [§ 5 (Recovery)](#5-recovery-from-words-alone) |
 | A mistyped or swapped word is caught, never silently mis-recovered | [§ 4.5 (The Checksum)](#45-the-last-word--the-checksum-crc) |
 | The wrong set of shares is caught, never returned as a wrong secret | [§ 5 (Recovery)](#5-recovery-from-words-alone) |
 
@@ -79,15 +79,15 @@ in the section that introduces the mechanism delivering it:
 
 ### 3.1 The idea, as a curve
 
-**Plain terms.** Hide the secret — say it is the number **42** — as the height
+**Plain terms.** Hide the secret - say it is the number **42** - as the height
 where a curve crosses the vertical axis: its value at `x = 0`. Each share is a
 point on that same curve at some `x ≠ 0`. The curve is rigid: a straight line is
 fixed by any two of its points, so two shares are enough to draw the whole line
-back and read its height at `x = 0` — the secret (Figure 1).
+back and read its height at `x = 0` - the secret (Figure 1).
 
 ![Recovery: two shares determine one straight line; its value at x = 0 is the secret.](docs/assets/sss-recover.svg)
 
-*Figure 1 — Two shares fix the whole line (threshold `M = 2`); extend it back to
+*Figure 1 - Two shares fix the whole line (threshold `M = 2`); extend it back to
 `x = 0` and read off the secret.*
 
 The **threshold `M`** is just how many points it takes to pin the curve down:
@@ -95,24 +95,24 @@ The **threshold `M`** is just how many points it takes to pin the curve down:
 
 ![Threshold three: a parabola through three shares, with the secret at x = 0.](docs/assets/sss-threshold.svg)
 
-*Figure 2 — A higher threshold means a higher-degree curve: `M = 3` is a parabola,
-so it takes three shares to pin down — and `P(0)` is still the secret.*
+*Figure 2 - A higher threshold means a higher-degree curve: `M = 3` is a parabola,
+so it takes three shares to pin down - and `P(0)` is still the secret.*
 
 Below the threshold you learn nothing. With fewer than `M` points the curve is not
-pinned down — infinitely many curves of that degree pass through the points you
+pinned down - infinitely many curves of that degree pass through the points you
 hold, and they cross `x = 0` at every possible height. So `M − 1` shares leave the
 secret exactly as unknown as zero shares would (Figure 3).
 
 ![Secrecy: one share fits infinitely many lines, each crossing x = 0 at a different value.](docs/assets/sss-secrecy.svg)
 
-*Figure 3 — One share (here at `x = 3`) lies on infinitely many lines, each hitting
+*Figure 3 - One share (here at `x = 3`) lies on infinitely many lines, each hitting
 `x = 0` at a different value; every secret stays equally possible.*
 
 **The math.** The "curve" is a polynomial `P(x)` of degree `M − 1`. Its constant
 term is the secret: `P(0) = secret`. The other `M − 1` coefficients are chosen at
 random. A share is a point `(x, P(x))` for some `x ≠ 0`. A degree-`(M − 1)`
-polynomial is uniquely determined by any `M` of its points — that's *Lagrange
-interpolation* — so any `M` shares recover `P`, and hence `P(0)`. With only
+polynomial is uniquely determined by any `M` of its points - that's *Lagrange
+interpolation* - so any `M` shares recover `P`, and hence `P(0)`. With only
 `M − 1` points, for *every* possible secret there is exactly one degree-`(M − 1)`
 polynomial through your points that hits that secret at `x = 0`. All secrets stay
 equally possible: that is the (information-theoretic) security guarantee, and it
@@ -123,10 +123,10 @@ degree plus one, and a share's `x` is simply *which point on the curve* it holds
 
 ### 3.2 Chela's construction: one polynomial per byte
 
-**Plain terms.** A secret is many **bytes** — each just a number from 0 to 255 — so
+**Plain terms.** A secret is many **bytes** - each just a number from 0 to 255 - so
 *Chela* doesn't use one curve; it uses one curve *per byte* of the secret, all
 sharing the same set of `x` points. A share for a given `x` is just *each curve's
-value at that `x`* — one output byte per secret byte. We call a share's output bytes
+value at that `x`* - one output byte per secret byte. We call a share's output bytes
 its **Y values**; there are exactly as many as there are secret bytes, and on their
 own they look random.
 
@@ -143,7 +143,7 @@ it rides on four curves, and a share is the column of their values at one `x`
 about the byte values at `x = 0`.*
 
 **The math.** Let the bytes being split be `body[0], body[1], …` (the **body** is
-defined in [§ 4.3, the body](#43-words-2--w2--this-shares-piece-of-the-secret-the-body) — for now it's "the secret bytes"). For each byte `i`, build a
+defined in [§ 4.3, the body](#43-words-2--w2--this-shares-piece-of-the-secret-the-body) - for now it's "the secret bytes"). For each byte `i`, build a
 polynomial whose constant term is that byte and whose higher coefficients are
 fresh random bytes:
 
@@ -152,15 +152,15 @@ P_i(x) = body[i] ⊕ r_{i,1}·x ⊕ r_{i,2}·x² ⊕ … ⊕ r_{i,M-1}·x^{M-1} 
 ```
 
 The share at coordinate `x` is the byte vector `Y = [P_0(x), P_1(x), …]`. Here `⊕`
-and `·` are byte arithmetic in **GF(2⁸)** — a way to add and multiply bytes that
-always lands back on a byte — defined in
+and `·` are byte arithmetic in **GF(2⁸)** - a way to add and multiply bytes that
+always lands back on a byte - defined in
 [§ 3.4, the byte arithmetic](#34-the-byte-arithmetic-gf2).
 
 **In bits & bytes.** The random coefficients come from the operating system's
-**CSPRNG** (Cryptographically Secure Pseudo-Random Number Generator) — fresh bytes
+**CSPRNG** (Cryptographically Secure Pseudo-Random Number Generator) - fresh bytes
 per split. Their randomness is the entire security of the scheme: predict them and
-you break it. (The coordinate `x`, by contrast, is *public* — it ends up printed
-in the words — so it does not need to be secret, only well-formed; see
+you break it. (The coordinate `x`, by contrast, is *public* - it ends up printed
+in the words - so it does not need to be secret, only well-formed; see
 [§ 3.3, choosing x and M](#33-choosing-the-coordinates-x-and-the-threshold-m).)
 
 ### 3.3 Choosing the coordinates `x` and the threshold `M`
@@ -169,7 +169,7 @@ in the words — so it does not need to be secret, only well-formed; see
 random* from 1 to 32 (not 1, 2, 3, …). Random numbering means a stray card gives
 away neither how many cards exist nor where it sits in the set.
 
-**The math.** `x = 0` is reserved — that's the secret itself — so share
+**The math.** `x = 0` is reserved - that's the secret itself - so share
 coordinates live in `1..=32`. A split draws `N` **distinct** coordinates;
 duplicates or `x = 0` are rejected, because Lagrange interpolation ([§ 3.1, the curve](#31-the-idea-as-a-curve)) needs
 distinct points and `x = 0` would hand out the secret directly. The threshold has
@@ -190,93 +190,93 @@ goes up to 255), and dividing makes fractions, which a byte can't hold either.
 *Chela* needs a self-contained number system whose only values are the 256 bytes and
 in which `+`, `−`, `×`, and `÷` (by anything but zero) always land back on a byte. A
 number system with all four operations is called a **field**, and the one with
-exactly 256 elements is **GF(2⁸)** — the same field AES (the Advanced Encryption
+exactly 256 elements is **GF(2⁸)** - the same field AES (the Advanced Encryption
 Standard) uses. It is built in five steps, each standing on the one before.
 
-**1 — Clock arithmetic, `GF(p)`.** The simplest fields are clock faces. Work modulo a
+**1 - Clock arithmetic, `GF(p)`.** The simplest fields are clock faces. Work modulo a
 prime `p`: count `0, 1, …, p−1`, and whenever you pass `p`, wrap back to `0`. On a
 7-hour clock `5 + 4 = 2` (Figure 5). The property that makes this a *field* is division: every
 non-zero value needs a **multiplicative inverse**, a partner that multiplies with it
 to give `1` (so "÷" is defined as "× the inverse"). Modulo 7, `3 × 5 = 15 = 1`, so
-"÷3" is "×5". This works only when `p` is **prime** — on a 6-hour clock `2 × 3 = 0`,
+"÷3" is "×5". This works only when `p` is **prime** - on a 6-hour clock `2 × 3 = 0`,
 and `2` has no inverse, so it is not a field. Call this base field `GF(p)`.
 
 ![A 7-hour clock: addition wraps at 7, and every nonzero value has a multiplicative inverse.](docs/assets/sss-gf-clock.svg)
 
-*Figure 5 — Clock arithmetic modulo a prime: `5 + 4` wraps to `2` (mod 7), and
+*Figure 5 - Clock arithmetic modulo a prime: `5 + 4` wraps to `2` (mod 7), and
 every non-zero value has a multiplication partner that gives `1`, so division is
-defined. It fails when the modulus is not prime — on a 6-clock, `2 × 3 = 0` and `2`
+defined. It fails when the modulus is not prime - on a 6-clock, `2 × 3 = 0` and `2`
 has no inverse.*
 
-**2 — Polynomials over `GF(p)`.** A byte has 256 values, but `256 = 2⁸` is not prime,
+**2 - Polynomials over `GF(p)`.** A byte has 256 values, but `256 = 2⁸` is not prime,
 so no clock of 256 hours is a field. The way up is to stop using plain numbers and
-use **polynomials** — `… + b·x + c` — whose coefficients are drawn from a base field
+use **polynomials** - `… + b·x + c` - whose coefficients are drawn from a base field
 `GF(p)`. Add, subtract, multiply, and long-divide them as in school algebra, except
 the coefficients themselves wrap modulo `p` (Figure 6).
 
 ![Adding and multiplying polynomials over GF(3): ordinary algebra, with each coefficient reduced modulo 3.](docs/assets/sss-gf-poly.svg)
 
-*Figure 6 — Polynomials over `GF(3)`: add and multiply exactly as in school
+*Figure 6 - Polynomials over `GF(3)`: add and multiply exactly as in school
 algebra, then reduce every coefficient modulo `p`. Here `(2x+2) + (2x+1) = 4x+3 → x`
 and `(x+2)(x+2) = x²+4x+4 → x²+x+1`.*
 
-**3 — Irreducible polynomials are the "primes."** Step 1 needed `p` prime so the
+**3 - Irreducible polynomials are the "primes."** Step 1 needed `p` prime so the
 clock had no zero-divisors. Polynomials need the same guard: a modulus that cannot be
 factored into lower-degree polynomials, called an **irreducible** polynomial (Figure 7). It is
 the prime of the polynomial world. Reduce by a *reducible* one and you get
-zero-divisors and missing inverses — not a field.
+zero-divisors and missing inverses - not a field.
 
 ![Irreducible polynomials are the primes of polynomial arithmetic: just as 7 is prime, x squared plus x plus 1 cannot be factored.](docs/assets/sss-gf-irreducible.svg)
 
-*Figure 7 — An irreducible polynomial is the "prime" of the polynomial world: just
+*Figure 7 - An irreducible polynomial is the "prime" of the polynomial world: just
 as `7` has no smaller factors, `x²+x+1` cannot be factored over `GF(2)`. Chela's
 `0x11b` is the degree-8 irreducible that makes the byte field.*
 
-**4 — Extension fields `GF(pⁿ)`.** Fix a degree-`n` irreducible. The field is every
+**4 - Extension fields `GF(pⁿ)`.** Fix a degree-`n` irreducible. The field is every
 polynomial of degree below `n`; there are exactly `pⁿ` of them. **Add** by adding
 coefficients modulo `p`. **Multiply** by multiplying the polynomials and then taking
-the remainder modulo the chosen irreducible — that remainder step is what pulls an
+the remainder modulo the chosen irreducible - that remainder step is what pulls an
 over-degree product back in range, the polynomial version of "wrap at `p`." Every
 non-zero element has an inverse, so division works (Figure 8).
 
 ![Building GF(2 to the 8): multiply two polynomials, then take the remainder modulo the degree-8 irreducible.](docs/assets/sss-gf-build.svg)
 
-*Figure 8 — The field is every polynomial of degree below 8 — all 256 bytes.
+*Figure 8 - The field is every polynomial of degree below 8 - all 256 bytes.
 Multiplication multiplies the two, which can overflow a byte, then reduces modulo
 the irreducible `0x11b` back to a byte (`0x57 × 0x83 = 0xc1`).*
 
-**5 — The binary case, `GF(2⁸)`.** Set `p = 2` and `n = 8`. Coefficients now live in
+**5 - The binary case, `GF(2⁸)`.** Set `p = 2` and `n = 8`. Coefficients now live in
 `GF(2)`, so each is a single **bit**, and a polynomial of degree below 8 is exactly
-**8 bits — one byte** (write `0x2A` as `x⁵ + x³ + x`; its bits are the coefficients).
+**8 bits - one byte** (write `0x2A` as `x⁵ + x³ + x`; its bits are the coefficients).
 The 256 bytes *are* the field, and the abstract operations collapse into things a CPU
 does directly.
 
-**Addition** adds coefficients modulo 2 — which is **XOR**, bit by bit with no
+**Addition** adds coefficients modulo 2 - which is **XOR**, bit by bit with no
 carries (Figure 9). XOR is its own inverse, so subtraction *is* addition:
 `a ⊕ b ⊕ b = a`.
 
 ![Adding two bytes is XOR: a 1 wherever the two bits differ, with no carries.](docs/assets/sss-gf-add.svg)
 
-*Figure 9 — Addition is XOR: a `1` in each column where the two bits differ. No
-carries, so the result is always a byte — and XORing the same byte twice cancels.*
+*Figure 9 - Addition is XOR: a `1` in each column where the two bits differ. No
+carries, so the result is always a byte - and XORing the same byte twice cancels.*
 
-**Multiplication** multiplies the two polynomials — which can push powers above `x⁷`,
-past a byte — then reduces modulo a degree-8 irreducible. In practice it is built
+**Multiplication** multiplies the two polynomials - which can push powers above `x⁷`,
+past a byte - then reduces modulo a degree-8 irreducible. In practice it is built
 from **`xtime`** (multiply by `x`): shift the byte left one bit, and if a bit spilled
 past bit 7, XOR the low byte of the reduction polynomial (Figure 10). A full `a × b`
-XORs together one `xtime`-d copy of `a` for each 1-bit of `b`. That asymmetry — add is
-XOR, multiply is "polynomial-multiply, then reduce" — is the whole of the field.
+XORs together one `xtime`-d copy of `a` for each 1-bit of `b`. That asymmetry - add is
+XOR, multiply is "polynomial-multiply, then reduce" - is the whole of the field.
 
 ![Multiplying by x: shift the byte left, and XOR 0x1b whenever a bit overflows past 8.](docs/assets/sss-gf-mul.svg)
 
-*Figure 10 — Multiplication is built from "multiply by `x`" (`xtime`): shift left,
+*Figure 10 - Multiplication is built from "multiply by `x`" (`xtime`): shift left,
 and whenever a bit spills past bit 7, fold it back with `0x1b`. A full `a × b` XORs
 one shifted-and-reduced copy of `a` per 1-bit of `b`.*
 
-**Which GF(2⁸)?** Step 4 said "a degree-8 irreducible," not *which* one — and the
+**Which GF(2⁸)?** Step 4 said "a degree-8 irreducible," not *which* one - and the
 choice changes the multiplication table. AES, Reed–Solomon, and QR codes each pick a
 different one, so "GF(2⁸)" by itself is ambiguous. *Chela* pins the **AES / Rijndael**
-polynomial `x⁸ + x⁴ + x³ + x + 1` — the 9-bit constant `0x11b`, whose low byte `0x1b`
+polynomial `x⁸ + x⁴ + x³ + x + 1` - the 9-bit constant `0x11b`, whose low byte `0x1b`
 is the value folded in by `xtime` (because modulo `0x11b`, `x⁸ ≡ x⁴ + x³ + x + 1 =
 0x1b`). A reimplementation that picks any other irreducible computes a *different*
 arithmetic and will not interoperate.
@@ -294,11 +294,11 @@ inv(x)    = x^254   for x ≠ 0    (Fermat's little theorem in GF(2⁸))
 
 Sanity check (FIPS 197 § 4.2): `mul(0x57, 0x83) = 0xc1`.
 
-**Implementer's trap — `0x11b` is not primitive.** A table-based implementation
-(a 256-entry log / antilog pair) is faster and gives bit-identical results — but only
+**Implementer's trap - `0x11b` is not primitive.** A table-based implementation
+(a 256-entry log / antilog pair) is faster and gives bit-identical results - but only
 if it is built around a true **generator** of the 255-element multiplicative group.
 The AES polynomial is irreducible but *not primitive*, so `x` (the byte `0x02`) does
-**not** generate the group — its multiplicative order is only 51. A log table based
+**not** generate the group - its multiplicative order is only 51. A log table based
 on `0x02` is simply wrong. Use a primitive element such as **`0x03`** (`x + 1`),
 whose order is the full 255, as the table's base.
 
@@ -308,12 +308,12 @@ whose order is the full 255, as the table's base.
 
 A share is rendered as a list of **BIP-39 words**. *BIP-39* (Bitcoin Improvement
 Proposal 39) defines a fixed list of 2048 English words; the only thing *Chela* uses
-from it is that list. Each word stands for an **11-bit number**, 0–2047 — its
+from it is that list. Each word stands for an **11-bit number**, 0–2047 - its
 position in the list (verify the list against the SHA-256 in [§ 8.1, the constants table](#81-constants)). So a share is
 really a list of 11-bit numbers, written as words for humans to transcribe.
 
 *Chela* packs values into those 11-bit words **MSB-first** ("Most Significant Bit
-first" — the highest-value bit leads, the way we write ordinary numbers
+first" - the highest-value bit leads, the way we write ordinary numbers
 left-to-right). A share is `W` words (`W ≥ 4`) in four sections; **no byte ever
 straddles a section boundary**, which keeps the layout auditable by hand:
 
@@ -328,7 +328,7 @@ W = 2 + ceil(body_len · 8 / 11) + 1            (minimum 4; body_len defined in 
 
 ![The six words of a real share, grouped into the four sections.](docs/assets/sss-wordmap.svg)
 
-*Figure 11 — A real share (`x = 5`) of the "42" example. The words alone carry `x`,
+*Figure 11 - A real share (`x = 5`) of the "42" example. The words alone carry `x`,
 `M` and the nonce; any carrier metadata ([§ 6, carriers](#6-carriers-text-json-html))
 only echoes them.*
 
@@ -345,7 +345,7 @@ how many cards must be combined. Both are stored as small **offsets** so the
 illegal values literally cannot be written down: `x − 1` (since `x = 0` is
 reserved) and `M − 2` (since `M < 2` is forbidden).
 
-**In bits & bytes.** 11 bits, MSB-first — bits 10..6 are the `x` field, bits 5..1
+**In bits & bytes.** 11 bits, MSB-first - bits 10..6 are the `x` field, bits 5..1
 the `M` field, bit 0 is reserved (and must be 0):
 
 ```text
@@ -358,15 +358,15 @@ decode: x = ((word0 >> 6) & 0x1F) + 1
 ```
 
 For our "42" example's `x = 5`, `M = 2` share that is `x_field = 4`, `m_field = 0`,
-so `word0 = (4 << 6) = 0x100` — the word *cactus*.
+so `word0 = (4 << 6) = 0x100` - the word *cactus*.
 
 ![Word 0 split into a 5-bit X field, a 5-bit M field, and one reserved bit.](docs/assets/sss-word0.svg)
 
-*Figure 12 — Word 0 of the `x = 5`, `M = 2` share. X and M are stored as offsets
+*Figure 12 - Word 0 of the `x = 5`, `M = 2` share. X and M are stored as offsets
 (`x − 1`, `M − 2`), so the illegal values can't be written; the reserved bit is 0.*
 
 Reject the share if the reserved bit ≠ 0, or if the `M` field is 31 (that would
-decode to `M = 33`, above the cap). `M ≤ N` is not stored — it is enforced when
+decode to `M = 33`, above the cap). `M ≤ N` is not stored - it is enforced when
 splitting, and is automatic at recovery (you can't combine more cards than you
 hold).
 
@@ -374,7 +374,7 @@ hold).
 
 **Plain terms.** Suppose you back up the *same* secret twice, on two separate
 occasions. Each backup is its own batch of cards, and the two batches are **not
-interchangeable** — mixing a card from batch A with cards from batch B produces
+interchangeable** - mixing a card from batch A with cards from batch B produces
 garbage. Word 1 is a random **batch stamp**, identical on every card of one
 split, so the tool can tell which cards belong together and refuse a mix. (The
 common name for such a one-shot random tag is a **nonce**.)
@@ -383,17 +383,17 @@ common name for such a one-shot random tag is a **nonce**.)
 of the same secret sit on *different* curves; their points can't be combined. The
 nonce is a fresh random tag per split, so the two batches carry different stamps
 and the mismatch is caught immediately. Note it is **not** derived from the secret
-— deriving it from the secret would (a) wrongly mark the two batches as
+- deriving it from the secret would (a) wrongly mark the two batches as
 combinable, and (b) leak a fingerprint of the secret. Two *unrelated* splits land
 on the same 11-bit stamp only by 1-in-2048 chance; even then nothing breaks ([§ 5, recovery](#5-recovery-from-words-alone)).
 
 **In bits & bytes.** 11 random bits from the CSPRNG, drawn once per split and
 written verbatim into word 1 of every share in that split. In the "42" example the
-draw was `0x2C9` — the word *float* — the same word 1 on all three shares.
+draw was `0x2C9` - the word *float* - the same word 1 on all three shares.
 
 ### 4.3 Words 2 … W−2 — this share's piece of the secret (the body)
 
-**Plain terms.** These words carry this card's **Y values** ([§ 3.2, one polynomial per byte](#32-chelas-construction-one-polynomial-per-byte)) — the secret,
+**Plain terms.** These words carry this card's **Y values** ([§ 3.2, one polynomial per byte](#32-chelas-construction-one-polynomial-per-byte)) - the secret,
 in split form, plus a one-byte integrity check (the **tag**) and one byte ([§ 4.4, the kind byte](#44-the-kind-byte--what-the-secret-is-and-where-it-ends)) that records what type of secret it is.
 
 **The math.** What actually gets split is the **body**:
@@ -417,8 +417,8 @@ values - one output byte per body byte - so the `Y` vector is exactly `body_len`
 | BIP-39 seed, with passphrase | `entropy ‖ passphrase_utf8` (passphrase 1–255 bytes) |
 | Text | the `text` as UTF-8 (1–255 bytes) |
 
-(A BIP-39 mnemonic is interchangeable with its underlying `entropy` — 12/15/18/
-21/24 words ↔ 16/20/24/28/32 bytes — so *Chela* splits the compact entropy and
+(A BIP-39 mnemonic is interchangeable with its underlying `entropy` - 12/15/18/
+21/24 words ↔ 16/20/24/28/32 bytes - so *Chela* splits the compact entropy and
 re-derives the words on recovery. *UTF-8* is the standard text-to-bytes encoding.)
 
 **In bits & bytes.** Pack the `Y` bytes MSB-first, 11 bits at a time, into words.
@@ -441,7 +441,7 @@ misalignment that [§ 4.6, word-count ambiguity](#46-why-the-word-count-is-sligh
 
 ### 4.4 The kind byte — *what* the secret is, and *where it ends*
 
-**Plain terms.** The body's final byte names the secret's type — which size of
+**Plain terms.** The body's final byte names the secret's type - which size of
 seed, with or without a passphrase, or plain text. Because it is split *inside*
 the body, a single share never reveals the type. It also does double duty as an
 **end-marker** for the data (see "the math").
@@ -464,22 +464,22 @@ integrity tag; recovery reads it from `body[len − 1]` (in the "42" example,
 
 ### 4.5 The last word — the checksum (CRC)
 
-**Plain terms.** The final word is a check value — like the check digit on a
-credit-card number — so a mistyped or swapped word is caught instead of silently
+**Plain terms.** The final word is a check value - like the check digit on a
+credit-card number - so a mistyped or swapped word is caught instead of silently
 producing the wrong secret.
 
 **The math.** It is a **CRC** (Cyclic Redundancy Check): treat the share's bytes
-as one long binary number (a polynomial over GF(2) — bit-wide arithmetic where add
+as one long binary number (a polynomial over GF(2) - bit-wide arithmetic where add
 is XOR, the same rule as GF(2⁸) in [§ 3.4, the byte arithmetic](#34-the-byte-arithmetic-gf2)) and take the remainder after dividing by
 a fixed 11-bit generator polynomial, `0x307`. *Chela* uses the
 catalogued variant **CRC-11/UMTS**. An 11-bit CRC is *guaranteed* to detect any
 error confined to a single word: one wrong word changes at most 11 adjacent bits
 (a "burst" of length ≤ 11), and an 11-bit CRC catches every burst of length ≤ 11.
 
-**In bits & bytes.** The CRC is computed over the share's *meaning* — `x`, `M`,
-the nonce, and the `Y` bytes — so a mistyped word 0 or word 1 is caught too. The
+**In bits & bytes.** The CRC is computed over the share's *meaning* - `x`, `M`,
+the nonce, and the `Y` bytes - so a mistyped word 0 or word 1 is caught too. The
 parameters (`init 0`, no input/output bit-reflection, no final XOR) make it plain
-GF(2) long division — checkable by hand and against any standard CRC tool;
+GF(2) long division - checkable by hand and against any standard CRC tool;
 catalogue check value `0x061` over the ASCII string `"123456789"`.
 
 ```text
@@ -502,7 +502,7 @@ For the "42" example's `x = 5` share, `crc_input = 05 02 02 C9 61 98 BC 44` give
 
 **Plain terms.** Because 8 (bits per byte) and 11 (bits per word) don't divide
 evenly, two body lengths that differ by one byte can pack into the *same* number
-of words. So the word count alone doesn't reveal the exact byte length — but the
+of words. So the word count alone doesn't reveal the exact byte length - but the
 kind-byte terminator ([§ 4.4, the kind byte](#44-the-kind-byte--what-the-secret-is-and-where-it-ends)) does, at recovery ([§ 5, recovery](#5-recovery-from-words-alone)).
 
 **The math.** The byte grid and the word grid only realign every
@@ -527,7 +527,7 @@ recovery ([§ 5, recovery](#5-recovery-from-words-alone)), using the terminator.
 ## 5. Recovery (from words alone)
 
 **Plain terms.** Gather any `M` cards, transcribe their words, and the tool redraws
-the curves and reads the secret off at `x = 0`. Nothing but the words is needed —
+the curves and reads the secret off at `x = 0`. Nothing but the words is needed -
 no label, no file.
 
 **The math.** Each body byte is rebuilt by Lagrange interpolation at `x = 0`:
@@ -540,20 +540,20 @@ body[i] = XOR over the chosen shares of  ( L_i(0) · share_{x_i}[i] )
 **In bits & bytes.** A decoder MUST accept a bare list of BIP-39 words. The
 algorithm:
 
-1. **Per share** — read `W` words (`W ≥ 4`); reject any value ≥ 2048. Word 0 →
+1. **Per share** - read `W` words (`W ≥ 4`); reject any value ≥ 2048. Word 0 →
    `x`, `M` (reject if the reserved bit ≠ 0 or the `M` field is 31). Word 1 →
    nonce. Word `W−1` → the stored CRC. Words `2..W−2` are the packed `Y` bytes.
-2. **Agree** — all shares MUST share the same nonce, the same `M`, and the same
+2. **Agree** - all shares MUST share the same nonce, the same `M`, and the same
    body-word count `k`, else `MismatchedShares`. Require at least `M` shares with
    **distinct** `x` (fewer → `InsufficientShares`; a duplicate or `x = 0` → reject).
-3. **Reconstruct at the longer length** — unpack every share's `Y` to `max_bytes`
+3. **Reconstruct at the longer length** - unpack every share's `Y` to `max_bytes`
    ([§ 4.6, word-count ambiguity](#46-why-the-word-count-is-slightly-ambiguous)) and Lagrange-interpolate at `x = 0` → a candidate `body` of `max_bytes`.
-4. **Find the true length (the terminator)** — the kind byte is never `0x00` and
+4. **Find the true length (the terminator)** - the kind byte is never `0x00` and
    any over-read byte is zero padding, so: if `max_bytes > min_bytes` and
    `body[max_bytes − 1] == 0x00`, the true length is `min_bytes` (drop that padding
    byte); otherwise it is `max_bytes`. This resolves [§ 4.6, word-count ambiguity](#46-why-the-word-count-is-slightly-ambiguous) deterministically for
-   the whole set — no per-share guessing.
-5. **Verify each share** — recompute `CRC-11/UMTS([x, M] ‖ nonce_be ‖ Y[..len])`
+   the whole set - no per-share guessing.
+5. **Verify each share** - recompute `CRC-11/UMTS([x, M] ‖ nonce_be ‖ Y[..len])`
    for every share and compare to its stored CRC; a mismatch (a mistyped word) →
    `ShareCorrupt`.
 6. **Interpret** - kind = `body[len − 1]`, tag = `body[len − 2]`, payload =
@@ -588,7 +588,7 @@ word1 word2 word3 … wordW           (line 2; blank line between multiple share
 
 `<NONCE>` is the 4-hex-digit nonce (high bit always 0; parsed case-insensitively);
 `<x>` is decimal 1–32; `<M>`/`<N>` are threshold/total; `<W>` is the word count.
-The label is **advisory** — the words already carry `x`, `M`, and the nonce; the
+The label is **advisory** - the words already carry `x`, `M`, and the nonce; the
 label only adds `N`, which recovery never needs. A parser that sees a label MUST
 cross-check `<NONCE>`/`<x>`/`<M>` against the words and reject a disagreement
 (`HeaderWordsMismatch`); `<N>` may be `?` when the total is unknown.
@@ -646,7 +646,7 @@ The encoder MUST escape `<` → `&lt;` inside JSON strings.
 
 A conformant implementation MUST:
 
-1. Recover a share from its BIP-39 words alone — no label, no JSON.
+1. Recover a share from its BIP-39 words alone - no label, no JSON.
 2. Read `x`/`M`/nonce from the words and, if a label/JSON is present, cross-check
    its `x`/`M`/nonce and reject a disagreement (`HeaderWordsMismatch`).
 3. Reject a share whose reserved bit is set, whose `M` field is 31, or whose CRC
@@ -687,13 +687,13 @@ time or table-based GF(2⁸) multiplication (the wire format is identical).
 
 | Acronym | Meaning |
 |---|---|
-| `‖` | concatenation — bytes joined end to end ([§ 4.3, the body](#43-words-2--w2--this-shares-piece-of-the-secret-the-body)) |
+| `‖` | concatenation - bytes joined end to end ([§ 4.3, the body](#43-words-2--w2--this-shares-piece-of-the-secret-the-body)) |
 | SSS | Shamir's Secret Sharing ([§ 2–3](#2-the-core-idea-shares-and-the-two-numbers)) |
-| GF(2⁸) | Galois Field of 256 elements — byte arithmetic ([§ 3.4](#34-the-byte-arithmetic-gf2)) |
-| AES | Advanced Encryption Standard — source of the GF(2⁸) polynomial |
-| CRC | Cyclic Redundancy Check — an error-detecting checksum ([§ 4.5, the CRC](#45-the-last-word--the-checksum-crc)) |
+| GF(2⁸) | Galois Field of 256 elements - byte arithmetic ([§ 3.4](#34-the-byte-arithmetic-gf2)) |
+| AES | Advanced Encryption Standard - source of the GF(2⁸) polynomial |
+| CRC | Cyclic Redundancy Check - an error-detecting checksum ([§ 4.5, the CRC](#45-the-last-word--the-checksum-crc)) |
 | CRC-11/UMTS | the specific 11-bit CRC *Chela* uses (catalogued under the UMTS standard) |
-| BIP-39 | Bitcoin Improvement Proposal 39 — the 2048-word mnemonic list ([§ 4, the share layout](#4-a-share-word-by-word)) |
+| BIP-39 | Bitcoin Improvement Proposal 39 - the 2048-word mnemonic list ([§ 4, the share layout](#4-a-share-word-by-word)) |
 | CSPRNG | Cryptographically Secure Pseudo-Random Number Generator |
 | MSB / LSB | Most / Least Significant Bit; "MSB-first" = highest-value bit first |
 | XOR | bitwise exclusive-OR (`^`) |
@@ -710,7 +710,7 @@ inv(0x53)       = 0xca                     (AES S-box, pre-affine)
 mul(x, inv(x))  = 0x01   for every x in 1..=255
 ```
 
-**CRC-11/UMTS** — any tool set to `width 11, poly 0x307, init 0x000, refin false,
+**CRC-11/UMTS** - any tool set to `width 11, poly 0x307, init 0x000, refin false,
 refout false, xorout 0x000` reproduces these:
 
 ```text
@@ -762,5 +762,5 @@ round-trip tests in `chela-engine::tests`.
 
 The threat model, secret-zeroization discipline, constant-time correctness,
 terminal-display sanitisation, paper-backup HTML rendering, and the recovery UI
-are implementation concerns documented elsewhere — they are not part of the wire
+are implementation concerns documented elsewhere - they are not part of the wire
 format defined here.

@@ -1,10 +1,10 @@
-# AGENTS.md — auditing chela with an AI agent
+# AGENTS.md - auditing chela with an AI agent
 
 You have been pointed at the chela repository and asked to verify it is secure
 and well packaged. This file tells you what to check and how to check it.
 
 chela splits a BIP-39 wallet seed or short password into N shares; any M of them
-recover the original. The cryptographic core is in-tree — no third-party crates
+recover the original. The cryptographic core is in-tree - no third-party crates
 beyond the OS RNG. A human auditor uses `AUDITORS.md` to walk the codebase; this
 file is for an agent that can run shell commands.
 
@@ -24,7 +24,7 @@ chela-bundle/       builds the standalone chela.html
 ```
 
 `chela-share/fuzz/` is excluded from the main workspace. It depends on
-`libfuzzer-sys` — the only crates.io dep in the repo, test-harness-only.
+`libfuzzer-sys` - the only crates.io dep in the repo, test-harness-only.
 
 ## Security checks
 
@@ -54,7 +54,7 @@ Each `unsafe` block must carry a `// SAFETY:` comment.
 ```sh
 grep -rn 'volatile_set\|\.zeroize()\|impl Drop' chela-*/src
 ```
-Plain `fill(0)` or `= [0; N]` on a buffer that held secret bytes is a finding —
+Plain `fill(0)` or `= [0; N]` on a buffer that held secret bytes is a finding -
 the optimiser may elide either. `chela-primitives::zeroize::volatile_set` is
 the only sanctioned wipe.
 
@@ -92,7 +92,7 @@ flags, `SOURCE_DATE_EPOCH`) live in `release.yml` and `Cargo.toml`.
 
 ### Fuzz harness
 
-`chela-share/fuzz/` fuzzes the parsers that take untrusted text — the share-text
+`chela-share/fuzz/` fuzzes the parsers that take untrusted text - the share-text
 format and the HTML and JSON importers. A smoke run executes on every PR via
 `.github/workflows/fuzz.yml`.
 

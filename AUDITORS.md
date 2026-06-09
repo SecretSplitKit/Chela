@@ -1,4 +1,4 @@
-# AUDITORS.md — reading chela end-to-end
+# AUDITORS.md - reading chela end-to-end
 
 You're here to convince yourself chela's cryptographic core does what it
 claims, and that the claims are sound. The fastest path is to open every file
@@ -12,9 +12,9 @@ chela defends against:
 
 - **Loss of fewer than `M` shares.** Information-theoretic: any subset of size
   `< M` reveals nothing about the secret.
-- **A single transcription error** in a recovered card — per-share checksums
+- **A single transcription error** in a recovered card - per-share checksums
   catch this before Lagrange is invoked.
-- **Cross-split share contamination** — shares from two unrelated splits never
+- **Cross-split share contamination** - shares from two unrelated splits never
   silently combine. Each split carries a random generation nonce (§ 9); a
   mismatch is `MismatchedShares`. Because the nonce is drawn per generation, even
   two splits of the *same* secret carry different nonces and are correctly
@@ -30,7 +30,7 @@ chela does **not** defend against:
   verification below) or build from the tagged commit.
 - **A coalition of ≥ `M` cardholders.** Any `M` shares reconstruct the secret.
   That's the design.
-- **A compromised process on the same machine** — argv copies, screen captures,
+- **A compromised process on the same machine** - argv copies, screen captures,
   swap files, hibernation files, and clipboard sniffers are out of scope.
 - **A compromised browser** loading the standalone bundle. The WASM is only as
   trusted as the page it runs in; verify the HTML hash against the release.
@@ -44,7 +44,7 @@ Read the files in this order. Each section tells you what the file does, the
 spec it implements, what to verify yourself, and the reasoning behind any
 choice that isn't obvious from the spec.
 
-### 1. `chela-primitives/src/sha256.rs` — SHA-256
+### 1. `chela-primitives/src/sha256.rs` - SHA-256
 
 Implements FIPS 180-4 § 6.2. **Scope:** two callers - `chela-bip39` validates a
 mnemonic's built-in checksum (§ 7), and `chela-engine` computes the one-byte body
@@ -56,23 +56,23 @@ no SHA per-share checksum (that is CRC-11, § 4a). SPEC.md § 1.3.
 - The `impl Drop` block wipes the 64-byte input buffer and the 8-word state.
   The 256-byte message schedule `w` is wiped at the end of `compress` (a stack
   variable; relies on `volatile_set`).
-- Test vectors: empty string, "abc", 56-byte, 112-byte, 1M-of-'a' — FIPS 180-2
+- Test vectors: empty string, "abc", 56-byte, 112-byte, 1M-of-'a' - FIPS 180-2
   App B + NIST CAVP. Confirm the literal expected digests against the FIPS
   document; do not trust the file's annotations alone.
 
 Working variables `a..h` (32 bytes on the stack) are not wiped after each
-compression call — they're overwritten on the next call but remain in stack
+compression call - they're overwritten on the next call but remain in stack
 memory between calls. Documented limitation.
 
-### 2. `chela-primitives/src/ct.rs` — constant-time equality
+### 2. `chela-primitives/src/ct.rs` - constant-time equality
 
-One function (`ct_eq`) — the standard XOR-OR-reduce idiom. Verify it compiles
+One function (`ct_eq`) - the standard XOR-OR-reduce idiom. Verify it compiles
 to a constant-time sequence in release builds (no early return).
 
-### 3. `chela-primitives/src/zeroize.rs` — volatile wipe
+### 3. `chela-primitives/src/zeroize.rs` - volatile wipe
 
 `volatile_set` is `core::ptr::write_volatile` per byte plus a
-`compiler_fence(SeqCst)`. The fence is the load-bearing part — without it the
+`compiler_fence(SeqCst)`. The fence is the load-bearing part - without it the
 compiler can elide the writes since the buffer is "dead" after the call.
 
 Plain `.fill(0)` is forbidden and not present anywhere in `chela-*/src` that
@@ -82,12 +82,12 @@ grep -rn '\.fill(0)' chela-*/src
 ```
 Any hit must operate on a non-secret buffer.
 
-### 4. `chela-primitives/src/rng.rs` — OS RNG
+### 4. `chela-primitives/src/rng.rs` - OS RNG
 
 Per-platform syscalls. macOS: `getentropy` in 256-byte chunks. Linux:
 `getrandom` looping on short reads. Windows: `BCryptGenRandom`. wasm32: a JS
 host import `chela.random_bytes(ptr, len) -> i32` that the embedder wires to
-`crypto.getRandomValues`. No fallback on unsupported targets — `RngError::Unsupported`.
+`crypto.getRandomValues`. No fallback on unsupported targets - `RngError::Unsupported`.
 
 `OsRng` is the only entropy source. Confirm:
 ```sh
@@ -95,29 +95,29 @@ grep -rn 'thread_rng\|rand::\|OsRng::default' chela-*/src
 ```
 Must be empty.
 
-### 4a. `chela-primitives/src/crc.rs` — CRC-11/UMTS
+### 4a. `chela-primitives/src/crc.rs` - CRC-11/UMTS
 
 The per-share transcription checksum (the last word of every share). Poly
 `0x307` (`x¹¹+x⁹+x⁸+x²+x+1`, implicit `x¹¹`), `init 0`, non-reflected
-(`refin/refout = false`), `xorout 0` — textbook GF(2) long division, auditable by
+(`refin/refout = false`), `xorout 0` - textbook GF(2) long division, auditable by
 hand and reproducible by any standard CRC tool. KAT: `crc11_umts("123456789") ==
 0x061` (reveng catalogue check value). An 11-bit register detects every
 transcription error that flips a single word (one word = a burst of ≤ 11 bits).
 SPEC.md § 1.2 / § 8.2.
 
-### 5. `chela-field/src/gf256.rs` — constant-time GF(2^8)
+### 5. `chela-field/src/gf256.rs` - constant-time GF(2^8)
 
 Add is XOR. Multiply is 8 unconditional rounds of mask-driven shift + mask-
 driven reduction mod `0x11b` (Rijndael polynomial, AES). Inverse via the
 fixed-shape squaring chain `x^254` (Fermat in GF(2^8) since `|F*| = 255`).
-`inv(0) == 0` is intentional so `inv` is total — callers must ensure `x = 0`
+`inv(0) == 0` is intentional so `inv` is total - callers must ensure `x = 0`
 never reaches Lagrange (`chela-sss::combine` rejects it).
 
 No tables. Tables would leak data-dependent timing via the CPU cache.
 
-KAT: `mul(0x57, 0x83) = 0xc1` — FIPS 197 § 4.1.
+KAT: `mul(0x57, 0x83) = 0xc1` - FIPS 197 § 4.1.
 
-### 6. `chela-sss/src/lib.rs` — Shamir split / combine
+### 6. `chela-sss/src/lib.rs` - Shamir split / combine
 
 `split` samples fresh coefficients per byte position from the injected
 `RandomSource`. The `rng.fill_random` call sits inside the per-byte loop, so
@@ -127,19 +127,19 @@ each byte gets independent coefficients.
 coordinate). Lagrange interpolation at `x = 0`: compute the coefficients once,
 then apply per byte.
 
-Allocation-free — callers pass in `out_x: &mut [u8]` and
+Allocation-free - callers pass in `out_x: &mut [u8]` and
 `out_shares: &mut [&mut [u8]]`. Allocation lives one level up in `chela-engine`,
 which always has a real allocator. Cost: std callers have to build a
 `Vec<&mut [u8]>` of slice refs.
 
-### 7. `chela-bip39/src/lib.rs` — BIP-0039 codec
+### 7. `chela-bip39/src/lib.rs` - BIP-0039 codec
 
 Entropy ↔ 11-bit indices with the BIP-39 checksum byte (top `checksum_bits`
 bits of `SHA-256(entropy)`). Implements BIP-39 § 4 verbatim. Vectors come from
 the Trezor python-mnemonic `vectors.json` (12/18/24-word) and derived 15/21-word
 zero-entropy cases.
 
-### 8. `chela-bip39/src/wordlist.rs` — vendored English wordlist
+### 8. `chela-bip39/src/wordlist.rs` - vendored English wordlist
 
 2048 words, in order, verbatim from BIP-0039. Verify against the canonical
 hash `2f5eed53a4727b4bf8880d8f3f199efc90e58503646d9ff8eff3a2ed3b24dbda`:
@@ -150,7 +150,7 @@ diff \
   <(awk -F'"' '/^    "/ {print $2}' chela-bip39/src/wordlist.rs)
 ```
 
-### 9. `chela-engine/src/lib.rs` — body codec, integrity tag, generation nonce, per-share checksum
+### 9. `chela-engine/src/lib.rs` - body codec, integrity tag, generation nonce, per-share checksum
 
 The orchestration layer. The only SHA-256 in this file is the one-byte body
 integrity tag (point 2); the per-share checksum is CRC-11, and the per-generation
@@ -184,14 +184,14 @@ tag is a random nonce, not a hash. Six things matter here:
    pack into the same Y-word count; `decode_share_bip39_v2` tries each candidate
    length from longest to shortest and keeps the one whose CRC-11 matches the
    stored checksum word. SPEC.md § 4.3. (Allocation also lives here, not in
-   `chela-sss` — the engine builds the `Vec<&mut [u8]>` of slice refs that
+   `chela-sss` - the engine builds the `Vec<&mut [u8]>` of slice refs that
    `chela-sss::split` needs.)
 
-### 10. `chela-share/` — share text format + JSON + paper-backup HTML
+### 10. `chela-share/` - share text format + JSON + paper-backup HTML
 
 `parse_share` / `parse_shares` is the only parser that ingests externally-
 supplied text. Fuzzed via `chela-share/fuzz`; a smoke run executes on every
-PR. The `is_ascii()` guard at the byte slice in `parse_share` is load-bearing —
+PR. The `is_ascii()` guard at the byte slice in `parse_share` is load-bearing -
 its absence is what the fuzz harness originally tripped.
 
 `html::render_paper_html` produces a single self-contained HTML document with
@@ -201,7 +201,7 @@ have pulled in dependencies; static HTML survives offline indefinitely.
 The JSON share schema (`chela.share` / `chela.shares`) is documented in
 `SPEC.md` § 6.2.
 
-### 11. `chela-wasm/src/lib.rs` — browser FFI
+### 11. `chela-wasm/src/lib.rs` - browser FFI
 
 Exposes a C-ABI an HTML/JS page calls to split secrets, recover them, and
 render paper backups. Seven `unsafe` blocks (the only ones in this crate),
@@ -214,18 +214,18 @@ frees.
 ### Secret-bearing buffers and where they're wiped
 
 Wipe primitive: `chela_primitives::zeroize::volatile_set` (`core::ptr::write_volatile`
-per byte + `compiler_fence(SeqCst)`). Plain `fill(0)` is forbidden — the
+per byte + `compiler_fence(SeqCst)`). Plain `fill(0)` is forbidden - the
 optimiser may elide it.
 
 | Location                                  | Wiped buffer(s)                                                                          |
 |-------------------------------------------|------------------------------------------------------------------------------------------|
 | `chela-sss::split`                        | RNG scratch, polynomial coefficients (`wipe_coeffs`)                                     |
-| `chela-engine::split_with_rng`            | body (joined secret), per-share `sb` after consumption, BIP-39 `indices`, `entropy` Vec — pre-sized to defeat `extend_from_slice` realloc orphaning |
+| `chela-engine::split_with_rng`            | body (joined secret), per-share `sb` after consumption, BIP-39 `indices`, `entropy` Vec - pre-sized to defeat `extend_from_slice` realloc orphaning |
 | `chela-engine::{encode_share_bip39_v2, decode_share_bip39_v2}` | CRC input (holds the Y bytes), wrapped in `Zeroizing`; decoded share `body` buffer  |
 | `chela-engine::recover_secret`            | body (recovered secret), all share payload `Vec`s                                        |
 | `chela-engine::interpret_body`            | re-encoded mnemonic `indices`                                                            |
 | `chela-tui::wizard`                       | input mnemonic (via `SecretString`), recovered secret on reveal-decline and post-display |
-| `chela-cli`                               | argv-derived mnemonic / passphrase / text, stdin share buffer, recovered secret. argv copies in the OS process listing still leak — CLI-inherent. |
+| `chela-cli`                               | argv-derived mnemonic / passphrase / text, stdin share buffer, recovered secret. argv copies in the OS process listing still leak - CLI-inherent. |
 | `chela-wasm`                              | `SplitRequest` / `RawShare` `impl Drop`; `chela_dealloc` volatile-wipes every buffer it frees |
 
 Audit query:

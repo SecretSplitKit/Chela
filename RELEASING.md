@@ -44,22 +44,22 @@ Wall time: ~6–8 min cold cache, ~4 min warm.
 Every release attaches, per target (linux-x86_64, macos-x86_64, macos-aarch64,
 windows-x86_64) plus one web bundle:
 
-- `chela-<version>-<target>.tar.gz` (or `.zip` on Windows) — `chela` + `chela-cli` binaries
-- `chela-<version>-web.html` — standalone browser bundle
-- `SHA256SUMS` and `SHA256SUMS.minisig` — every artifact's hash, signed
+- `chela-<version>-<target>.tar.gz` (or `.zip` on Windows) - `chela` + `chela-cli` binaries
+- `chela-<version>-web.html` - standalone browser bundle
+- `SHA256SUMS` and `SHA256SUMS.minisig` - every artifact's hash, signed
 
 ## Reproducibility failures
 
 The workflow fails with `::error::<bin> not reproducible: <h1> != <h2>`. Likely causes
 in order of frequency:
 
-- A new dependency embeds a timestamp or PRNG constant — diff strings sections, vendor
+- A new dependency embeds a timestamp or PRNG constant - diff strings sections, vendor
   or pin.
 - A `build.rs` writes the current time into generated code.
-- A new rustc release changed code-gen determinism — pin `rust-toolchain.toml`.
+- A new rustc release changed code-gen determinism - pin `rust-toolchain.toml`.
 - GitHub upgraded a runner image mid-month.
 
-Don't paper over the failure — investigate first.
+Don't paper over the failure - investigate first.
 
 ## Signing failures
 
