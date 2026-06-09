@@ -71,6 +71,7 @@ in the section that introduces the mechanism delivering it:
 | You only need any `M` shares; the other `N − M` can be lost | [§ 3 (How Shamir's Secret Sharing Works)](#3-how-shamirs-secret-sharing-works) |
 | A share recovers from its words alone — no other knowledge is needed | [§ 4 (The Share Layout)](#4-a-share-word-by-word), [§ 5 (Recovery)](#5-recovery-from-words-alone) |
 | A mistyped or swapped word is caught, never silently mis-recovered | [§ 4.5 (The Checksum)](#45-the-last-word--the-checksum-crc) |
+| The wrong set of shares is caught, never returned as a wrong secret | [§ 5 (Recovery)](#5-recovery-from-words-alone) |
 
 ---
 
@@ -129,16 +130,16 @@ value at that `x`* — one output byte per secret byte. We call a share's output
 its **Y values**; there are exactly as many as there are secret bytes, and on their
 own they look random.
 
-Our running example is the text **"42"**: its body is three bytes — the characters
-`0x34` and `0x32`, plus a one-byte type marker (the *kind byte*,
-[§ 4.4, the kind byte](#44-the-kind-byte--what-the-secret-is-and-where-it-ends)) — so
-it rides on three curves, and a share is the column of their values at one `x`
+Our running example is the text **"42"**: its body is four bytes - the characters
+`0x34` and `0x32`, a one-byte integrity tag, and a one-byte type marker (the *kind
+byte*, [§ 4.4, the kind byte](#44-the-kind-byte--what-the-secret-is-and-where-it-ends)) - so
+it rides on four curves, and a share is the column of their values at one `x`
 (Figure 4).
 
 ![One polynomial per body byte; a share is the column of their values at one x.](docs/assets/sss-perbyte.svg)
 
-*Figure 4 — Each body byte is the constant term of its own curve. Any two shares
-(here `x = 2` and `x = 5`) pin all three curves; one share alone reveals nothing
+*Figure 4 - Each body byte is the constant term of its own curve. Any two shares
+(here `x = 2` and `x = 5`) pin all four curves; one share alone reveals nothing
 about the byte values at `x = 0`.*
 
 **The math.** Let the bytes being split be `body[0], body[1], …` (the **body** is
@@ -393,19 +394,22 @@ draw was `0x2C9` — the word *float* — the same word 1 on all three shares.
 ### 4.3 Words 2 … W−2 — this share's piece of the secret (the body)
 
 **Plain terms.** These words carry this card's **Y values** ([§ 3.2, one polynomial per byte](#32-chelas-construction-one-polynomial-per-byte)) — the secret,
-in split form, plus one extra byte ([§ 4.4, the kind byte](#44-the-kind-byte--what-the-secret-is-and-where-it-ends)) that records what type of secret it is.
+in split form, plus a one-byte integrity check (the **tag**) and one byte ([§ 4.4, the kind byte](#44-the-kind-byte--what-the-secret-is-and-where-it-ends)) that records what type of secret it is.
 
 **The math.** What actually gets split is the **body**:
 
 ```text
-body = payload ‖ kind_byte
+body = payload ‖ tag ‖ kind_byte
 ```
 
-The **payload** is the raw secret bytes; the **kind byte** ([§ 4.4, the kind byte](#44-the-kind-byte--what-the-secret-is-and-where-it-ends)) is appended as
-the body's last byte. (The symbol `‖` means **concatenation**: the bytes on either
-side joined end to end, nothing in between.) SSS ([§ 3.2, one polynomial per byte](#32-chelas-construction-one-polynomial-per-byte)) turns the body into this share's `Y` values —
-one output byte per body byte — so the `Y` vector is exactly `body_len` bytes long
-(`body_len = payload length + 1`). The payload depends on the kind:
+The **payload** is the raw secret bytes. The **tag** is a one-byte integrity check,
+`SHA-256(payload ‖ kind_byte)[0]`, that binds the whole secret: combine the wrong
+shares and the recovered tag won't match, so recovery fails ([§ 5, recovery](#5-recovery-from-words-alone)) instead of
+handing back a plausible wrong secret. The **kind byte** ([§ 4.4, the kind byte](#44-the-kind-byte--what-the-secret-is-and-where-it-ends)) is the
+body's last byte. (The symbol `‖` means **concatenation**: the bytes on either side joined
+end to end, nothing in between.) SSS ([§ 3.2, one polynomial per byte](#32-chelas-construction-one-polynomial-per-byte)) turns the body into this share's `Y`
+values - one output byte per body byte - so the `Y` vector is exactly `body_len` bytes long
+(`body_len = payload length + 2`). The payload depends on the kind:
 
 | Kind | Payload bytes |
 |---|---|
@@ -420,8 +424,9 @@ re-derives the words on recovery. *UTF-8* is the standard text-to-bytes encoding
 **In bits & bytes.** Pack the `Y` bytes MSB-first, 11 bits at a time, into words.
 Byte boundaries (8 bits) and word boundaries (11 bits) don't line up, so the last
 word is zero-padded on the right to fill its 11 bits. With `len = body_len` there
-are `ceil(len · 8 / 11)` body words. The "42" example has body `34 32 0B` (3 bytes),
-so each share carries three `Y` bytes packed into three body words (Figure 13).
+are `ceil(len · 8 / 11)` body words. The "42" example has body `34 32 43 0B` (4 bytes:
+payload `34 32`, tag `43`, kind `0B`), so each share carries four `Y` bytes packed into
+three body words (Figure 13).
 
 ```text
 bit b of the Y byte-stream  →  word (b / 11), bit position (10 − b mod 11)   # MSB-first
@@ -430,9 +435,9 @@ any leftover bits of the last word are 0
 
 ![Packing three bytes into three 11-bit words, MSB-first, last word zero-padded.](docs/assets/sss-packing.svg)
 
-*Figure 13 — The `x = 5` share's `Y = F0 55 49` packed MSB-first: three bytes fill
-two whole words plus two bits of a third, and the last nine bits are zero padding —
-the misalignment that [§ 4.6, word-count ambiguity](#46-why-the-word-count-is-slightly-ambiguous) has to resolve.*
+*Figure 13 - The `x = 5` share's `Y = 61 98 BC 44` packed MSB-first: four bytes fill
+two whole words plus ten bits of a third, and the last bit is zero padding - the
+misalignment that [§ 4.6, word-count ambiguity](#46-why-the-word-count-is-slightly-ambiguous) has to resolve.*
 
 ### 4.4 The kind byte — *what* the secret is, and *where it ends*
 
@@ -447,9 +452,9 @@ Therefore, once the body is reconstructed, *the last non-zero byte is the kind
 byte, and it marks the true end of the data*. This is what lets recovery pin down
 the exact length despite the 8-vs-11-bit misalignment ([§ 4.6, word-count ambiguity](#46-why-the-word-count-is-slightly-ambiguous), [§ 5, recovery](#5-recovery-from-words-alone)).
 
-**In bits & bytes.** One byte, appended to the payload to form the body; recovery
-reads it from `body[len − 1]` (in the "42" example, `0x0B` = Text). Any value
-outside the table is rejected (`BundleCorrupt`).
+**In bits & bytes.** One byte, the body's last byte - after the payload and the
+integrity tag; recovery reads it from `body[len − 1]` (in the "42" example,
+`0x0B` = Text). Any value outside the table is rejected (`BundleCorrupt`).
 
 | `kind_byte` | Meaning |
 |---|---|
@@ -490,8 +495,8 @@ for each input byte:
         if top: crc ^= 0x307
 ```
 
-For the "42" example's `x = 5` share, `crc_input = 05 02 02 C9 F0 55 49` gives CRC
-`0x5B0` — the word *render*, the sixth and last word of the share.
+For the "42" example's `x = 5` share, `crc_input = 05 02 02 C9 61 98 BC 44` gives CRC
+`0x6EC` - the word *talk*, the sixth and last word of the share.
 
 ### 4.6 Why the word count is slightly ambiguous
 
@@ -551,18 +556,20 @@ algorithm:
 5. **Verify each share** — recompute `CRC-11/UMTS([x, M] ‖ nonce_be ‖ Y[..len])`
    for every share and compare to its stored CRC; a mismatch (a mistyped word) →
    `ShareCorrupt`.
-6. **Interpret** — kind = `body[len − 1]`, payload = `body[..len − 1]`. Decode the
-   kind ([§ 4.4, the kind byte](#44-the-kind-byte--what-the-secret-is-and-where-it-ends)); reject (`BundleCorrupt`) unless the kind is known and the payload
-   length fits it (no-pass BIP-39 = exactly `entropy_bytes`; with-pass =
-   `entropy_bytes + 1 .. entropy_bytes + 255`; text = `1..=255`). For a BIP-39
-   seed, re-derive the mnemonic from the entropy — its own built-in checksum is a
-   final sanity check.
+6. **Interpret** - kind = `body[len − 1]`, tag = `body[len − 2]`, payload =
+   `body[..len − 2]`. Reject (`BundleCorrupt`) unless the kind ([§ 4.4, the kind byte](#44-the-kind-byte--what-the-secret-is-and-where-it-ends)) is
+   known, the payload length fits it (no-pass BIP-39 = exactly `entropy_bytes`;
+   with-pass = `entropy_bytes + 1 .. entropy_bytes + 255`; text = `1..=255`), and the
+   tag equals `SHA-256(payload ‖ kind_byte)[0]` (compared in constant time). The tag
+   is what makes a wrong share subset fail here instead of decoding into a different,
+   valid-looking secret.
 
 The nonce ([§ 4.2, the nonce](#42-word-1--the-batch-id-nonce)) keeps two different splits from being mixed. In the ≈ 1/2048
-case where two *unrelated* splits collide on the same nonce with a matching `M`
-and length, the interpolated body is garbage and is rejected at step 6 (its
-trailing byte is almost never a valid kind) — recovery **never silently returns a
-wrong secret**; the worst case is a clear error.
+case where two *unrelated* splits collide on the same nonce with a matching `M` and
+length, the interpolated body is garbage and is rejected at step 6: its kind byte and
+its integrity tag almost never both check out (the tag alone fails a wrong body with
+probability ≈ 255/256). So recovery **never silently returns a wrong secret**; the
+worst case is a clear error.
 
 ---
 
@@ -647,8 +654,9 @@ A conformant implementation MUST:
 4. Reject a set whose shares disagree on nonce, threshold, or body length
    (`MismatchedShares`).
 5. Reject fewer than `M` shares (`InsufficientShares`) and duplicate or zero `x`.
-6. Reject a recovered body whose trailing kind byte is unknown, or whose payload
-   length doesn't fit the kind (`BundleCorrupt`).
+6. Reject a recovered body whose trailing kind byte is unknown, whose payload length
+   doesn't fit the kind, or whose integrity tag `SHA-256(payload ‖ kind_byte)[0]` does
+   not match the byte before the kind (`BundleCorrupt`).
 7. Treat `chela.share` as a hard schema gate; reject any other `type`.
 
 A conformant implementation MAY: accept extra unknown JSON fields; use constant-
@@ -669,7 +677,8 @@ time or table-based GF(2⁸) multiplication (the wire format is identical).
 | Per-share checksum | CRC-11/UMTS, polynomial `0x307`, in the last word |
 | `x` field encoding | 5-bit field `0..31`, stored as `x − 1` |
 | `M` field encoding | 5-bit field `0..30`, stored as `M − 2` |
-| Max body length | 288 bytes (32 entropy + 255 passphrase + 1 kind byte) |
+| Per-secret integrity tag | 1 byte, `SHA-256(payload ‖ kind_byte)[0]`, before the kind byte |
+| Max body length | 289 bytes (32 entropy + 255 passphrase + 1 tag + 1 kind byte) |
 | BIP-39 wordlist | English, 2048 entries, 11 bits per word |
 | BIP-39 wordlist SHA-256 | `2f5eed53a4727b4bf8880d8f3f199efc90e58503646d9ff8eff3a2ed3b24dbda` |
 | JSON `type` | `chela.share` (single), `chela.shares` (bundle) |
@@ -710,35 +719,36 @@ crc11_umts("")          = 0x000           (the init value)
 ```
 
 **A full share, end to end.** Running example: the text `"42"`. Payload `34 32`,
-kind `0x0B` (Text), so body `34 32 0B` (3 bytes). Split 2-of-3 with nonce `0x2C9`;
-the generator drew coordinates `x = 5, 2, 7`. Take the share at `x = 5`, whose SSS
-output is `Y = F0 55 49`:
+tag `0x43` (= `SHA-256(34 32 0B)[0]`), kind `0x0B` (Text), so body `34 32 43 0B`
+(4 bytes). Split 2-of-3 with nonce `0x2C9`; the generator drew coordinates
+`x = 5, 2, 7`. Take the share at `x = 5`, whose SSS output is `Y = 61 98 BC 44`:
 
 ```text
 x_field = 4, m_field = 0
 word 0 = (4 << 6) | (0 << 1)             = 0x100 = 256
 word 1 = nonce                            = 0x2C9 = 713
 
-Y bits (MSB-first) : 1111 0000  0101 0101  0100 1001        (F0 55 49, 24 bits)
-word 2             : 11110000010               = 0x782 = 1922
-word 3             : 10101010010               = 0x552 = 1362
-word 4             : 01 then nine 0-pad bits   = 0x200 = 512
+Y bits (MSB-first) : 0110 0001  1001 1000  1011 1100  0100 0100   (61 98 BC 44, 32 bits)
+word 2             : 01100001100               = 0x30C = 780
+word 3             : 11000101111               = 0x62F = 1583
+word 4             : 00010001000               = 0x088 = 136   (last bit is 0 padding)
 
-crc_input          = [x, M] ‖ nonce_be ‖ Y    = 05 02 02 C9 F0 55 49
-word 5 = CRC       = 0x5B0 = 1456
+crc_input          = [x, M] ‖ nonce_be ‖ Y    = 05 02 02 C9 61 98 BC 44
+word 5 = CRC       = 0x6EC = 1772
 
-words (W = 6)      : 256 713 1922 1362 512 1456
-                   : cactus float utility prevent divorce render
+words (W = 6)      : 256 713 780 1583 136 1772
+                   : cactus float ghost shine baby talk
 
-the other two shares : x = 2  amount float brick find length engage
-                       x = 7  copy float thank hole abandon churn
+the other two shares : x = 2  amount float biology raise general diet
+                       x = 7  copy float duck traffic reason icon
 ```
 
-Recover from any two — say `x = 5` and `x = 2`. The `k = 3` body words give candidate
+Recover from any two - say `x = 5` and `x = 2`. The `k = 3` body words give candidate
 lengths `{3, 4}` (`max = 33/8 = 4`, `min = ceil(23/8) = 3`). Lagrange-interpolate
 each byte at `x = 0` ([§ 5, recovery](#5-recovery-from-words-alone)), unpacked to 4
-bytes → `34 32 0B 00`; the trailing `0x00` is padding and `0x0B` is the non-zero
-terminator, so the true length is 3 → `body = 34 32 0B` → payload `"42"`, kind Text.
+bytes → `34 32 43 0B`; the trailing `0x0B` is the non-zero kind terminator (no zero
+padding to trim), so the true length is 4 → `body = 34 32 43 0B`. The tag `0x43`
+matches `SHA-256("42" ‖ 0x0B)[0]`, so the secret is payload `"42"`, kind Text.
 
 **Round-trip coverage.** Exhaustive split → every `M`-subset → combine for
 `M ≤ N ≤ 6`, plus engine round-trips over text and passphrase payloads,
