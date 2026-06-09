@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 490 322" font-family="ui-sans-serif,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="Each body byte rides its own curve; a share is the column of every curve's value at one x">
+<title>Each body byte rides its own curve; a share is the column of every curve's value at one x</title>
+<rect x="0.5" y="0.5" width="489" height="321" rx="10" fill="#ffffff" stroke="#e5e7eb"/>
+<defs><marker id="ar" markerWidth="8" markerHeight="8" refX="5" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L6,3 L0,6 Z" fill="#94a3b8"/></marker></defs>
+<line x1="70" y1="262" x2="440" y2="262" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ar)"/>
+<line x1="70" y1="262" x2="70" y2="48" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ar)"/>
+<text x="438" y="282" fill="#334155" font-size="13" font-weight="normal" font-style="italic" text-anchor="end">x</text>
+<text x="70" y="282" fill="#334155" font-size="12" font-weight="normal" font-style="normal" text-anchor="middle">0</text>
+<line x1="193.3" y1="262" x2="193.3" y2="56" stroke="#e11d48" stroke-width="1.3" stroke-dasharray="5 4"/>
+<text x="193.3" y="282" fill="#e11d48" font-size="12" font-weight="700" font-style="normal" text-anchor="middle">2</text>
+<line x1="378.3" y1="262" x2="378.3" y2="56" stroke="#e11d48" stroke-width="1.3" stroke-dasharray="5 4"/>
+<text x="378.3" y="282" fill="#e11d48" font-size="12" font-weight="700" font-style="normal" text-anchor="middle">5</text>
+<text x="193.3" y="48" fill="#e11d48" font-size="10" font-weight="600" font-style="normal" text-anchor="middle">Y = 1B AA D6</text>
+<text x="378.3" y="48" fill="#e11d48" font-size="10" font-weight="600" font-style="normal" text-anchor="middle">Y = F0 55 49</text>
+<line x1="70.0" y1="74.8" x2="440.0" y2="147.6" stroke="#2563eb" stroke-width="2.4"/>
+<text x="446.0" y="151.6" fill="#2563eb" font-size="12" font-weight="normal" font-style="italic" text-anchor="start">P₀(x)</text>
+<circle cx="70.0" cy="74.8" r="5" fill="#2563eb" stroke="#fff" stroke-width="1.4"/><text x="61.0" y="78.8" fill="#2563eb" font-size="11" font-weight="600" font-style="normal" text-anchor="end">0x34</text>
+<circle cx="193.3" cy="99.1" r="4.5" fill="#2563eb" stroke="#fff" stroke-width="1.4"/><text x="185.3" y="92.1" fill="#2563eb" font-size="10" font-weight="600" font-style="normal" text-anchor="end">1B</text>
+<circle cx="378.3" cy="135.5" r="4.5" fill="#2563eb" stroke="#fff" stroke-width="1.4"/><text x="386.3" y="139.5" fill="#2563eb" font-size="10" font-weight="600" font-style="normal" text-anchor="start">F0</text>
+<line x1="70.0" y1="137.2" x2="440.0" y2="199.6" stroke="#059669" stroke-width="2.4"/>
+<text x="446.0" y="203.6" fill="#059669" font-size="12" font-weight="normal" font-style="italic" text-anchor="start">P₁(x)</text>
+<circle cx="70.0" cy="137.2" r="5" fill="#059669" stroke="#fff" stroke-width="1.4"/><text x="61.0" y="141.2" fill="#059669" font-size="11" font-weight="600" font-style="normal" text-anchor="end">0x32</text>
+<circle cx="193.3" cy="158.0" r="4.5" fill="#059669" stroke="#fff" stroke-width="1.4"/><text x="185.3" y="151.0" fill="#059669" font-size="10" font-weight="600" font-style="normal" text-anchor="end">AA</text>
+<circle cx="378.3" cy="189.2" r="4.5" fill="#059669" stroke="#fff" stroke-width="1.4"/><text x="386.3" y="193.2" fill="#059669" font-size="10" font-weight="600" font-style="normal" text-anchor="start">55</text>
+<line x1="70.0" y1="207.9" x2="440.0" y2="241.2" stroke="#d97706" stroke-width="2.4"/>
+<text x="446.0" y="245.2" fill="#d97706" font-size="12" font-weight="normal" font-style="italic" text-anchor="start">P₂(x)</text>
+<circle cx="70.0" cy="207.9" r="5" fill="#d97706" stroke="#fff" stroke-width="1.4"/><text x="61.0" y="211.9" fill="#d97706" font-size="11" font-weight="600" font-style="normal" text-anchor="end">0x0B</text>
+<circle cx="193.3" cy="219.0" r="4.5" fill="#d97706" stroke="#fff" stroke-width="1.4"/><text x="185.3" y="212.0" fill="#d97706" font-size="10" font-weight="600" font-style="normal" text-anchor="end">D6</text>
+<circle cx="378.3" cy="235.7" r="4.5" fill="#d97706" stroke="#fff" stroke-width="1.4"/><text x="386.3" y="239.7" fill="#d97706" font-size="10" font-weight="600" font-style="normal" text-anchor="start">49</text>
+<text x="61.0" y="224.9" fill="#d97706" font-size="9" font-weight="normal" font-style="normal" text-anchor="end">(kind)</text>
+<text x="245.0" y="310" fill="#94a3b8" font-size="11" font-weight="normal" font-style="normal" text-anchor="middle">two shares (the threshold) pin all three curves — read the secret bytes at x = 0</text>
+</svg>

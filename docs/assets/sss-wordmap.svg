@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 470 250" font-family="ui-sans-serif,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="The six words of one share, by section">
+<title>The six words of one share, by section</title>
+<rect x="0.5" y="0.5" width="469" height="249" rx="10" fill="#ffffff" stroke="#e5e7eb"/>
+<text x="54.0" y="70" fill="#334155" font-size="11" font-weight="600" font-style="normal" text-anchor="middle">word 0</text>
+<rect x="20" y="78" width="68" height="52" rx="3" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.2"/><text x="54.0" y="100" fill="#334155" font-size="12" font-weight="600" font-style="normal" text-anchor="middle">cactus</text>
+<text x="54.0" y="118" fill="#64748b" font-size="11" font-weight="normal" font-style="normal" text-anchor="middle">256</text>
+<text x="128.0" y="70" fill="#334155" font-size="11" font-weight="600" font-style="normal" text-anchor="middle">word 1</text>
+<rect x="94" y="78" width="68" height="52" rx="3" fill="#fed7aa" stroke="#d97706" stroke-width="1.2"/><text x="128.0" y="100" fill="#334155" font-size="12" font-weight="600" font-style="normal" text-anchor="middle">float</text>
+<text x="128.0" y="118" fill="#64748b" font-size="11" font-weight="normal" font-style="normal" text-anchor="middle">713</text>
+<text x="202.0" y="70" fill="#334155" font-size="11" font-weight="600" font-style="normal" text-anchor="middle">word 2</text>
+<rect x="168" y="78" width="68" height="52" rx="3" fill="#dbeafe" stroke="#2563eb" stroke-width="1.2"/><text x="202.0" y="100" fill="#334155" font-size="12" font-weight="600" font-style="normal" text-anchor="middle">utility</text>
+<text x="202.0" y="118" fill="#64748b" font-size="11" font-weight="normal" font-style="normal" text-anchor="middle">1922</text>
+<text x="276.0" y="70" fill="#334155" font-size="11" font-weight="600" font-style="normal" text-anchor="middle">word 3</text>
+<rect x="242" y="78" width="68" height="52" rx="3" fill="#dbeafe" stroke="#2563eb" stroke-width="1.2"/><text x="276.0" y="100" fill="#334155" font-size="12" font-weight="600" font-style="normal" text-anchor="middle">prevent</text>
+<text x="276.0" y="118" fill="#64748b" font-size="11" font-weight="normal" font-style="normal" text-anchor="middle">1362</text>
+<text x="350.0" y="70" fill="#334155" font-size="11" font-weight="600" font-style="normal" text-anchor="middle">word 4</text>
+<rect x="316" y="78" width="68" height="52" rx="3" fill="#dbeafe" stroke="#2563eb" stroke-width="1.2"/><text x="350.0" y="100" fill="#334155" font-size="12" font-weight="600" font-style="normal" text-anchor="middle">divorce</text>
+<text x="350.0" y="118" fill="#64748b" font-size="11" font-weight="normal" font-style="normal" text-anchor="middle">512</text>
+<text x="424.0" y="70" fill="#334155" font-size="11" font-weight="600" font-style="normal" text-anchor="middle">word 5</text>
+<rect x="390" y="78" width="68" height="52" rx="3" fill="#d1fae5" stroke="#059669" stroke-width="1.2"/><text x="424.0" y="100" fill="#334155" font-size="12" font-weight="600" font-style="normal" text-anchor="middle">render</text>
+<text x="424.0" y="118" fill="#64748b" font-size="11" font-weight="normal" font-style="normal" text-anchor="middle">1456</text>
+<path d="M20,135 L20,140 L88,140 L88,135" fill="none" stroke="#7c3aed" stroke-width="1.5"/><text x="54.0" y="156" fill="#7c3aed" font-size="11" font-weight="600" text-anchor="middle">x = 5, M = 2</text>
+<path d="M94,135 L94,140 L162,140 L162,135" fill="none" stroke="#d97706" stroke-width="1.5"/><text x="128.0" y="156" fill="#d97706" font-size="11" font-weight="600" text-anchor="middle">nonce 0x2C9</text>
+<path d="M168,135 L168,140 L384,140 L384,135" fill="none" stroke="#2563eb" stroke-width="1.5"/><text x="276.0" y="156" fill="#2563eb" font-size="11" font-weight="600" text-anchor="middle">Y values</text>
+<path d="M390,135 L390,140 L458,140 L458,135" fill="none" stroke="#059669" stroke-width="1.5"/><text x="424.0" y="156" fill="#059669" font-size="11" font-weight="600" text-anchor="middle">CRC 0x5B0</text>
+<text x="235.0" y="232" fill="#334155" font-size="11" font-weight="normal" font-style="normal" text-anchor="middle">the six words of share x = 5 (secret "42") — x, M and the nonce read straight from the words</text>
+</svg>

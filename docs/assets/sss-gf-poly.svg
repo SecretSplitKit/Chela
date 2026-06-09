@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 624 300" font-family="ui-sans-serif,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="Polynomial arithmetic over GF(3): add and multiply like algebra, but coefficients wrap modulo 3">
+<title>Polynomial arithmetic over GF(3): add and multiply like algebra, but coefficients wrap modulo 3</title>
+<rect x="0.5" y="0.5" width="623" height="299" rx="10" fill="#ffffff" stroke="#e5e7eb"/>
+<text x="28" y="34" fill="#334155" font-size="15" font-weight="700" font-style="normal" text-anchor="start" >Step 2 — polynomials over GF(p): coefficients wrap mod p  (here p = 3)</text>
+<text x="56" y="52" fill="#2563eb" font-size="13" font-weight="700" font-style="normal" text-anchor="start" >Addition</text>
+<text x="92.0" y="70" fill="#d97706" font-size="11" font-weight="700" font-style="normal" text-anchor="middle" >x²</text>
+<text x="136.0" y="70" fill="#d97706" font-size="11" font-weight="700" font-style="normal" text-anchor="middle" >x¹</text>
+<text x="180.0" y="70" fill="#d97706" font-size="11" font-weight="700" font-style="normal" text-anchor="middle" >1</text>
+<text x="56" y="98.0" fill="#334155" font-size="13" font-weight="700" font-style="normal" text-anchor="end" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace"></text>
+<rect x="70" y="78" width="44" height="30" rx="3" fill="#ffffff" stroke="#475569" stroke-width="1.2"/><text x="92.0" y="97.9" fill="#334155" font-size="14" font-weight="700" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">0</text>
+<rect x="114" y="78" width="44" height="30" rx="3" fill="#ffffff" stroke="#475569" stroke-width="1.2"/><text x="136.0" y="97.9" fill="#334155" font-size="14" font-weight="700" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">2</text>
+<rect x="158" y="78" width="44" height="30" rx="3" fill="#ffffff" stroke="#475569" stroke-width="1.2"/><text x="180.0" y="97.9" fill="#334155" font-size="14" font-weight="700" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">2</text>
+<text x="56" y="134.0" fill="#334155" font-size="13" font-weight="700" font-style="normal" text-anchor="end" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">+</text>
+<rect x="70" y="114" width="44" height="30" rx="3" fill="#ffffff" stroke="#475569" stroke-width="1.2"/><text x="92.0" y="133.9" fill="#334155" font-size="14" font-weight="700" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">0</text>
+<rect x="114" y="114" width="44" height="30" rx="3" fill="#ffffff" stroke="#475569" stroke-width="1.2"/><text x="136.0" y="133.9" fill="#334155" font-size="14" font-weight="700" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">2</text>
+<rect x="158" y="114" width="44" height="30" rx="3" fill="#ffffff" stroke="#475569" stroke-width="1.2"/><text x="180.0" y="133.9" fill="#334155" font-size="14" font-weight="700" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">1</text>
+<line x1="70" y1="148" x2="202" y2="148" stroke="#cbd5e1" stroke-width="1.3"/>
+<text x="56" y="172.0" fill="#334155" font-size="13" font-weight="700" font-style="normal" text-anchor="end" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">=</text>
+<rect x="70" y="152" width="44" height="30" rx="3" fill="#ffffff" stroke="#475569" stroke-width="1.2"/><text x="92.0" y="171.9" fill="#334155" font-size="14" font-weight="700" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">0</text>
+<rect x="114" y="152" width="44" height="30" rx="3" fill="#fed7aa" stroke="#475569" stroke-width="1.2"/><text x="136.0" y="171.9" fill="#334155" font-size="14" font-weight="700" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">4</text>
+<rect x="158" y="152" width="44" height="30" rx="3" fill="#fed7aa" stroke="#475569" stroke-width="1.2"/><text x="180.0" y="171.9" fill="#334155" font-size="14" font-weight="700" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">3</text>
+<text x="220" y="172.0" fill="#94a3b8" font-size="11" font-weight="normal" font-style="normal" text-anchor="start" >each coeff</text>
+<text x="136.0" y="202" fill="#059669" font-size="11.5" font-weight="700" font-style="normal" text-anchor="middle" >↓ reduce mod 3</text>
+<text x="56" y="232.0" fill="#334155" font-size="13" font-weight="700" font-style="normal" text-anchor="end" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">=</text>
+<rect x="70" y="212" width="44" height="30" rx="3" fill="#ffffff" stroke="#475569" stroke-width="1.2"/><text x="92.0" y="231.9" fill="#334155" font-size="14" font-weight="700" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">0</text>
+<rect x="114" y="212" width="44" height="30" rx="3" fill="#d1fae5" stroke="#475569" stroke-width="1.2"/><text x="136.0" y="231.9" fill="#334155" font-size="14" font-weight="700" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">1</text>
+<rect x="158" y="212" width="44" height="30" rx="3" fill="#d1fae5" stroke="#475569" stroke-width="1.2"/><text x="180.0" y="231.9" fill="#334155" font-size="14" font-weight="700" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">0</text>
+<text x="220" y="232.0" fill="#059669" font-size="13" font-weight="700" font-style="normal" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">= x</text>
+<text x="356" y="52" fill="#7c3aed" font-size="13" font-weight="700" font-style="normal" text-anchor="start" >Multiplication</text>
+<text x="370" y="74" fill="#334155" font-size="13" font-weight="700" font-style="normal" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">(x + 2)(x + 2)</text>
+<text x="392.0" y="102" fill="#d97706" font-size="11" font-weight="700" font-style="normal" text-anchor="middle" >x²</text>
+<text x="436.0" y="102" fill="#d97706" font-size="11" font-weight="700" font-style="normal" text-anchor="middle" >x¹</text>
+<text x="480.0" y="102" fill="#d97706" font-size="11" font-weight="700" font-style="normal" text-anchor="middle" >1</text>
+<text x="356" y="128.0" fill="#334155" font-size="13" font-weight="700" font-style="normal" text-anchor="end" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace"></text>
+<rect x="370" y="108" width="44" height="30" rx="3" fill="#fed7aa" stroke="#475569" stroke-width="1.2"/><text x="392.0" y="127.9" fill="#334155" font-size="14" font-weight="700" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">1</text>
+<rect x="414" y="108" width="44" height="30" rx="3" fill="#fed7aa" stroke="#475569" stroke-width="1.2"/><text x="436.0" y="127.9" fill="#334155" font-size="14" font-weight="700" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">4</text>
+<rect x="458" y="108" width="44" height="30" rx="3" fill="#fed7aa" stroke="#475569" stroke-width="1.2"/><text x="480.0" y="127.9" fill="#334155" font-size="14" font-weight="700" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">4</text>
+<text x="520" y="128.0" fill="#94a3b8" font-size="11" font-weight="normal" font-style="normal" text-anchor="start" >product</text>
+<text x="436.0" y="162" fill="#059669" font-size="11.5" font-weight="700" font-style="normal" text-anchor="middle" >↓ reduce mod 3</text>
+<text x="356" y="192.0" fill="#334155" font-size="13" font-weight="700" font-style="normal" text-anchor="end" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace"></text>
+<rect x="370" y="172" width="44" height="30" rx="3" fill="#d1fae5" stroke="#475569" stroke-width="1.2"/><text x="392.0" y="191.9" fill="#334155" font-size="14" font-weight="700" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">1</text>
+<rect x="414" y="172" width="44" height="30" rx="3" fill="#d1fae5" stroke="#475569" stroke-width="1.2"/><text x="436.0" y="191.9" fill="#334155" font-size="14" font-weight="700" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">1</text>
+<rect x="458" y="172" width="44" height="30" rx="3" fill="#d1fae5" stroke="#475569" stroke-width="1.2"/><text x="480.0" y="191.9" fill="#334155" font-size="14" font-weight="700" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">1</text>
+<text x="520" y="192.0" fill="#059669" font-size="13" font-weight="700" font-style="normal" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">= x²+x+1</text>
+<text x="312.0" y="284" fill="#94a3b8" font-size="11.5" font-weight="normal" font-style="normal" text-anchor="middle" >add / multiply exactly like school algebra — then every coefficient wraps modulo p</text>
+</svg>
