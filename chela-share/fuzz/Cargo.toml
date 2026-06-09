@@ -8,10 +8,9 @@
 # Usage:
 #   cargo install cargo-fuzz
 #   cd chela-share/fuzz
-#   cargo +nightly fuzz run parse_shares
+#   cargo +nightly fuzz run parse_shares     # or: extract_html / extract_json
 #
-# See ../../TODO.md item 2 for the rationale and the longer-running pre-release
-# protocol.
+# A longer-running (hours / overnight) fuzz pass belongs in the pre-release checklist.
 
 [package]
 name = "chela-share-fuzz"
@@ -35,6 +34,20 @@ chela-share = { path = ".." }
 [[bin]]
 name = "parse_shares"
 path = "fuzz_targets/parse_shares.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "extract_html"
+path = "fuzz_targets/extract_html.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "extract_json"
+path = "fuzz_targets/extract_json.rs"
 test = false
 doc = false
 bench = false
