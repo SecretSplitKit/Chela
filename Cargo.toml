@@ -18,7 +18,9 @@ members = [
 exclude = ["chela-share/fuzz"]
 
 [workspace.package]
-version = "1.0.0-rc.1"
+# Pre-release versioning: the patch number tracks the commit count. A real
+# release will cut a v1.0.0-rc tag and set this to a 1.0.0 series.
+version = "0.0.62"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/SecretSplitKit/Chela"

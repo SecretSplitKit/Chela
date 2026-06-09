@@ -4,18 +4,18 @@ version = 4
 
 [[package]]
 name = "chela-bip39"
-version = "1.0.0-rc.1"
+version = "0.0.62"
 dependencies = [
  "chela-primitives",
 ]
 
 [[package]]
 name = "chela-bundle"
-version = "1.0.0-rc.1"
+version = "0.0.62"
 
 [[package]]
 name = "chela-cli"
-version = "1.0.0-rc.1"
+version = "0.0.62"
 dependencies = [
  "chela-engine",
  "chela-primitives",
@@ -24,7 +24,7 @@ dependencies = [
 
 [[package]]
 name = "chela-engine"
-version = "1.0.0-rc.1"
+version = "0.0.62"
 dependencies = [
  "chela-bip39",
  "chela-field",
@@ -34,15 +34,15 @@ dependencies = [
 
 [[package]]
 name = "chela-field"
-version = "1.0.0-rc.1"
+version = "0.0.62"
 
 [[package]]
 name = "chela-primitives"
-version = "1.0.0-rc.1"
+version = "0.0.62"
 
 [[package]]
 name = "chela-share"
-version = "1.0.0-rc.1"
+version = "0.0.62"
 dependencies = [
  "chela-bip39",
  "chela-engine",
@@ -51,7 +51,7 @@ dependencies = [
 
 [[package]]
 name = "chela-sss"
-version = "1.0.0-rc.1"
+version = "0.0.62"
 dependencies = [
  "chela-field",
  "chela-primitives",
@@ -59,7 +59,7 @@ dependencies = [
 
 [[package]]
 name = "chela-tui"
-version = "1.0.0-rc.1"
+version = "0.0.62"
 dependencies = [
  "chela-bip39",
  "chela-engine",
@@ -69,7 +69,7 @@ dependencies = [
 
 [[package]]
 name = "chela-wasm"
-version = "1.0.0-rc.1"
+version = "0.0.62"
 dependencies = [
  "chela-bip39",
  "chela-engine",
