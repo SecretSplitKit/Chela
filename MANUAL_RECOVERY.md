@@ -54,6 +54,11 @@ This guide needs **no SHA-256 and no hashing of any kind.** The whole
 procedure is XOR, one byte-multiply rule, table lookups, and (if you want
 the checksum) one long division.
 
+The body you recover also carries a one-byte SHA-256 **integrity check**
+(the *integrity byte*, Step 6). The chela tool uses it to confirm the right
+cards were combined; by hand you simply strip it off and never recompute it,
+so the procedure stays hash-free.
+
 ---
 
 # Pre-flight: things you need to know first
@@ -191,10 +196,10 @@ list, the brand stamp, etc.):
 │   Your share words:                                     │
 │     1.  chimney                                         │
 │     2.  float                                           │
-│     3.  give                                            │ ← (4) the words
-│     4.  rocket                                          │
-│     5.  divorce                                         │
-│     6.  inside                                          │
+│     3.  vintage                                         │ ← (4) the words
+│     4.  before                                          │
+│     5.  learn                                           │
+│     6.  film                                            │
 │                                                         │
 │   …recovery instructions…                               │
 │                                                         │
@@ -277,21 +282,22 @@ before starting Step 1; it's a map.
    is the only step with non-trivial maths; the appendix has the lookup
    table that makes it manageable.
 6. **Read out the body bytes**: drop the last byte (it names the *kind* of
-   secret), then for text look up each remaining byte in the ASCII table,
-   or for a BIP-39 seed follow the guidance at the end.
+   secret) and the byte before it (a one-byte integrity check you can't redo
+   by hand), then for text look up each remaining byte in the ASCII table, or
+   for a BIP-39 seed follow the guidance at the end.
 
 We'll do all of it with a complete worked example: a **2-of-3 split of
 the text `"hi"`**. The three cards from that split are:
 
 ```
 CHELA-02C9-6-2-3-6
-chimney float give rocket divorce inside
+chimney float vintage before learn film
 
 CHELA-02C9-3-2-3-6
-avoid float hope crack abandon weapon
+avoid float chat ancient orphan produce
 
 CHELA-02C9-20-2-3-6
-object float feature health abandon material
+object float assist elevator also hole
 ```
 
 We'll recover using the first two cards (the ones with `x = 6` and
@@ -307,7 +313,7 @@ For each card you have, write down (on a fresh sheet of paper) the words
 in order, then split them into the four parts. We do the metadata and tag
 words by hand here; the body and checksum words wait for Step 2.
 
-Take **card 1** (`chimney float give rocket divorce inside`). Look up the
+Take **card 1** (`chimney float vintage before learn film`). Look up the
 **first word** and the **second word** in the wordlist:
 
 | Word    | Line # | Number |
@@ -341,7 +347,7 @@ printed in the card code match — that's the cross-check, not the source.)
 `float` = 713 = `0x2C9`. Every card from this making must give the same
 713 here. (It matches the `02C9` printed on the label.)
 
-Now do the same for **card 2** (`avoid float hope crack abandon weapon`):
+Now do the same for **card 2** (`avoid float chat ancient orphan produce`):
 
 | Word    | Line # | Number |
 |---------|--------|--------|
@@ -362,9 +368,9 @@ Write the running summary:
 
 ```
 CARD 1   x = 6   M = 2   tag = 713 (0x2C9)   words = 6
-  body words: give, rocket, divorce      checksum word: inside
+  body words: vintage, before, learn     checksum word: film
 CARD 2   x = 3   M = 2   tag = 713 (0x2C9)   words = 6
-  body words: hope, crack, abandon       checksum word: weapon
+  body words: chat, ancient, orphan      checksum word: produce
 ```
 
 The **body words** are everything from word 3 up to but not including the
@@ -397,12 +403,12 @@ For each **body word** on each card, look it up and write down its number.
 
 | Card | Word    | Line # | Word number |
 |------|---------|--------|-------------|
-| 1    | give    | 788    | 787         |
-| 1    | rocket  | 1500   | 1499        |
-| 1    | divorce | 513    | 512         |
-| 2    | hope    | 876    | 875         |
-| 2    | crack   | 399    | 398         |
-| 2    | abandon | 1      | 0           |
+| 1    | vintage | 1954   | 1953        |
+| 1    | before  | 162    | 161         |
+| 1    | learn   | 1015   | 1014        |
+| 2    | chat    | 311    | 310         |
+| 2    | ancient | 69     | 68          |
+| 2    | orphan  | 1255   | 1254        |
 
 > **Smudged or unreadable word?** The BIP-39 wordlist was specifically
 > designed so every word has a unique 4-letter prefix. If you can read the
@@ -429,25 +435,26 @@ Procedure (slow but foolproof):
 4. Read the remainders **bottom to top** — that's your binary.
 5. Pad with leading zeros on the **left** until you have 11 digits total.
 
-### Worked: converting **787** to 11-bit binary
+### Worked: converting **1953** to 11-bit binary
 
 ```
    number     ÷ 2        new number     remainder
    ──────     ─────      ───────────    ─────────
-   787        ÷ 2  =     393            r 1   ← first remainder (rightmost bit)
-   393        ÷ 2  =     196            r 1
-   196        ÷ 2  =     98             r 0
-   98         ÷ 2  =     49             r 0
-   49         ÷ 2  =     24             r 1
-   24         ÷ 2  =     12             r 0
-   12         ÷ 2  =     6              r 0
-   6          ÷ 2  =     3              r 0
+   1953       ÷ 2  =     976            r 1   ← first remainder (rightmost bit)
+   976        ÷ 2  =     488            r 0
+   488        ÷ 2  =     244            r 0
+   244        ÷ 2  =     122            r 0
+   122        ÷ 2  =     61             r 0
+   61         ÷ 2  =     30             r 1
+   30         ÷ 2  =     15             r 0
+   15         ÷ 2  =     7              r 1
+   7          ÷ 2  =     3              r 1
    3          ÷ 2  =     1              r 1
    1          ÷ 2  =     0              r 1   ← last remainder (leftmost bit)
 ```
 
-Read the remainders bottom-to-top: `1 1 0 0 0 1 0 0 1 1`. That's 10 digits.
-Pad with **1 leading zero** to make exactly 11: **`01100010011`**.
+Read the remainders bottom-to-top: `1 1 1 1 0 1 0 0 0 0 1`. That's exactly
+11 digits, so no padding is needed: **`11110100001`**.
 
 > Don't panic if this is slow at first. With practice you can do a
 > three-digit number in about a minute.
@@ -463,12 +470,12 @@ You should be able to verify each of these by repeating the process above.
 
 | Card | Word    | Number | 11-bit binary  |
 |------|---------|--------|----------------|
-| 1    | give    | 787    | `01100010011`  |
-| 1    | rocket  | 1499   | `10111011011`  |
-| 1    | divorce | 512    | `01000000000`  |
-| 2    | hope    | 875    | `01101101011`  |
-| 2    | crack   | 398    | `00110001110`  |
-| 2    | abandon | 0      | `00000000000`  |
+| 1    | vintage | 1953   | `11110100001`  |
+| 1    | before  | 161    | `00010100001`  |
+| 1    | learn   | 1014   | `01111110110`  |
+| 2    | chat    | 310    | `00100110110`  |
+| 2    | ancient | 68     | `00001000100`  |
+| 2    | orphan  | 1254   | `10011100110`  |
 
 **Critical: every row is exactly 11 digits.** Count them. Off-by-one here
 is the single most common cause of a failed recovery.
@@ -484,30 +491,30 @@ For **each card separately**, write the card's three **body** words'
 together. (The metadata word, the tag word, and the checksum word are
 *not* part of this — only the body words.)
 
-**Card 1 body stitched (`give rocket divorce`):**
+**Card 1 body stitched (`vintage before learn`):**
 
 ```
-give        rocket      divorce
-01100010011 10111011011 01000000000
-```
-
-All together (33 bits):
-
-```
-011000100111011101101101000000000
-```
-
-**Card 2 body stitched (`hope crack abandon`):**
-
-```
-hope        crack       abandon
-01101101011 00110001110 00000000000
+vintage     before      learn
+11110100001 00010100001 01111110110
 ```
 
 All together (33 bits):
 
 ```
-011011010110011000111000000000000
+111101000010001010000101111110110
+```
+
+**Card 2 body stitched (`chat ancient orphan`):**
+
+```
+chat        ancient     orphan
+00100110110 00001000100 10011100110
+```
+
+All together (33 bits):
+
+```
+001001101100000100010010011100110
 ```
 
 (`body_word_count × 11` = `3 × 11` = 33. Sanity-check yourself: count the
@@ -521,64 +528,68 @@ is 8 bits.
 **Card 1:**
 
 ```
-0110 0010 │ 0111 0111 │ 0110 1101 │ 0000 0000 │ 0
- byte 1   │  byte 2   │  byte 3   │ pad bits  │ pad bit
+1111 0100 │ 0010 0010 │ 1000 0101 │ 1111 1011 │ 0
+ byte 1   │  byte 2   │  byte 3   │  byte 4   │ pad bit
 ```
 
-We have **33 bits** = 3 full bytes + 9 leftover bits. Those leftover bits
-are **padding** chela added to fill out the final word; they are all `0`.
-If any leftover bit is `1`, you typed a body word wrong. Throw the padding
-away.
+We have **33 bits** = 4 full bytes + 1 leftover bit. That leftover bit is
+**padding** chela added to fill out the final word; it is `0`. If it is
+`1`, you typed a body word wrong. Throw the padding away.
 
 Convert each byte from binary to hex using the **hex shortcut** from the
 pre-flight section (4 bits → 1 hex digit):
 
 | Byte # | Binary       | Left hex | Right hex | Hex byte |
 |--------|--------------|----------|-----------|----------|
-| 1      | `0110 0010`  | 6        | 2         | `0x62`   |
-| 2      | `0111 0111`  | 7        | 7         | `0x77`   |
-| 3      | `0110 1101`  | 6        | D         | `0x6D`   |
+| 1      | `1111 0100`  | F        | 4         | `0xF4`   |
+| 2      | `0010 0010`  | 2        | 2         | `0x22`   |
+| 3      | `1000 0101`  | 8        | 5         | `0x85`   |
+| 4      | `1111 1011`  | F        | B         | `0xFB`   |
 
-**Card 1 share bytes:** `0x62  0x77  0x6D`
+**Card 1 share bytes:** `0xF4  0x22  0x85  0xFB`
 
 **Card 2:**
 
 ```
-0110 1101 │ 0110 0110 │ 0011 1000 │ 0000 0000 │ 0
- byte 1   │  byte 2   │  byte 3   │ pad bits  │ pad bit
+0010 0110 │ 1100 0001 │ 0001 0010 │ 0111 0011 │ 0
+ byte 1   │  byte 2   │  byte 3   │  byte 4   │ pad bit
 ```
 
 | Byte # | Binary       | Left hex | Right hex | Hex byte |
 |--------|--------------|----------|-----------|----------|
-| 1      | `0110 1101`  | 6        | D         | `0x6D`   |
-| 2      | `0110 0110`  | 6        | 6         | `0x66`   |
-| 3      | `0011 1000`  | 3        | 8         | `0x38`   |
+| 1      | `0010 0110`  | 2        | 6         | `0x26`   |
+| 2      | `1100 0001`  | C        | 1         | `0xC1`   |
+| 3      | `0001 0010`  | 1        | 2         | `0x12`   |
+| 4      | `0111 0011`  | 7        | 3         | `0x73`   |
 
-**Card 2 share bytes:** `0x6D  0x66  0x38`
+**Card 2 share bytes:** `0x26  0xC1  0x12  0x73`
 
-These are the **share bytes** — three per card here — the numbers we
+These are the **share bytes** — four per card here — the numbers we
 combine in Step 5. There is no checksum *inside* this bit string: the
 checksum is its own separate word (word 6), which we never stitched in.
 
 > **How many share bytes?** The share-byte count is the same on every card
-> and equals the length of the recovered body. Here it's 3, and the body
-> we recover at the end of Step 5 is 3 bytes. (The original text `"hi"` is
-> 2 bytes; the body adds 1 byte naming the kind, so 3 total — see Step 6.)
+> and equals the length of the recovered body. Here it's 4, and the body
+> we recover at the end of Step 5 is 4 bytes. (The original text `"hi"` is
+> 2 bytes; the body adds a 1-byte integrity check and a 1-byte kind marker,
+> so 4 total — see Step 6.)
 
 ### How many body bytes? (read once, skip on retry)
 
-Three body words hold 33 bits = 3 full bytes + 9 padding bits, so the body
-*could* in principle be 3 bytes or 4 bytes (4 bytes = 32 bits would still
-fit inside 33). The chela tool decides between candidate lengths using the
-**checksum word**; by hand the simpler clue is **what you stored**:
+Three body words hold 33 bits = 4 full bytes + 1 padding bit, so the body
+*could* in principle be 3 bytes or 4 bytes (3 bytes = 24 bits would leave 9
+padding bits; 4 bytes = 32 bits leaves 1). The chela tool decides between
+candidate lengths using the kind byte (the last non-zero body byte); by hand
+the simpler clue is **what you stored**:
 
-- A text secret of *n* characters gives a body of *n + 1* bytes (the extra
-  byte names the kind — Step 6).
+- A text secret of *n* characters gives a body of *n + 2* bytes (a 1-byte
+  integrity check, then a 1-byte kind marker — Step 6).
 - A BIP-39 seed of 16/20/24/28/32 entropy bytes gives a body of
-  17/21/25/29/33 bytes (again +1), plus any passphrase bytes.
+  18/22/26/30/34 bytes (again +2), plus any passphrase bytes.
 
-For our `"hi"` example the body is 3 bytes (2 characters + 1 kind byte),
-which is the longer of the two candidates here — so we take all 3 bytes.
+For our `"hi"` example the body is 4 bytes (2 characters + 1 integrity byte
++ 1 kind byte), which is the longer of the two candidates here — so we take
+all 4 bytes.
 
 ### Optional: verify the checksum word
 
@@ -761,7 +772,7 @@ byte.
 
 ## 5.4 Combine each byte of the body
 
-For each byte position of the body (0, 1, 2):
+For each byte position of the body (0, 1, 2, 3):
 
 ```
 body[byte position] = (L_6 × card_1_share[byte position])
@@ -773,11 +784,11 @@ body[byte position] = (L_6 × card_1_share[byte position])
 Recall the share bytes from Step 4:
 
 ```
-card 1 (x = 6):  0x62  0x77  0x6D
-card 2 (x = 3):  0x6D  0x66  0x38
+card 1 (x = 6):  0xF4  0x22  0x85  0xFB
+card 2 (x = 3):  0x26  0xC1  0x12  0x73
 ```
 
-Our body is 3 bytes, so we do this three times. To save work, first build
+Our body is 4 bytes, so we do this four times. To save work, first build
 the **doubling chains** for both coefficients (each entry is the previous
 one `× 2`):
 
@@ -799,31 +810,31 @@ note which power-of-two columns are 1, and XOR the matching chain entries.
 
 ### Byte 0 of the body
 
-- `card_1_share[0]` = `0x62`, `card_2_share[0]` = `0x6D`
+- `card_1_share[0]` = `0xF4`, `card_2_share[0]` = `0x26`
 
-**First term: `L_6 × 0x62`.** `0x62` = `0110 0010` = 64 + 32 + 2. XOR the
-`L_6` chain at ×64, ×32, ×2 = `0xC9 ⊕ 0xE9 ⊕ 0xF7`:
-
-```
-   0xC9 = 1100 1001
-   0xE9 = 1110 1001
-   0xF7 = 1111 0111
-  ───────────────────
-   XOR  = 1101 0111 = 0xD7
-```
-
-**Second term: `L_3 × 0x6D`.** `0x6D` = `0110 1101` = 64 + 32 + 8 + 4 + 1.
-XOR the `L_3` chain at ×64, ×32, ×8, ×4, ×1 =
-`0x89 ⊕ 0xC9 ⊕ 0xF9 ⊕ 0xF1 ⊕ 0xF7`:
+**First term: `L_6 × 0xF4`.** `0xF4` = `1111 0100` = 128 + 64 + 32 + 16 + 4.
+XOR the `L_6` chain at ×128, ×64, ×32, ×16, ×4 =
+`0x89 ⊕ 0xC9 ⊕ 0xE9 ⊕ 0xF9 ⊕ 0xF5`:
 
 ```
    0x89 = 1000 1001
    0xC9 = 1100 1001
+   0xE9 = 1110 1001
    0xF9 = 1111 1001
-   0xF1 = 1111 0001
-   0xF7 = 1111 0111
+   0xF5 = 1111 0101
   ───────────────────
-   XOR  = 1011 1111 = 0xBF
+   XOR  = 1010 0101 = 0xA5
+```
+
+**Second term: `L_3 × 0x26`.** `0x26` = `0010 0110` = 32 + 4 + 2.
+XOR the `L_3` chain at ×32, ×4, ×2 = `0xC9 ⊕ 0xF1 ⊕ 0xF5`:
+
+```
+   0xC9 = 1100 1001
+   0xF1 = 1111 0001
+   0xF5 = 1111 0101
+  ───────────────────
+   XOR  = 1100 1101 = 0xCD
 ```
 
 (XOR several bytes by going column by column, counting how many 1s — odd
@@ -832,8 +843,8 @@ count → 1, even count → 0.)
 **XOR the two terms:**
 
 ```
-   0xD7 = 1101 0111
-   0xBF = 1011 1111
+   0xA5 = 1010 0101
+   0xCD = 1100 1101
   ───────────────────
    XOR  = 0110 1000 = 0x68
 ```
@@ -842,40 +853,34 @@ count → 1, even count → 0.)
 
 ### Byte 1 of the body
 
-- `card_1_share[1]` = `0x77`, `card_2_share[1]` = `0x66`
+- `card_1_share[1]` = `0x22`, `card_2_share[1]` = `0xC1`
 
-**First term: `L_6 × 0x77`.** `0x77` = `0111 0111` = 64 + 32 + 16 + 4 + 2 + 1.
-XOR the `L_6` chain at ×64, ×32, ×16, ×4, ×2, ×1 =
-`0xC9 ⊕ 0xE9 ⊕ 0xF9 ⊕ 0xF5 ⊕ 0xF7 ⊕ 0xF6`:
+**First term: `L_6 × 0x22`.** `0x22` = `0010 0010` = 32 + 2.
+XOR the `L_6` chain at ×32, ×2 = `0xE9 ⊕ 0xF7`:
 
 ```
-   0xC9 = 1100 1001
    0xE9 = 1110 1001
-   0xF9 = 1111 1001
-   0xF5 = 1111 0101
    0xF7 = 1111 0111
-   0xF6 = 1111 0110
   ───────────────────
-   XOR  = 0010 1101 = 0x2D
+   XOR  = 0001 1110 = 0x1E
 ```
 
-**Second term: `L_3 × 0x66`.** `0x66` = `0110 0110` = 64 + 32 + 4 + 2.
-XOR the `L_3` chain at ×64, ×32, ×4, ×2 = `0x89 ⊕ 0xC9 ⊕ 0xF1 ⊕ 0xF5`:
+**Second term: `L_3 × 0xC1`.** `0xC1` = `1100 0001` = 128 + 64 + 1.
+XOR the `L_3` chain at ×128, ×64, ×1 = `0x09 ⊕ 0x89 ⊕ 0xF7`:
 
 ```
+   0x09 = 0000 1001
    0x89 = 1000 1001
-   0xC9 = 1100 1001
-   0xF1 = 1111 0001
-   0xF5 = 1111 0101
+   0xF7 = 1111 0111
   ───────────────────
-   XOR  = 0100 0100 = 0x44
+   XOR  = 0111 0111 = 0x77
 ```
 
 **XOR the two terms:**
 
 ```
-   0x2D = 0010 1101
-   0x44 = 0100 0100
+   0x1E = 0001 1110
+   0x77 = 0111 0111
   ───────────────────
    XOR  = 0110 1001 = 0x69
 ```
@@ -884,53 +889,94 @@ XOR the `L_3` chain at ×64, ×32, ×4, ×2 = `0x89 ⊕ 0xC9 ⊕ 0xF1 ⊕ 0xF5`:
 
 ### Byte 2 of the body
 
-- `card_1_share[2]` = `0x6D`, `card_2_share[2]` = `0x38`
+- `card_1_share[2]` = `0x85`, `card_2_share[2]` = `0x12`
 
-**First term: `L_6 × 0x6D`.** `0x6D` = `0110 1101` = 64 + 32 + 8 + 4 + 1.
-XOR the `L_6` chain at ×64, ×32, ×8, ×4, ×1 =
-`0xC9 ⊕ 0xE9 ⊕ 0xF1 ⊕ 0xF5 ⊕ 0xF6`:
+**First term: `L_6 × 0x85`.** `0x85` = `1000 0101` = 128 + 4 + 1.
+XOR the `L_6` chain at ×128, ×4, ×1 = `0x89 ⊕ 0xF5 ⊕ 0xF6`:
 
 ```
-   0xC9 = 1100 1001
-   0xE9 = 1110 1001
-   0xF1 = 1111 0001
+   0x89 = 1000 1001
    0xF5 = 1111 0101
    0xF6 = 1111 0110
   ───────────────────
-   XOR  = 1101 0010 = 0xD2
+   XOR  = 1000 1010 = 0x8A
 ```
 
-**Second term: `L_3 × 0x38`.** `0x38` = `0011 1000` = 32 + 16 + 8.
-XOR the `L_3` chain at ×32, ×16, ×8 = `0xC9 ⊕ 0xE9 ⊕ 0xF9`:
+**Second term: `L_3 × 0x12`.** `0x12` = `0001 0010` = 16 + 2.
+XOR the `L_3` chain at ×16, ×2 = `0xE9 ⊕ 0xF5`:
 
 ```
-   0xC9 = 1100 1001
    0xE9 = 1110 1001
-   0xF9 = 1111 1001
+   0xF5 = 1111 0101
   ───────────────────
-   XOR  = 1101 1001 = 0xD9
+   XOR  = 0001 1100 = 0x1C
 ```
 
 **XOR the two terms:**
 
 ```
-   0xD2 = 1101 0010
-   0xD9 = 1101 1001
+   0x8A = 1000 1010
+   0x1C = 0001 1100
+  ───────────────────
+   XOR  = 1001 0110 = 0x96
+```
+
+**Body byte 2 = `0x96`.** This is the **integrity byte** (Step 6 explains it).
+
+### Byte 3 of the body
+
+- `card_1_share[3]` = `0xFB`, `card_2_share[3]` = `0x73`
+
+**First term: `L_6 × 0xFB`.** `0xFB` = `1111 1011` = 128 + 64 + 32 + 16 + 8 + 2 + 1.
+XOR the `L_6` chain at ×128, ×64, ×32, ×16, ×8, ×2, ×1 =
+`0x89 ⊕ 0xC9 ⊕ 0xE9 ⊕ 0xF9 ⊕ 0xF1 ⊕ 0xF7 ⊕ 0xF6`:
+
+```
+   0x89 = 1000 1001
+   0xC9 = 1100 1001
+   0xE9 = 1110 1001
+   0xF9 = 1111 1001
+   0xF1 = 1111 0001
+   0xF7 = 1111 0111
+   0xF6 = 1111 0110
+  ───────────────────
+   XOR  = 1010 0000 = 0xA0
+```
+
+**Second term: `L_3 × 0x73`.** `0x73` = `0111 0011` = 64 + 32 + 16 + 2 + 1.
+XOR the `L_3` chain at ×64, ×32, ×16, ×2, ×1 =
+`0x89 ⊕ 0xC9 ⊕ 0xE9 ⊕ 0xF5 ⊕ 0xF7`:
+
+```
+   0x89 = 1000 1001
+   0xC9 = 1100 1001
+   0xE9 = 1110 1001
+   0xF5 = 1111 0101
+   0xF7 = 1111 0111
+  ───────────────────
+   XOR  = 1010 1011 = 0xAB
+```
+
+**XOR the two terms:**
+
+```
+   0xA0 = 1010 0000
+   0xAB = 1010 1011
   ───────────────────
    XOR  = 0000 1011 = 0x0B
 ```
 
-**Body byte 2 = `0x0B`.** This is the **kind byte** (Step 6 explains it).
+**Body byte 3 = `0x0B`.** This is the **kind byte** (Step 6 explains it).
 
 ### Result
 
-**Recovered body bytes: `0x68 0x69 0x0B`.**
+**Recovered body bytes: `0x68 0x69 0x96 0x0B`.**
 
 ---
 
 # Step 6 — Read out the body
 
-You have the body bytes: `0x68 0x69 0x0B`. Two things happen here.
+You have the body bytes: `0x68 0x69 0x96 0x0B`. Three things happen here.
 
 ## First: split off the kind byte
 
@@ -951,13 +997,24 @@ body is. Strip it off and look it up:
 | `0x0A`    | BIP-39 seed, 24 words, with passphrase     |
 | `0x0B`    | Text                                       |
 
-For our example the kind byte is `0x0B` → **Text**. So the **payload** is
-the bytes before it: `0x68 0x69`. (Had the kind byte been some other value
-not in this table, you'd have mis-read a word or picked the wrong body
-length — go back and check.)
+For our example the kind byte is `0x0B` → **Text**. (Had the kind byte been
+some value not in this table, you'd have mis-read a word or picked the wrong
+body length — go back and check.) That leaves `0x68 0x69 0x96`.
 
 The kind byte means **you don't have to remember what you stored** — the
 cards tell you. (You can still sanity-check against what you expected.)
+
+## Then: strip the integrity byte
+
+The next byte in from the end — here `0x96` — is the **integrity byte**. It's
+a one-byte check the chela tool computes with SHA-256 over the rest of the
+body, so that combining the *wrong* set of cards is caught instead of handing
+back a plausible-but-wrong secret. By hand you **can't** recompute it (it
+needs SHA-256), so just strip it off, the same way you skipped the checksum
+word. What remains is the **payload**: `0x68 0x69`.
+
+(The SPEC calls the generation tag the *nonce* and this integrity byte the
+*integrity tag*; the names differ but they're the same two fields.)
 
 ## If the kind is text (0x0B)
 
@@ -976,8 +1033,9 @@ anything else, any UTF-8 lookup chart will translate the bytes.)
 
 ## If the kind is a BIP-39 seed (0x01–0x0A)
 
-The payload (body minus the kind byte) is the raw **entropy** the BIP-39
-mnemonic encodes, **possibly followed by a passphrase** as UTF-8 bytes.
+The payload (body minus the integrity byte and the kind byte) is the raw
+**entropy** the BIP-39 mnemonic encodes, **possibly followed by a
+passphrase** as UTF-8 bytes.
 The kind byte already told you the word count and whether there's a
 passphrase; the entropy length is the cross-check:
 
@@ -994,9 +1052,9 @@ entropy. For the with-passphrase kinds (`0x06`–`0x0A`) the first
 16/20/24/28/32 bytes are the entropy and **everything after** is the
 passphrase, UTF-8 encoded.
 
-(So, counting the kind byte, a 24-word seed with no passphrase recovers as
-a 33-byte body: 32 entropy bytes + 1 kind byte. A 12-word seed with a
-4-character passphrase recovers as 16 + 4 + 1 = 21 bytes.)
+(So, counting the integrity and kind bytes, a 24-word seed with no passphrase
+recovers as a 34-byte body: 32 entropy + 1 integrity + 1 kind. A 12-word seed
+with a 4-character passphrase recovers as 16 + 4 + 1 + 1 = 22 bytes.)
 
 ### Getting the entropy into your wallet
 
@@ -1158,10 +1216,10 @@ the raw 5-bit fields). The **tag** is the generation tag as a 2-byte
 number, high byte first. Then every share byte from Step 4, in order.
 
 For card 1 of our example (`x = 6`, `M = 2`, tag `0x02C9`, share bytes
-`0x62 0x77 0x6D`):
+`0xF4 0x22 0x85 0xFB`):
 
 ```
-06  02  02  C9  62  77  6D
+06  02  02  C9  F4  22  85  FB
 ```
 
 ## The long division
@@ -1195,7 +1253,7 @@ match** → at least one word on that card is wrong; re-read them.
 > your real cards.
 
 For reference, the checksum words of the example cards are: card 1
-(`inside`) = 937 = `0x3A9`; card 2 (`weapon`) = 1986 = `0x7C2`.
+(`film`) = 690 = `0x2B2`; card 2 (`produce`) = 1373 = `0x55D`.
 
 ---
 
