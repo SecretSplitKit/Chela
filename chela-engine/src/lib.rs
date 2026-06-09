@@ -313,8 +313,8 @@ fn build_bundle(
             let kind_byte = encode_bip39_kind_byte(word_count, has_passphrase)
                 .expect("word_count validated by entropy_bytes_for_words above");
 
-            // Pre-size `body` to its final length (payload + kind byte) and wrap in `Zeroizing`
-            // so neither the `extend_from_slice`s here nor the kind-byte `push` in
+            // Pre-size `body` to its final length (payload + integrity tag + kind byte) and wrap
+            // in `Zeroizing` so neither the `extend_from_slice`s here nor the tag/kind `push`es in
             // `build_bundle_v2` can realloc and orphan an un-wiped, entropy-holding buffer.
             let passphrase_bytes = if has_passphrase {
                 passphrase.as_bytes()
@@ -322,7 +322,7 @@ fn build_bundle(
                 &[][..]
             };
             let mut body = chela_primitives::zeroize::Zeroizing::new(Vec::with_capacity(
-                entropy_bytes + passphrase_bytes.len() + 1,
+                entropy_bytes + passphrase_bytes.len() + 2,
             ));
             body.extend_from_slice(&entropy[..]);
             body.extend_from_slice(passphrase_bytes);
@@ -336,22 +336,37 @@ fn build_bundle(
                 return Err(EngineError::InvalidInput("text exceeds 255 bytes"));
             }
             let mut body =
-                chela_primitives::zeroize::Zeroizing::new(Vec::with_capacity(text.len() + 1));
+                chela_primitives::zeroize::Zeroizing::new(Vec::with_capacity(text.len() + 2));
             body.extend_from_slice(text.as_bytes());
             Ok((body, kind::TEXT))
         }
     }
 }
 
-/// Build the full SSS body: `payload ‖ kind_byte`. The kind byte is the body's terminator — it
-/// is the last byte and is never `0x00`, so after combining, recovery finds the true end of the
-/// message by trimming the trailing zero padding (see [`recover_secret`]).
+/// Build the full SSS body: `payload ‖ tag ‖ kind_byte`.
+///
+/// `tag` is a one-byte integrity check ([`body_integrity_tag`]) that binds the reconstructed
+/// secret, so a wrong recombination — e.g. two unrelated splits that happen to collide on the
+/// 11-bit nonce — is rejected at recovery rather than returned as a plausible wrong secret. The
+/// kind byte stays last: it is never `0x00`, so it remains the terminator recovery uses to trim
+/// the trailing zero padding and find the true message end (see [`recover_secret`]).
 fn build_bundle_v2(
     input: &SplitInput<'_>,
 ) -> Result<(chela_primitives::zeroize::Zeroizing<Vec<u8>>, u8), EngineError> {
     let (mut body, kind_byte) = build_bundle(input)?;
-    body.push(kind_byte); // capacity reserved in `build_bundle` — no realloc, no orphan
+    let tag = body_integrity_tag(&body[..], kind_byte); // over the payload, before tag/kind appended
+    body.push(tag); // capacity for tag + kind reserved in `build_bundle` — no realloc, no orphan
+    body.push(kind_byte);
     Ok((body, kind_byte))
+}
+
+/// One-byte integrity tag `SHA-256(payload ‖ kind_byte)[0]`. Carried inside the SSS body (so a
+/// single share never reveals it) and re-checked at recovery to catch a wrong recombination.
+fn body_integrity_tag(payload: &[u8], kind_byte: u8) -> u8 {
+    let mut hasher = chela_primitives::sha256::Sha256::new();
+    hasher.update(payload);
+    hasher.update(&[kind_byte]);
+    hasher.finalize()[0]
 }
 
 /// Whether `body_len` is a valid payload length for the given decoded kind.
@@ -372,13 +387,20 @@ fn body_len_fits(dec: DecodedKind, body_len: usize) -> bool {
     }
 }
 
-/// Recover the secret from the SSS-combined body `payload ‖ kind_byte`, already trimmed to its
-/// true length by [`recover_secret`]. The trailing kind byte names the payload interpretation;
-/// an invalid kind byte or a length that doesn't fit it means the wrong share subset.
+/// Recover the secret from the SSS-combined body `payload ‖ tag ‖ kind_byte`, already trimmed to
+/// its true length by [`recover_secret`]. The trailing kind byte names the payload interpretation;
+/// the byte before it is the integrity tag. An invalid kind byte, a length that doesn't fit it, or
+/// a tag that doesn't match the recomputed value means the wrong share subset.
 fn parse_bundle(body: &[u8]) -> Result<RecoveredSecret, EngineError> {
-    let (&kind_byte, payload) = body.split_last().ok_or(EngineError::BundleCorrupt)?;
+    let (&kind_byte, rest) = body.split_last().ok_or(EngineError::BundleCorrupt)?;
     let dec = decode_kind_byte(kind_byte).ok_or(EngineError::BundleCorrupt)?;
+    let (&tag, payload) = rest.split_last().ok_or(EngineError::BundleCorrupt)?;
     if !body_len_fits(dec, payload.len()) {
+        return Err(EngineError::BundleCorrupt);
+    }
+    // The integrity tag binds the whole reconstructed secret; a wrong recombination fails this
+    // constant-time check instead of decoding into a different, valid-looking secret.
+    if !chela_primitives::ct::ct_eq(&[tag], &[body_integrity_tag(payload, kind_byte)]) {
         return Err(EngineError::BundleCorrupt);
     }
     interpret_body(dec, payload)
@@ -761,8 +783,12 @@ mod tests {
     fn body_carries_kind_byte_last() {
         use super::{build_bundle_v2, SplitInput};
         let (body, _) = build_bundle_v2(&SplitInput::Text { text: "hi" }).unwrap();
-        // Layout is payload ‖ kind_byte; the kind byte is the message terminator.
-        assert_eq!(&body[..body.len() - 1], b"hi");
+        // Layout is payload ‖ tag ‖ kind_byte; the kind byte stays last as the message terminator.
+        assert_eq!(&body[..body.len() - 2], b"hi");
+        assert_eq!(
+            body[body.len() - 2],
+            super::body_integrity_tag(b"hi", 0x0Bu8)
+        );
         assert_eq!(body.last().copied(), Some(0x0Bu8)); // kind::TEXT
     }
 
@@ -772,6 +798,28 @@ mod tests {
         let (mut body, _) = build_bundle_v2(&SplitInput::Text { text: "hi" }).unwrap();
         parse_bundle(&body[..]).unwrap(); // sanity: the genuine body parses
         *body.last_mut().unwrap() = 0x00; // 0x00 is not a valid kind byte
+        assert_eq!(parse_bundle(&body[..]), Err(EngineError::BundleCorrupt));
+    }
+
+    #[test]
+    fn body_tag_rejects_tampered_payload() {
+        use super::{build_bundle_v2, parse_bundle, EngineError, SplitInput};
+        // A wrong recombination perturbs the payload bytes. Without the integrity tag those would
+        // decode into a different, valid-looking secret; the tag must reject them instead. The
+        // kind byte (last) and tag (second-last) are left intact so only the payload changes.
+        let (mut body, _) = build_bundle_v2(&SplitInput::Text { text: "hello" }).unwrap();
+        parse_bundle(&body[..]).unwrap(); // the genuine body parses
+        body[0] ^= 0x01;
+        assert_eq!(parse_bundle(&body[..]), Err(EngineError::BundleCorrupt));
+    }
+
+    #[test]
+    fn body_tag_rejects_tampered_tag_byte() {
+        use super::{build_bundle_v2, parse_bundle, EngineError, SplitInput};
+        // body = payload ‖ tag ‖ kind; corrupting the tag byte (second from the end) is caught.
+        let (mut body, _) = build_bundle_v2(&SplitInput::Text { text: "hello" }).unwrap();
+        let n = body.len();
+        body[n - 2] ^= 0x01;
         assert_eq!(parse_bundle(&body[..]), Err(EngineError::BundleCorrupt));
     }
 
@@ -920,7 +968,7 @@ mod tests {
 
     #[test]
     fn share_word_counts_are_pinned() {
-        // body = payload ‖ kind_byte, then W = 3 + ceil(8 * body_len / 11).
+        // body = payload ‖ tag ‖ kind_byte, then W = 3 + ceil(8 * body_len / 11).
         let seed12 = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
         let s12 = split_secret(
             &SplitInput::Bip39 {
@@ -932,7 +980,7 @@ mod tests {
             OutputMode::Bip39Wordlist,
         )
         .unwrap();
-        assert_eq!(s12[0].word_indices.len(), 16); // 16 entropy + 1 kind = 17 B
+        assert_eq!(s12[0].word_indices.len(), 17); // 16 entropy + 1 tag + 1 kind = 18 B
 
         let seed24 = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art";
         let s24 = split_secret(
@@ -945,7 +993,7 @@ mod tests {
             OutputMode::Bip39Wordlist,
         )
         .unwrap();
-        assert_eq!(s24[0].word_indices.len(), 27); // 32 entropy + 1 kind = 33 B
+        assert_eq!(s24[0].word_indices.len(), 28); // 32 entropy + 1 tag + 1 kind = 34 B
 
         let t = split_secret(
             &SplitInput::Text { text: "hi" },
@@ -954,7 +1002,7 @@ mod tests {
             OutputMode::Bip39Wordlist,
         )
         .unwrap();
-        assert_eq!(t[0].word_indices.len(), 6); // 2 text + 1 kind = 3 B
+        assert_eq!(t[0].word_indices.len(), 6); // 2 text + 1 tag + 1 kind = 4 B
     }
 
     #[test]
