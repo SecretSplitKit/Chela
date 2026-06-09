@@ -15,7 +15,7 @@ on your own machine, with no internet involved.
 ## What a chela card looks like
 
 Each printed card has a title at the top, a "Required to recover" line, a
-card code like `CHELA-3058-13-3-5-27`, a numbered list of words, and short
+card code like `CHELA-3058-1-3-5-40`, a numbered list of words, and short
 recovery instructions printed at the bottom:
 
 ![Example of a chela paper card](docs/recovery/11-paper-card.png)
@@ -28,8 +28,8 @@ You'll need:
 
 - **A computer** running Windows, Mac, or Linux, with any modern web browser
   (Chrome, Edge, Firefox, Safari - any will do).
-- **The paper cards.** Each card has a *card code* like `CHELA-3058-13-3-5-27` and a
-  list of words (anywhere from a handful for a short password to around 27 for a
+- **The paper cards.** Each card has a *card code* like `CHELA-3058-1-3-5-40` and a
+  list of words (anywhere from a handful for a short password to around 28 for a
   24-word seed phrase, depending on what was stored). All cards from one backup have
   the same number of words.
 - **A minimum number of cards** - look on the front of the card for *"M of N"*. For
@@ -109,7 +109,7 @@ The chela main screen has three large buttons. Click the third one:
 ## Step 4 - Enter the first card
 
 The wizard will ask for **the card code** first - the dashed line near the top of
-your card, like `CHELA-3058-13-3-5-27`. The boxes on screen line up with the dashes:
+your card, like `CHELA-3058-1-3-5-40`. The boxes on screen line up with the dashes:
 type each part into its matching box. (The code is just a convenience for grouping
 cards; the words carry everything recovery needs. Copy the numbers exactly as
 printed - don't worry if they don't look "in order".)
