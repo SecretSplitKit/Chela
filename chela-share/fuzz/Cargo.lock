@@ -28,14 +28,14 @@ checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
 name = "chela-bip39"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "chela-primitives",
 ]
 
 [[package]]
 name = "chela-engine"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "chela-bip39",
  "chela-field",
@@ -45,15 +45,15 @@ dependencies = [
 
 [[package]]
 name = "chela-field"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 
 [[package]]
 name = "chela-primitives"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 
 [[package]]
 name = "chela-share"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "chela-bip39",
  "chela-engine",
@@ -70,7 +70,7 @@ dependencies = [
 
 [[package]]
 name = "chela-sss"
-version = "0.1.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "chela-field",
  "chela-primitives",

@@ -92,11 +92,11 @@ flags, `SOURCE_DATE_EPOCH`) live in `release.yml` and `Cargo.toml`.
 
 ### Fuzz harness
 
-`chela-share/fuzz/` fuzzes the share-text parser, the only externally-supplied
-input. A smoke run executes on every PR via `.github/workflows/fuzz.yml`.
+`chela-share/fuzz/` fuzzes the parsers that take untrusted text — the share-text
+format and the HTML and JSON importers. A smoke run executes on every PR via
+`.github/workflows/fuzz.yml`.
 
 ## What this file is not
 
-- A contributor onboarding guide. See `CONTRIBUTING.md`.
 - A code walkthrough. See `AUDITORS.md`.
 - The wire-format spec. See `SPEC.md`.

@@ -186,5 +186,3 @@ Dual-licensed at your option:
 
 - Apache 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
 - MIT ([LICENSE-MIT](LICENSE-MIT))
-
-See [CONTRIBUTING.md](CONTRIBUTING.md).
