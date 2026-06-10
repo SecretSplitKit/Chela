@@ -133,6 +133,8 @@ jobs:
         uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9  # master @ 2026-05
         with:
           toolchain: "1.89"
+          # chela-bundle's build script compiles chela-wasm for this target.
+          targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc  # v2.9.1
       - name: cargo check on the minimum supported Rust version
         run: cargo check --workspace --all-targets
