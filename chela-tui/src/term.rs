@@ -14,8 +14,10 @@ pub(crate) const BRIGHT_CYAN: &str = "\x1b[96m";
 pub(crate) const YELLOW: &str = "\x1b[33m";
 pub(crate) const RED: &str = "\x1b[31m";
 pub(crate) const GREEN: &str = "\x1b[32m";
-/// SGR 7 - reverse video.
-pub(crate) const REVERSE: &str = "\x1b[7m";
+/// A selected/highlighted row: dark text on a bright-cyan background. Set with explicit
+/// colors rather than reverse video (SGR 7); reverse depends on the terminal's default
+/// palette and rendered as low-contrast light-on-cyan in some setups.
+pub(crate) const SELECTED: &str = "\x1b[30;106m";
 
 pub(crate) fn clear() {
     // CSI 2J - erase entire screen; CSI H - cursor to (1, 1).
@@ -383,7 +385,7 @@ fn render_select_frame(
         if Some(i) == cursor {
             let _ = writeln!(
                 out,
-                "  {BRIGHT_CYAN}{BOLD}▶{RESET} {REVERSE}{BOLD} {opt} {RESET}",
+                "  {BRIGHT_CYAN}{BOLD}▶{RESET} {SELECTED}{BOLD} {opt} {RESET}",
             );
         } else {
             let _ = writeln!(out, "    {opt}");

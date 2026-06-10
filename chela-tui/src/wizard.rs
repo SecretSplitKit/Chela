@@ -17,7 +17,7 @@ use chela_share::{
 use crate::term::{
     banner, error, info, prompt, prompt_line_or_default, prompt_line_prefilled, prompt_nonempty,
     prompt_u8_in_range, read_secret, sanitize_for_terminal, select, success, warn,
-    SecretReadCancel, SecretString, BOLD, BRIGHT_CYAN, CYAN, DIM, GREEN, RED, RESET, REVERSE,
+    SecretReadCancel, SecretString, BOLD, BRIGHT_CYAN, CYAN, DIM, GREEN, RED, RESET, SELECTED,
 };
 
 // v2 caps the set at 32 shares (5-bit x field). Min = 2; 1-of-N is just N copies of the secret.
@@ -657,7 +657,7 @@ fn render_form_frame(total: &str, threshold: &str, focused: usize, error: Option
 
 fn render_field_chip(value: &str, focused: bool) -> String {
     if focused {
-        format!("{REVERSE}{BOLD} {value}_ {RESET}")
+        format!("{SELECTED}{BOLD} {value}_ {RESET}")
     } else {
         format!(" {value} ")
     }

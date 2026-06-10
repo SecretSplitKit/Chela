@@ -10,7 +10,7 @@ mod term;
 mod wizard;
 
 use screen::{read_key, Key, Screen};
-use term::{banner, prompt, BOLD, CYAN, DIM, RESET, REVERSE};
+use term::{banner, prompt, BOLD, CYAN, DIM, RESET, SELECTED};
 use wizard::{run_recover, run_split, SplitKind};
 
 fn main() -> ExitCode {
@@ -53,7 +53,6 @@ enum MenuChoice {
 struct MenuItem {
     key_hint: char,
     label: &'static str,
-    color: &'static str,
     choice: MenuChoice,
 }
 
@@ -62,25 +61,21 @@ fn menu_items() -> Vec<MenuItem> {
         MenuItem {
             key_hint: '1',
             label: "Split a BIP-39 seed (with optional passphrase)",
-            color: CYAN,
             choice: MenuChoice::SplitBip39,
         },
         MenuItem {
             key_hint: '2',
             label: "Split a text password",
-            color: CYAN,
             choice: MenuChoice::SplitText,
         },
         MenuItem {
             key_hint: '3',
             label: "Recover from a threshold of shares",
-            color: CYAN,
             choice: MenuChoice::Recover,
         },
         MenuItem {
             key_hint: 'q',
             label: "Quit",
-            color: DIM,
             choice: MenuChoice::Quit,
         },
     ]
@@ -162,8 +157,8 @@ fn draw_menu(screen: &Screen, items: &[MenuItem], cursor: usize) {
                 row,
                 6,
                 &format!(
-                    "{BOLD}{}{RESET} {REVERSE}{BOLD} {}) {}  {} {RESET}",
-                    "▶", item.key_hint, item.color, item.label,
+                    "{BOLD}{}{RESET} {SELECTED}{BOLD} {}) {}  {RESET}",
+                    "▶", item.key_hint, item.label,
                 ),
             );
         } else {
