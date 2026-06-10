@@ -46,9 +46,9 @@ vgcore.*
 Thumbs.db
 desktop.ini
 
-# Secrets — keep these out at all costs. RELEASING.md says generate the minisign
-# keypair OFF the repo machine; these patterns are belt-and-braces in case anyone
-# runs `minisign -G` here by mistake.
+# Secrets - keep these out at all costs. The minisign SECRET key (minisign.key) and
+# any backups must NEVER be committed. chela.pub is the PUBLIC key and is intentionally
+# tracked (safe to share), which is why it is not listed below.
 *.key
 *.pem
 *.p12
@@ -59,7 +59,6 @@ desktop.ini
 /secrets/
 minisign.key
 minisign.pub
-chela.pub
 *.minisig
 SHA256SUMS
 

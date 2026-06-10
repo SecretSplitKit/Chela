@@ -147,7 +147,8 @@ sha256sum -c SHA256SUMS
 ### Public key
 
 ```text
-RWQ_REPLACE_ME_WITH_ACTUAL_PUBLIC_KEY_AFTER_GENERATION
+untrusted comment: minisign public key DDD078AB7F7BE629
+RWQp5nt/q3jQ3XBn/Ni5bQNj6MehmwvQTYgdBQ9zxTTgc4+qyJfazk9x
 ```
 
 ### Reproduce a release locally
