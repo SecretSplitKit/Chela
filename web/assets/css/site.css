@@ -93,6 +93,12 @@ body {
 /* Screenshots (CLI/TUI/website walkthroughs) get a frame so the capture edge is clear. */
 .content figure img.shot { border: 1px solid var(--soft); border-radius: 5px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
 
+/* "Try it live" demo banner + embedded app frame. */
+.demo-banner { background: var(--warn-bg); border: 2px solid var(--warn); border-radius: 6px; padding: 1rem 1.25rem; margin: 1rem 0 1.5rem; }
+.demo-banner h2 { color: var(--warn); margin: 0 0 0.4rem; font-family: var(--mono); font-size: 1.15rem; }
+.demo-banner p { margin: 0.4rem 0; }
+.demo-frame { width: 100%; height: 780px; border: 1px solid var(--soft); border-radius: 6px; background: #fff; }
+
 /* Numbered walkthrough steps. */
 .content .step { margin: 1.6rem 0; }
 .content .step > h3 { margin-top: 0; }

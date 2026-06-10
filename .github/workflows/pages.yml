@@ -6,6 +6,9 @@ on:
     paths:
       - 'web/**'
       - '.github/workflows/pages.yml'
+      - 'chela-*/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
   workflow_dispatch:
 
 permissions:
@@ -27,6 +30,20 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2 (Node 24)
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9  # master @ 2026-05
+        with:
+          toolchain: stable
+          # chela-bundle's build script compiles chela-wasm for this target.
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc  # v2.9.1
+      - name: Build the embedded demo into web/
+        # The "Try it live" page embeds this build of the real app, refreshed on every
+        # deploy. It is generated here, not committed (see .gitignore).
+        run: |
+          cargo build --release --locked --bin chela-bundle
+          ./target/release/chela-bundle web/chela-demo.html
+          test -s web/chela-demo.html
       - name: Configure Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d  # v6.0.0
       - name: Upload artifact

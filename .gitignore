@@ -8,6 +8,8 @@ target/
 /chela.html
 /chela-v*-web.html
 /chela-*-web.html
+# Pages "Try it live" demo - built into web/ by .github/workflows/pages.yml, never source.
+web/chela-demo.html
 
 # Demo / local-only output
 /demo-output/

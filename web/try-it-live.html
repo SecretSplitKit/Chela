@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Try it live - chela explained</title>
+  <link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body>
+  <header class="topbar">
+    <a href="index.html" class="brand">chela</a>
+    <a href="https://github.com/SecretSplitKit/Chela" class="repo-link">GitHub</a>
+  </header>
+
+  <div class="layout">
+    <nav class="sidebar" aria-label="Table of contents">
+      <button class="hamburger" aria-label="Toggle sidebar">≡</button>
+      <ol>
+        <li><a href="index.html">What is chela?</a></li>
+        <li><a href="chapter-1-shamir.html">Why secret sharing</a></li>
+        <li><a href="try-it-live.html">Try it live</a></li>
+        <li><span class="group">Splitting walkthrough</span>
+          <ol>
+            <li><a href="split-web.html">Website</a></li>
+            <li><a href="split-tui.html">Terminal wizard</a></li>
+            <li><a href="split-cli.html">Command line</a></li>
+          </ol>
+        </li>
+        <li><span class="group">Recovery walkthrough</span>
+          <ol>
+            <li><a href="recover-web.html">Website</a></li>
+            <li><a href="recover-tui.html">Terminal wizard</a></li>
+            <li><a href="recover-cli.html">Command line</a></li>
+          </ol>
+        </li>
+        <li><a href="the-share-format.html">The share format</a></li>
+        <li><a href="chapter-2-threat-model.html">Threat model</a></li>
+        <li><a href="chapter-3-touring.html">Tour of the codebase</a></li>
+        <li><a href="chapter-4-evaluating.html">Audit chela yourself</a></li>
+      </ol>
+    </nav>
+
+    <main class="content">
+      <h1>Try it live</h1>
+
+      <p>
+        The real chela web app is embedded below - the exact same build you can download
+        from the releases page, running entirely in your browser. Split a throwaway secret,
+        recover it, and see the words it produces. It works offline; nothing you type leaves
+        this page.
+      </p>
+
+      <div class="demo-banner">
+        <h2>⚠ For demonstration purposes only</h2>
+        <p>
+          <strong>Do not put a real secret into the demo below.</strong> A page loaded from
+          the internet can be tampered with in transit, and a browser extension or other
+          script could read what you type. Use it to learn the flow with a fake secret -
+          nothing more.
+        </p>
+        <p>
+          <strong>For real use, run chela offline:</strong>
+        </p>
+        <ol>
+          <li>Download the signed <code>chela.html</code> from the
+            <a href="https://github.com/SecretSplitKit/Chela/releases">releases page</a>.</li>
+          <li>Verify its minisign signature against the public key in the
+            <a href="https://github.com/SecretSplitKit/Chela#verifying-a-release">README</a>,
+            so you know the file wasn't altered.</li>
+          <li>Open it on a computer that is offline - ideally one that has never been online
+            (an air-gapped machine, or one booted from a live USB).</li>
+          <li>Split or recover there, print or write down the shares, then close the page.</li>
+        </ol>
+        <p>
+          The <a href="chapter-2-threat-model.html">threat model</a> explains exactly what
+          the browser can and cannot protect.
+        </p>
+      </div>
+
+      <iframe class="demo-frame" src="chela-demo.html" title="chela web app (demonstration)"
+              sandbox="allow-scripts allow-same-origin" loading="lazy"></iframe>
+
+      <p class="small muted" style="color: var(--muted); font-size: 0.85rem;">
+        Prefer a guided tour first? The <a href="split-web.html">website splitting
+        walkthrough</a> and <a href="recover-web.html">recovery walkthrough</a> step through
+        the same app screen by screen.
+      </p>
+
+      <nav class="page-nav" aria-label="Pagination">
+        <a class="prev" href="chapter-1-shamir.html">← Back: Why secret sharing</a>
+        <a class="next" href="split-web.html">Next: splitting on the website →</a>
+      </nav>
+    </main>
+  </div>
+
+  <script src="assets/js/nav.js" defer></script>
+  <script src="assets/js/permalink.js" defer></script>
+</body>
+</html>
