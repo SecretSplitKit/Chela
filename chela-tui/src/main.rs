@@ -133,7 +133,7 @@ fn consume(mut items: Vec<MenuItem>, idx: usize) -> MenuChoice {
 
 fn draw_menu(screen: &Screen, items: &[MenuItem], cursor: usize) {
     screen.clear();
-    let title = "chela — Shamir's Secret Sharing for inheritance & recovery";
+    let title = "chela - Shamir's Secret Sharing for inheritance & recovery";
     screen.write_at(
         2,
         4,
@@ -186,7 +186,7 @@ fn draw_menu(screen: &Screen, items: &[MenuItem], cursor: usize) {
 /// Fallback when raw mode is unavailable.
 fn main_menu_line() -> std::io::Result<MenuChoice> {
     loop {
-        banner("chela — Shamir's Secret Sharing for inheritance & recovery");
+        banner("chela - Shamir's Secret Sharing for inheritance & recovery");
         println!("  {BOLD}1){RESET} Split a {CYAN}BIP-39 seed{RESET} (with optional passphrase) into shares");
         println!("  {BOLD}2){RESET} Split a {CYAN}text password{RESET} into shares");
         println!("  {BOLD}3){RESET} {CYAN}Recover{RESET} from a threshold of shares");

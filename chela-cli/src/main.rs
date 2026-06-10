@@ -42,7 +42,7 @@ fn main() -> ExitCode {
 
 fn print_usage() {
     let exe = env!("CARGO_BIN_NAME");
-    println!("chela — Shamir's Secret Sharing for BIP-39 seeds and short passwords");
+    println!("chela - Shamir's Secret Sharing for BIP-39 seeds and short passwords");
     println!();
     println!("USAGE:");
     println!("  {exe} split    --mnemonic \"<12-24 words>\" [--passphrase \"...\"] -m <threshold> -n <total> [paper flags]");
@@ -52,7 +52,7 @@ fn print_usage() {
         "  {exe} recover  backup-dir/share-*.html         # imports from chela paper-backup HTML"
     );
     println!();
-    println!("OUTPUT FLAGS (any combination; can be used together):");
+    println!("OUTPUT FLAGS (combine freely):");
     println!("  --paper FILE              Write a combined HTML backup (one page per share).");
     println!("  --paper-dir DIR           Write a folder of one HTML file per share plus README.");
     println!("  --json FILE               Write a single chela.shares JSON bundle.");
@@ -61,11 +61,11 @@ fn print_usage() {
         "                            (filename: share-<x>.share.json) plus the combined bundle."
     );
     println!();
-    println!("PAPER METADATA (apply to both HTML cards and JSON output):");
-    println!("  --name \"TEXT\"             Title rendered at the top of each card.");
-    println!("  --description \"TEXT\"      Free-form note rendered at the top of each card.");
+    println!("PAPER METADATA (apply to both HTML shares and JSON output):");
+    println!("  --name \"TEXT\"             Title rendered at the top of each share.");
+    println!("  --description \"TEXT\"      Free-form note rendered at the top of each share.");
     println!("  --shareholders \"A,B,...\"  Comma-separated names (must equal N) listed on every");
-    println!("                            card with the recipient marked. Trade-off: one card");
+    println!("                            share with the recipient marked. Trade-off: one share");
     println!("                            now identifies the whole shareholder set.");
 }
 
@@ -151,7 +151,7 @@ fn cmd_split(args: Vec<String>) -> Result<(), String> {
         return Err("total (-n) must be at most 32".into());
     }
 
-    // Validate metadata before generating any secret material — a count mismatch must fail
+    // Validate metadata before generating any secret material - a count mismatch must fail
     // before share words are flushed to stdout.
     let shareholders = parse_shareholders(shareholders_csv.as_deref(), total)?;
 
@@ -384,7 +384,7 @@ fn cmd_recover(file_paths: &[String]) -> Result<(), String> {
             } => {
                 // Mnemonic words are ASCII (BIP-39 wordlist) but pass through the same
                 // sanitiser for consistency. The passphrase is arbitrary UTF-8 derived
-                // from share bytes — attacker-influenceable if any cards were forged —
+                // from share bytes - attacker-influenceable if any shares were forged -
                 // so escape control sequences before display to prevent terminal-escape
                 // injection (OSC 52 clipboard write, window-title spoof, etc.).
                 let mnemonic_safe =
@@ -435,10 +435,10 @@ fn needs_value(v: Option<String>, flag: &str) -> Result<String, String> {
 ///   - **HTML** (chela paper-backup): contains `class="chela-share"`
 ///   - **JSON** (single `chela.share` or bundle `chela.shares`): first
 ///     non-whitespace char is `{`
-///   - **Share text** (canonical `CHELA-…` two-line cards): everything else
+///   - **Share text** (canonical `CHELA-…` two-line shares): everything else
 ///
 /// Strict on import: any single bad block in a multi-share file fails the whole
-/// file. The user's job is to fix the corrupted card, not to silently skip it.
+/// file. The user's job is to fix the corrupted share, not to silently skip it.
 fn read_one_file(contents: &str) -> Result<Vec<chela_engine::Share>, String> {
     let trimmed = contents.trim_start();
     let looks_html = contents.contains(r#"class="chela-share""#)
@@ -451,13 +451,13 @@ fn read_one_file(contents: &str) -> Result<Vec<chela_engine::Share>, String> {
         let results = extract_shares_from_json(contents).map_err(|e| import_err_to_string(&e))?;
         collect_strict(results, "share")
     } else {
-        // Fall through to text-share parser. Accepts both headered `CHELA-…` cards
+        // Fall through to text-share parser. Accepts both headered `CHELA-…` shares
         // and words-only backups. Empty / unrecognized input surfaces as a parse error.
         parse_share_text(contents).map_err(|e| format!("parse share text: {e}"))
     }
 }
 
-/// Parse share text that may be either headered `CHELA-…` cards or words-only
+/// Parse share text that may be either headered `CHELA-…` shares or words-only
 /// backups. A `CHELA-` line anywhere selects the headered parser; otherwise each
 /// non-blank line is a lone share's words, decoded via [`parse_share_words`].
 fn parse_share_text(input: &str) -> Result<Vec<chela_engine::Share>, chela_share::FormatError> {
@@ -495,7 +495,7 @@ fn import_err_to_string(e: &ImportError) -> String {
 
 /// Replace control bytes (C0 < 0x20 except `\n`/`\t`, DEL, and C1 0x80–0x9F) with a
 /// visible `\xHH` / `\u{HHHH}` escape. Run over reconstructed secrets before they
-/// reach stdout — an attacker who can supply a threshold of forged shares could
+/// reach stdout - an attacker who can supply a threshold of forged shares could
 /// otherwise inject ANSI/OSC sequences (OSC 52 clipboard write, window-title
 /// spoof, cursor manipulation) when the user prints the recovered text.
 fn sanitize_for_terminal(s: &str) -> String {
@@ -555,7 +555,7 @@ mod tests {
 
     #[test]
     fn osc_52_clipboard_payload_is_neutralised() {
-        // Real attack payload — must not survive sanitisation.
+        // Real attack payload - must not survive sanitisation.
         let attack = "\x1b]52;c;dGVzdA==\x07";
         let safe = sanitize_for_terminal(attack);
         assert!(!safe.contains('\x1b'));

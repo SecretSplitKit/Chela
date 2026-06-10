@@ -400,7 +400,7 @@
 <main>
   <div class="app-header">
     <h1 class="app-title">chela</h1>
-    <p class="app-tagline">Shamir's Secret Sharing for cryptocurrency wallets and master passwords. Everything runs locally in your browser - your secret never leaves this machine.</p>
+    <p class="app-tagline">Shamir's Secret Sharing for cryptocurrency wallets and master passwords. Your secret never leaves this machine.</p>
   </div>
   <div id="app"></div>
   <footer>
@@ -639,7 +639,7 @@ function defaultDataFor(flow) {
     expected: null,     // { id, threshold, total, wordCount } from first share's header
     headerDraft: null,  // { id, x, threshold, total, wordCount } currently being entered
     wordsDraft: [],     // array of W strings for the current share
-    wordsOnly: false,   // true once the user picks words-only recovery (no card code)
+    wordsOnly: false,   // true once the user picks words-only recovery (no share code)
     wordsOnlyCount: 16, // word count for the current words-only share (user-adjustable)
   };
   return {};
@@ -679,9 +679,9 @@ function stepCounter() {
     const need = state.data.expected ? state.data.expected.threshold : null;
     const onWords = state.phase === "recover-words";
     if (need) {
-      return `Card ${have + 1} of ${need} · ${onWords ? "Words" : "Card code"}`;
+      return `Share ${have + 1} of ${need} · ${onWords ? "Words" : "Share code"}`;
     }
-    return `Card ${have + 1} · ${onWords ? "Words" : "Card code"}`;
+    return `Share ${have + 1} · ${onWords ? "Words" : "Share code"}`;
   }
   const order = visiblePhasesFor(state.flow);
   const idx = order.indexOf(state.phase);
@@ -753,15 +753,15 @@ const phases = {
 
   // --- Label: backup name + recovery note (both optional) -------------------------------
   label: {
-    title: "Label These Cards (optional)",
+    title: "Label These Shares (optional)",
     render: (body) => {
       appendAll(body,
-        E("p", { text: "These appear printed on every card. Both are optional - the cards work without them." }),
+        E("p", { text: "These appear printed on every share. Both are optional - the shares work without them." }),
       );
       const nameHead = E("p", { class: "field-head" });
       nameHead.appendChild(E("strong", { text: "Backup name" }));
       body.appendChild(nameHead);
-      body.appendChild(E("p", { class: "small muted", text: "A short name so recipients see what this card is for at a glance." }));
+      body.appendChild(E("p", { class: "small muted", text: "A short name so recipients see what this share is for." }));
       body.appendChild(E("input", {
         type: "text", value: state.data.backupName,
         placeholder: "Alice's Ethereum wallet",
@@ -770,7 +770,7 @@ const phases = {
       const noteHead = E("p", { class: "field-head" });
       noteHead.appendChild(E("strong", { text: "Recovery note" }));
       body.appendChild(noteHead);
-      body.appendChild(E("p", { class: "small muted", text: "Context for the recipient (not recovery steps - the cards already print those at the bottom)." }));
+      body.appendChild(E("p", { class: "small muted", text: "Context for the recipient (not recovery steps - the shares already print those at the bottom)." }));
       const ex = E("div", { class: "examples-block" });
       const ul = E("ul");
       const examples = [
@@ -803,8 +803,8 @@ const phases = {
         E("strong", { text: "Trade-offs:" }),
         (() => {
           const ul = E("ul");
-          const li1 = E("li"); appendAll(li1, E("strong", { text: "More total shares" }), " = more redundancy if a card is lost - but also more cards an attacker might find.");
-          const li2 = E("li"); appendAll(li2, E("strong", { text: "Higher required-to-recover" }), " = harder for an attacker who finds some cards - but also harder for legitimate recipients to coordinate.");
+          const li1 = E("li"); appendAll(li1, E("strong", { text: "More total shares" }), " = more redundancy if a share is lost - but also more shares an attacker might find.");
+          const li2 = E("li"); appendAll(li2, E("strong", { text: "Higher required-to-recover" }), " = harder for an attacker who finds some shares - but also harder for legitimate recipients to coordinate.");
           const li3 = E("li", { text: "Required must be at least 2; a 1-of-N split just makes N copies." });
           appendAll(ul, li1, li2, li3);
           return ul;
@@ -816,7 +816,7 @@ const phases = {
       appendAll(cfg, E("strong", { text: "Common configurations:" }));
       const configs = [
         ["2-of-3", "small family, simple coordination"],
-        ["3-of-5", "typical inheritance kit (tolerates 2 lost cards)"],
+        ["3-of-5", "typical inheritance kit (tolerates 2 lost shares)"],
         ["4-of-7", "wider distribution, more loss tolerance"],
         ["5-of-9", "institutional / multi-jurisdiction"],
       ];
@@ -869,16 +869,16 @@ const phases = {
 
   // --- Identify shareholders Y/N --------------------------------------------------------
   shareholders: {
-    title: "Identify Each Shareholder on Their Card?",
+    title: "Identify Each Shareholder on Their Share?",
     render: (body) => {
       appendAll(body,
-        E("p", { text: "If you say yes, each printed share will list every shareholder by name with this card's recipient marked. That helps the recipients find each other later - without it, they may not know who else holds a card." }),
+        E("p", { text: "If you say yes, each printed share will list every shareholder by name with this share's recipient marked. That helps the recipients find each other later - without it, they may not know who else holds a share." }),
       );
 
       const trade = E("div", { class: "tradeoffs" });
       appendAll(trade,
         E("strong", { text: "Trade-off:" }),
-        E("p", { text: "Any single recovered card now identifies every shareholder by name. The cryptographic payload still reveals nothing, but an attacker who finds one card learns who else to target." }),
+        E("p", { text: "Any single recovered share now identifies every shareholder by name. The cryptographic payload still reveals nothing, but an attacker who finds one share learns who else to target." }),
         E("p", { text: "Mitigation: use first names or pseudonyms shared out of band with each recipient." }),
       );
       body.appendChild(trade);
@@ -888,7 +888,7 @@ const phases = {
       yes.classList.add("yesno-btn"); if (state.data.useShareholderNames === true) yes.classList.add("chosen");
       yes.className = "" + (state.data.useShareholderNames === true ? "chosen" : "");
       appendAll(yes,
-        E("span", { class: "yesno-title", text: "Yes - list every shareholder on each card" }),
+        E("span", { class: "yesno-title", text: "Yes - list every shareholder on each share" }),
         E("span", { class: "yesno-desc", text: "You'll be asked for each name on the next screen." }),
       );
       yes.addEventListener("click", () => { state.data.useShareholderNames = true; render(); });
@@ -951,8 +951,8 @@ const phases = {
         appendAll(dl, E("dt", { text: "Backup name" }), E("dd", { text: state.data.backupName.trim() }));
       }
       appendAll(dl,
-        E("dt", { text: "Shareholder names on each card" }),
-        E("dd", { text: state.data.useShareholderNames ? "Yes - names listed on every card" : "No - cards stay anonymous" }),
+        E("dt", { text: "Shareholder names on each share" }),
+        E("dd", { text: state.data.useShareholderNames ? "Yes - names listed on every share" : "No - shares stay anonymous" }),
       );
       appendAll(dl,
         E("dt", { text: "Recovery note" }),
@@ -970,13 +970,13 @@ const phases = {
     validate: () => null,
   },
 
-  // --- Recover: card code (CHELA-XXXX-x-M-N-W broken into 5 fields) -------------------
-  // Labels match the printed cards: "Card code" (whole thing), "Recovery set" (the 4-hex
-  // tag), "Card #" (the per-card index). The "Required to recover / Total cards / Word
-  // count" trio doesn't have separate labels on the card itself - they're just the last
-  // three numbers in the card code - so the inline help explains the mapping.
+  // --- Recover: share code (CHELA-XXXX-x-M-N-W broken into 5 fields) -------------------
+  // Labels match the printed shares: "Share code" (whole thing), "Recovery set" (the 4-hex
+  // tag), "Share #" (the per-share index). The "Required to recover / Total shares / Word
+  // count" trio doesn't have separate labels on the share itself - they're just the last
+  // three numbers in the share code - so the inline help explains the mapping.
   "recover-header": {
-    title: "Enter the Card Code",
+    title: "Enter the Share Code",
     render: (body) => {
       const have = state.data.collected.length;
       const exp = state.data.expected;
@@ -1004,19 +1004,19 @@ const phases = {
         importBlock.appendChild(picker);
         importBlock.appendChild(pickerLabel);
         body.appendChild(importBlock);
-        body.appendChild(E("div", { class: "import-divider", text: "- or type the card by hand -" }));
+        body.appendChild(E("div", { class: "import-divider", text: "- or type the share by hand -" }));
 
         appendAll(body,
-          E("p", { text: "Find \"Card code\" on the printed card - it's the dashed line near the top, e.g. CHELA-9DA3-17-3-5-25. Card numbers are random, not positions, so they can be any value from 1 to 32. Type each part into the matching box below." }),
+          E("p", { text: "Find \"Share code\" on the printed share - it's the dashed line near the top, e.g. CHELA-9DA3-17-3-5-25. Share numbers are random, not positions, so they can be any value from 1 to 32. Type each part into the matching box below." }),
         );
 
         // Words-only path. A share is fully recoverable from its BIP-39 words alone -
-        // the card code is advisory. If a card's code is missing or damaged, skip
-        // straight to typing words; the words carry the card number, threshold, and
+        // the share code is advisory. If a share's code is missing or damaged, skip
+        // straight to typing words; the words carry the share number, threshold, and
         // recovery-set nonce.
         const wordsOnlyP = E("p", { class: "small muted" });
         appendAll(wordsOnlyP,
-          document.createTextNode("Lost the card code, or only have the words? "),
+          document.createTextNode("Lost the share code, or only have the words? "),
         );
         const wordsOnlyLink = E("button", {
           type: "button", class: "back-btn", text: "Recover from words alone →",
@@ -1030,10 +1030,10 @@ const phases = {
         body.appendChild(wordsOnlyP);
       } else {
         appendAll(body,
-          E("p", { text: `Now read the card code from card #${have + 1}. Most fields are locked because they have to match the first card - just type this card's number.` }),
+          E("p", { text: `Now read the share code from share #${have + 1}. Most fields are locked because they have to match the first share - just type this share's number.` }),
         );
         const counter = E("div", { class: "share-counter" });
-        counter.textContent = `Recovery set ${exp.id} · ${have} of ${exp.threshold} cards entered.`;
+        counter.textContent = `Recovery set ${exp.id} · ${have} of ${exp.threshold} shares entered.`;
         body.appendChild(counter);
       }
 
@@ -1110,13 +1110,13 @@ const phases = {
       }
       if (wordsOnly) {
         appendAll(body,
-          E("p", { text: "Type every word on the card into its own box, in order. The words carry the card number, threshold, and recovery set - no card code needed." }),
+          E("p", { text: "Type every word on the share into its own box, in order. The words carry the share number, threshold, and recovery set - no share code needed." }),
           E("p", { class: "small muted", text: "Each word lights up green when it matches the BIP-39 wordlist, red if it doesn't. Tab moves to the next field." }),
         );
         // Word-count picker - the user sets how many boxes to show. Changing it
         // re-renders the grid, preserving any words already typed.
         const countWrap = E("div");
-        appendAll(countWrap, E("label", { text: "How many words on this card?" }));
+        appendAll(countWrap, E("label", { text: "How many words on this share?" }));
         const countInp = E("input", {
           type: "number", value: String(wc), min: 4, max: 60,
           input: (e) => {
@@ -1136,11 +1136,11 @@ const phases = {
         body.appendChild(countWrap);
       } else {
         appendAll(body,
-          E("p", { text: `Read the ${wc} words off the card and type each one into its own box, in order.` }),
+          E("p", { text: `Read the ${wc} words off the share and type each one into its own box, in order.` }),
           E("p", { class: "small muted", text: "Each word lights up green when it matches the BIP-39 wordlist, red if it doesn't. Tab moves to the next field." }),
         );
         const progress = E("div", { class: "word-progress" });
-        progress.textContent = `Card code: CHELA-${d.id}-${d.x}-${d.threshold}-${d.total}-${d.wordCount}`;
+        progress.textContent = `Share code: CHELA-${d.id}-${d.x}-${d.threshold}-${d.total}-${d.wordCount}`;
         body.appendChild(progress);
       }
 
@@ -1352,7 +1352,7 @@ function renderWizardPhase(root) {
 
   // Footer: Continue button (label varies)
   const footer = E("div", { class: "card-footer" });
-  // Words-only recovery doesn't know the threshold (it isn't on a card code), so the
+  // Words-only recovery doesn't know the threshold (it isn't on a share code), so the
   // user decides when enough cards are in. Offer an explicit "Recover now" once
   // committing the current card would give us at least two.
   if (state.flow === "recover" && state.phase === "recover-words" && state.data.wordsOnly
@@ -1376,11 +1376,11 @@ function continueButtonLabel() {
     if (state.phase === "recover-header") return "Continue to Words →";
     // recover-words. Words-only mode never knows the threshold, so the primary action
     // always adds another card (a separate "Recover now" button ends the loop).
-    if (state.data.wordsOnly) return "Save Card, Add Another →";
+    if (state.data.wordsOnly) return "Save Share, Add Another →";
     const have = state.data.collected.length;
     const need = state.data.expected ? state.data.expected.threshold : null;
     if (need && have + 1 >= need) return "Recover Secret →";
-    return "Save Share, Next Card →";
+    return "Save Share, Next Share →";
   }
   if (state.phase === "confirm") return "Generate Shares →";
   return "Continue →";
@@ -1549,7 +1549,7 @@ function recoverFailed(msg) {
 // =========================================================================================
 // HTML import flow
 //
-// Bound to the file picker on the first card-code screen. For each selected
+// Bound to the file picker on the first share-code screen. For each selected
 // file:
 //   - read as text (FileReader)
 //   - hand off to chela_extract_shares via WASM

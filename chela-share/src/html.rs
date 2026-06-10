@@ -132,7 +132,7 @@ fn render_share_page(
     .expect("write to String");
     write!(
         out,
-        "      <dt>Card code</dt><dd><code>{card_code_esc}</code></dd>\n",
+        "      <dt>Share code</dt><dd><code>{card_code_esc}</code></dd>\n",
     )
     .expect("write to String");
     out.push_str("    </dl>\n");
@@ -182,18 +182,18 @@ fn render_share_page(
         out.push_str("  </section>\n");
     }
 
-    // Recovery pointer only — detailed instructions live in RECOVERY.md so they can
+    // Recovery pointer only - detailed instructions live in RECOVERY.md so they can
     // be updated without re-printing cards.
     out.push_str("  <footer class=\"recovery\">\n");
     out.push_str("    <h2>How to recover the secret</h2>\n");
     write!(
         out,
-        "    <p>Gather <strong>{}</strong> of the <strong>{}</strong> cards from set <code>{id_esc}</code>, then follow the recovery guide:</p>\n",
+        "    <p>Gather <strong>{}</strong> of the <strong>{}</strong> shares from set <code>{id_esc}</code>, then open the recovery guide:</p>\n",
         share.threshold, total,
     )
     .expect("write to String");
-    out.push_str("    <p class=\"recovery-url\"><strong>https://github.com/SecretSplitKit/Chela</strong> &rarr; <code>RECOVERY.md</code></p>\n");
-    out.push_str("    <p class=\"reassurance\">If that link doesn't work years from now, search the web for <em>&ldquo;chela paper backup recovery&rdquo;</em>. Embedded structured data on this page (in the &lt;script&gt; tag at the top) preserves the share for future tools.</p>\n");
+    out.push_str("    <p class=\"recovery-url\"><strong>https://github.com/SecretSplitKit/Chela</strong> (the file named <code>RECOVERY.md</code>)</p>\n");
+    out.push_str("    <p class=\"reassurance\">If that link is dead years from now, search the web for <em>&ldquo;chela paper backup recovery&rdquo;</em>. This page also stores the share in a machine-readable block, so any chela tool can read it back.</p>\n");
     out.push_str("  </footer>\n");
 
     // Plain-text form: copy-paste alternative.
@@ -259,7 +259,7 @@ const DOCTYPE_HEAD: &str = r#"<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>chela — paper backup</title>
+<title>chela - paper backup</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 "#;
 
@@ -752,7 +752,7 @@ mod tests {
             },
         );
         // The names array is consumed positionally, so a card whose x exceeds the name
-        // count would have no "You" — guard against the random x landing out of range.
+        // count would have no "You" - guard against the random x landing out of range.
         for (card_idx, (_name, html)) in folder.shares.iter().enumerate() {
             assert!(html.contains("People holding shares of this secret"));
             assert!(html.contains("<span class=\"label\">You:</span>"));

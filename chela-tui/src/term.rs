@@ -6,7 +6,7 @@ use std::io::{self, BufRead, Read, Write};
 
 pub(crate) const RESET: &str = "\x1b[0m";
 pub(crate) const BOLD: &str = "\x1b[1m";
-/// 256-color mid-gray (#949494, index 246) — used instead of SGR faint (`\x1b[2m`)
+/// 256-color mid-gray (#949494, index 246) - used instead of SGR faint (`\x1b[2m`)
 /// because faint renders ~50% intensity and was illegible on many themes.
 pub(crate) const DIM: &str = "\x1b[38;5;246m";
 pub(crate) const CYAN: &str = "\x1b[36m";
@@ -14,21 +14,21 @@ pub(crate) const BRIGHT_CYAN: &str = "\x1b[96m";
 pub(crate) const YELLOW: &str = "\x1b[33m";
 pub(crate) const RED: &str = "\x1b[31m";
 pub(crate) const GREEN: &str = "\x1b[32m";
-/// SGR 7 — reverse video.
+/// SGR 7 - reverse video.
 pub(crate) const REVERSE: &str = "\x1b[7m";
 
 pub(crate) fn clear() {
-    // CSI 2J — erase entire screen; CSI H — cursor to (1, 1).
+    // CSI 2J - erase entire screen; CSI H - cursor to (1, 1).
     print!("\x1b[2J\x1b[H");
     let _ = io::stdout().flush();
 }
 
 /// Visible-screen clear plus the xterm scrollback-wipe extension (`CSI 3J`).
 /// Used when we have to display a secret in the normal terminal (no alt-screen
-/// fallback) — best-effort, not all terminals honour `3J`.
+/// fallback) - best-effort, not all terminals honour `3J`.
 pub(crate) fn clear_with_scrollback() {
-    // CSI 2J — visible screen; CSI 3J — scrollback (xterm/most modern terms);
-    // CSI H — home; then a soft reset to drop any leftover attributes.
+    // CSI 2J - visible screen; CSI 3J - scrollback (xterm/most modern terms);
+    // CSI H - home; then a soft reset to drop any leftover attributes.
     print!("\x1b[2J\x1b[3J\x1b[H");
     let _ = io::stdout().flush();
 }
@@ -39,7 +39,7 @@ pub(crate) fn clear_with_scrollback() {
 /// payload cannot inject OSC 52 (clipboard write), window-title spoofs, or
 /// cursor manipulation when the user displays the reconstruction.
 ///
-/// `\n` and `\t` are preserved — they have no escape-sequence interpretation by
+/// `\n` and `\t` are preserved - they have no escape-sequence interpretation by
 /// themselves and removing them would garble legitimate multi-line input.
 pub(crate) fn sanitize_for_terminal(s: &str) -> String {
     use core::fmt::Write as _;
@@ -197,7 +197,7 @@ fn raw_line_editor(p: &str, prefill: &str, empty_default: &str) -> io::Result<Op
     // BYTE offset on a UTF-8 char boundary; start at end so Enter commits the prefill.
     let mut cursor: usize = buf.len();
 
-    // DECSC — save cursor; paired with DECRC (`\x1b8`) in the redraw.
+    // DECSC - save cursor; paired with DECRC (`\x1b8`) in the redraw.
     stdout.write_all(b"\x1b7")?;
     stdout.flush()?;
 
@@ -217,10 +217,10 @@ fn raw_line_editor(p: &str, prefill: &str, empty_default: &str) -> io::Result<Op
         let cursor_col = cursor_visible % width;
         let rows_up = end_row.saturating_sub(cursor_row);
         if rows_up > 0 {
-            // CSI A — cursor up N rows.
+            // CSI A - cursor up N rows.
             write!(stdout, "\x1b[{rows_up}A")?;
         }
-        // CSI G — move to absolute column (1-indexed).
+        // CSI G - move to absolute column (1-indexed).
         write!(stdout, "\x1b[{}G", cursor_col + 1)?;
         stdout.flush()?;
 
@@ -428,7 +428,7 @@ fn select_fallback(options: &[&str], initial: Option<usize>) -> io::Result<Optio
 }
 
 /// String whose bytes are volatile-zeroed on drop via `chela_primitives::zeroize`.
-/// Avoid `.clone()` — copies bypass the zeroize behaviour.
+/// Avoid `.clone()` - copies bypass the zeroize behaviour.
 #[derive(Default)]
 pub(crate) struct SecretString {
     inner: String,
@@ -460,13 +460,13 @@ impl Drop for SecretString {
 pub(crate) enum SecretReadCancel {
     /// User pressed Escape, Ctrl-C, or EOF.
     UserCancelled,
-    /// Termios setup failed; refusing to fall back to an echoed prompt is intentional —
+    /// Termios setup failed; refusing to fall back to an echoed prompt is intentional -
     /// echoing a secret in cleartext is strictly worse than aborting.
     NoMaskedInput,
 }
 
 /// Read a sensitive line with `*` masking. Tab toggles reveal/re-mask. Refuses to fall
-/// back to echoed input — `NoMaskedInput` is returned if termios setup fails.
+/// back to echoed input - `NoMaskedInput` is returned if termios setup fails.
 #[allow(clippy::too_many_lines)]
 pub(crate) fn read_secret(p: &str) -> io::Result<Result<SecretString, SecretReadCancel>> {
     print!("{}", decorate(p));
@@ -595,7 +595,7 @@ pub(crate) fn read_secret(p: &str) -> io::Result<Result<SecretString, SecretRead
     }
 }
 
-// Raw-mode termios shim — the only `unsafe` in chela-tui. Per-OS `platform` module
+// Raw-mode termios shim - the only `unsafe` in chela-tui. Per-OS `platform` module
 // holds the FFI; unsupported targets get a no-op stub.
 pub(crate) mod raw_termios {
     #![allow(unsafe_code)]
@@ -734,7 +734,7 @@ pub(crate) mod raw_termios {
 
         /// Linux asm-generic `struct termios` (`x86_64`, `aarch64`, `arm`, `riscv64`):
         /// `tcflag_t` is 4-byte `unsigned int`, `cc_t` is `unsigned char`, `NCCS == 32`,
-        /// plus the `c_line` byte that Darwin lacks. MIPS/SPARC/Alpha/PowerPC differ —
+        /// plus the `c_line` byte that Darwin lacks. MIPS/SPARC/Alpha/PowerPC differ -
         /// the size assertion below will fail there and force an arch-specific port.
         #[repr(C)]
         #[derive(Clone, Copy)]

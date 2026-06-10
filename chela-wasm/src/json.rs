@@ -1,4 +1,4 @@
-//! Tiny JSON encoder. Only handles the shapes our WASM exports produce — strings with
+//! Tiny JSON encoder. Only handles the shapes our WASM exports produce - strings with
 //! the standard escape set. No parser; inputs come in via the binary `request` format.
 
 use std::fmt::Write as _;

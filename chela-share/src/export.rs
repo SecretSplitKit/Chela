@@ -60,7 +60,7 @@ pub fn render_shares_json(shares: &[Share], meta: &BackupMeta<'_>) -> String {
     out
 }
 
-/// A folder-worth of per-share JSON files. Pure strings — no filesystem access
+/// A folder-worth of per-share JSON files. Pure strings - no filesystem access
 /// (this crate is `#![no_std]`); the binaries write each `(filename, contents)`
 /// pair to disk.
 #[derive(Debug, Clone, PartialEq, Eq)]

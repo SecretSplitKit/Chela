@@ -31,8 +31,8 @@ pub(crate) enum SplitKind {
 
 pub(crate) fn run_split(kind: SplitKind) -> io::Result<()> {
     let (title, what) = match kind {
-        SplitKind::Bip39 => ("chela — Split a BIP-39 seed", "BIP-39 seed"),
-        SplitKind::Text => ("chela — Split a text password", "password"),
+        SplitKind::Bip39 => ("chela - Split a BIP-39 seed", "BIP-39 seed"),
+        SplitKind::Text => ("chela - Split a text password", "password"),
     };
 
     // Setup-screen count, plus N once we know it. BIP-39 has the extra passphrase screen.
@@ -116,7 +116,7 @@ pub(crate) fn run_split(kind: SplitKind) -> io::Result<()> {
             }
             if t.as_str().len() > 255 {
                 error(
-                    "Text is too long to fit on the share cards (limit is 255 characters; non-Latin scripts and emoji take more room). Press Enter to return.",
+                    "Text is too long to fit on the share shares (limit is 255 characters; non-Latin scripts and emoji take more room). Press Enter to return.",
                 );
                 let _ = prompt("❯ ")?;
                 return Ok(());
@@ -131,9 +131,9 @@ pub(crate) fn run_split(kind: SplitKind) -> io::Result<()> {
     banner(title);
     step_header(step, None, "Give This Backup a Name");
     println!();
-    println!("A short name lets recipients see what this card is for at a glance");
+    println!("A short name tells recipients what this share is for");
     println!("(e.g. \"Alice's Ethereum wallet\" or \"Family password manager\").");
-    info("Press Enter to skip — the cards will still work without a name.");
+    info("Press Enter to skip - the shares will still work without a name.");
     let Some(name_raw) = prompt_line_or_default("name ❯ ", "")? else {
         return Ok(());
     };
@@ -154,17 +154,17 @@ pub(crate) fn run_split(kind: SplitKind) -> io::Result<()> {
     println!("needed to recover the secret. Any smaller number reveals nothing.");
     println!();
     println!("{BOLD}Trade-offs:{RESET}");
-    println!("  · {BOLD}More total shares{RESET} = more redundancy if a card is lost or");
-    println!("    unreachable — but also more cards an attacker might find.");
+    println!("  · {BOLD}More total shares{RESET} = more redundancy if a share is lost or");
+    println!("    unreachable - but also more shares an attacker might find.");
     println!("  · {BOLD}Higher required-to-recover{RESET} = harder for an attacker who");
-    println!("    finds some cards — but harder for legitimate recipients to coordinate.");
+    println!("    finds some shares - but harder for legitimate recipients to coordinate.");
     println!("  · Required must be at least 2; a 1-of-N split just makes N copies.");
     println!();
     println!("{BOLD}Common configurations:{RESET}");
-    println!("  2-of-3   — small family, simple coordination");
-    println!("  3-of-5   — typical inheritance kit (tolerates 2 lost cards)");
-    println!("  4-of-7   — wider distribution, more loss tolerance");
-    println!("  5-of-9   — institutional / multi-jurisdiction setups");
+    println!("  2-of-3   - small family, simple coordination");
+    println!("  3-of-5   - typical inheritance kit (tolerates 2 lost shares)");
+    println!("  4-of-7   - wider distribution, more loss tolerance");
+    println!("  5-of-9   - large or spread-out groups, high loss tolerance");
     println!();
     let Some((total, threshold)) = pick_total_and_threshold_form()? else {
         return Ok(());
@@ -172,16 +172,16 @@ pub(crate) fn run_split(kind: SplitKind) -> io::Result<()> {
     step += 1;
 
     banner(title);
-    step_header(step, None, "Identify Each Shareholder on Their Card?");
+    step_header(step, None, "Identify Each Shareholder on Their Share?");
     println!();
     println!("If you say yes, each printed share will list every shareholder by name");
-    println!("with this card's recipient marked. That helps the recipients find each");
-    println!("other later — without it, they may not know who else holds a card.");
+    println!("with this share's recipient marked. That helps the recipients find each");
+    println!("other later - without it, they may not know who else holds a share.");
     println!();
-    println!("{BOLD}Trade-off:{RESET} a single recovered card now identifies every");
+    println!("{BOLD}Trade-off:{RESET} a single recovered share now identifies every");
     println!("shareholder by name. The cryptographic payload still reveals nothing,");
-    println!("but an attacker who finds one card learns who else to target for the");
-    println!("remaining cards (physical, social-engineering, or coercion).");
+    println!("but an attacker who finds one share learns who else to target for the");
+    println!("remaining shares (physical, social-engineering, or coercion).");
     println!();
     println!("Mitigation: use first names only, or pseudonyms shared out of band");
     println!("with each recipient. If you say yes here, you'll be asked for each name");
@@ -189,8 +189,8 @@ pub(crate) fn run_split(kind: SplitKind) -> io::Result<()> {
     println!();
     let Some(name_choice) = select(
         &[
-            "Yes — list every shareholder on each card",
-            "No — keep cards anonymous",
+            "Yes - list every shareholder on each share",
+            "No - keep shares anonymous",
         ],
         None,
     )?
@@ -201,10 +201,10 @@ pub(crate) fn run_split(kind: SplitKind) -> io::Result<()> {
     step += 1;
 
     banner(title);
-    step_header(step, None, "Add a Note to Each Card");
+    step_header(step, None, "Add a Note to Each Share");
     println!();
     println!("Write a short note that will appear at the top of every printed share.");
-    println!("This is context for the recipient, not recovery instructions (the cards");
+    println!("This is context for the recipient, not recovery instructions (the shares");
     println!("already include step-by-step instructions at the bottom).");
     println!();
     println!("{BOLD}Examples:{RESET}");
@@ -215,7 +215,7 @@ pub(crate) fn run_split(kind: SplitKind) -> io::Result<()> {
         "  · {DIM}\"Bitwarden master password; vault lives at https://vw.myserver.lol\"{RESET}"
     );
     println!(
-        "  · {DIM}\"Backup for the family Bitcoin wallet — call Alice at (555) 123-4567 first.\"{RESET}"
+        "  · {DIM}\"Backup for the family Bitcoin wallet - call Alice at (555) 123-4567 first.\"{RESET}"
     );
     println!();
     info("Type your note (Enter to commit; press Enter on empty for no note; Escape cancels).");
@@ -245,7 +245,7 @@ pub(crate) fn run_split(kind: SplitKind) -> io::Result<()> {
     if name_each_share {
         println!();
         println!(
-            "{BRIGHT_CYAN}{BOLD}You'll be asked for each shareholder's name as you record their card.{RESET}"
+            "{BRIGHT_CYAN}{BOLD}You'll be asked for each shareholder's name as you record their share.{RESET}"
         );
     }
     println!();
@@ -254,8 +254,8 @@ pub(crate) fn run_split(kind: SplitKind) -> io::Result<()> {
     println!();
     let Some(proceed_choice) = select(
         &[
-            "Yes — split the secret now",
-            "No — go back to the menu without splitting",
+            "Yes - split the secret now",
+            "No - go back to the menu without splitting",
         ],
         None,
     )?
@@ -351,19 +351,19 @@ pub(crate) fn run_split(kind: SplitKind) -> io::Result<()> {
     println!();
     println!("{BOLD}What would you like to save to this computer?{RESET}");
     println!();
-    println!("Two formats are available — pick whichever suits how you plan to recover:");
+    println!("Two formats are available - pick whichever suits how you plan to recover:");
     println!();
-    println!("  {BOLD}HTML cards{RESET}    — one printable page per share. Open in a browser,");
+    println!("  {BOLD}HTML shares{RESET}    - one printable page per share. Open in a browser,");
     println!("                  Print → Save as PDF, then print to paper.");
-    println!("  {BOLD}JSON files{RESET}    — one structured `.share.json` per share + a combined");
+    println!("  {BOLD}JSON files{RESET}    - one structured `.share.json` per share + a combined");
     println!("                  bundle. For machine-readable backup or programmatic recovery.");
     println!();
     let Some(save_choice) = select(
         &[
-            "Both — printable HTML cards AND machine-readable JSON files",
-            "HTML cards only (printable)",
+            "Both - printable HTML shares AND machine-readable JSON files",
+            "HTML shares only (printable)",
             "JSON files only (machine-readable)",
-            "Nothing — I've recorded the shares by hand",
+            "Nothing - I've recorded the shares by hand",
         ],
         None,
     )?
@@ -381,7 +381,7 @@ pub(crate) fn run_split(kind: SplitKind) -> io::Result<()> {
         let Some(raw_path) = prompt_line_prefilled("folder ❯ ", &default_dir)? else {
             info("Backup save cancelled.");
             println!();
-            // Shares are already generated/recorded — still show completion.
+            // Shares are already generated/recorded - still show completion.
             return match wait_for_exit_or_menu()? {
                 AfterComplete::Menu => Ok(()),
                 AfterComplete::Exit => {
@@ -766,13 +766,13 @@ fn display_share(share: &Share) {
 }
 
 pub(crate) fn run_recover() -> io::Result<()> {
-    banner("chela — Recover from shares");
+    banner("chela - Recover from shares");
     println!("How would you like to enter the shares?");
     println!();
     let Some(input_mode) = select(
         &[
             "Import HTML files saved on this computer",
-            "Type each card by hand from the printed paper",
+            "Type each share by hand from the printed paper",
         ],
         None,
     )?
@@ -782,12 +782,12 @@ pub(crate) fn run_recover() -> io::Result<()> {
 
     let mut shares: Vec<Share> = Vec::new();
     // First share establishes set ID / threshold / total / word count; later shares only
-    // need the new card's `x`.
+    // need the new share's `x`.
     let mut expected: Option<ParsedHeader> = None;
 
     if input_mode == 0 {
-        // Import phase — load shares from HTML files first, then fall through
-        // to the manual loop if we still need more cards.
+        // Import phase - load shares from HTML files first, then fall through
+        // to the manual loop if we still need more shares.
         match import_html_phase()? {
             Some(imported) => {
                 if !imported.is_empty() {
@@ -804,11 +804,11 @@ pub(crate) fn run_recover() -> io::Result<()> {
             .as_ref()
             .is_none_or(|e| shares.len() < usize::from(e.threshold))
     {
-        banner("chela — Recover from shares");
-        info("Enter each card by typing its card code, then its words one at a time.");
+        banner("chela - Recover from shares");
+        info("Enter each share by typing its share code, then its words one at a time.");
         println!();
-        println!("The card code is the dashed line near the top of each card (e.g.");
-        println!("CHELA-05DA-1-3-5-34) — it identifies the recovery set, which card this is,");
+        println!("The share code is the dashed line near the top of each share (e.g.");
+        println!("CHELA-05DA-1-3-5-34) - it identifies the recovery set, which share this is,");
         println!("how many are needed, and how many words to expect. The wizard will then");
         println!("prompt for each word in turn.");
         println!();
@@ -827,7 +827,7 @@ pub(crate) fn run_recover() -> io::Result<()> {
         }
         let (header_line, meta) = match expected {
             None => {
-                let Some(raw) = prompt_nonempty("Card code from card #1: ")? else {
+                let Some(raw) = prompt_nonempty("Share code from share #1: ")? else {
                     break;
                 };
                 let header_line = raw.trim().to_owned();
@@ -835,7 +835,7 @@ pub(crate) fn run_recover() -> io::Result<()> {
                     Ok(m) => (header_line, m),
                     Err(e) => {
                         error(&format!(
-                            "Card code didn't parse: {}. Expected CHELA-05DA-1-3-5-34 — recovery set, card #, required, total, word count.",
+                            "Share code didn't parse: {}. Expected CHELA-05DA-1-3-5-34 - recovery set, share #, required, total, word count.",
                             describe_format_error(&e),
                         ));
                         continue;
@@ -845,14 +845,14 @@ pub(crate) fn run_recover() -> io::Result<()> {
             Some(first) => {
                 let need = usize::from(first.threshold);
                 let have = shares.len();
-                // v2 cards carry a random x in 1..=32 (not a sequential 1..N index), so we
-                // can't enumerate which card numbers remain — just show progress.
+                // v2 shares carry a random x in 1..=32 (not a sequential 1..N index), so we
+                // can't enumerate which share numbers remain - just show progress.
                 info(&format!(
-                    "Recovery set {:04X} · {have} of {need} required cards entered.",
+                    "Recovery set {:04X} · {have} of {need} required shares entered.",
                     first.nonce & 0x7FF,
                 ));
                 let Some(x) = prompt_u8_in_range(
-                    &format!("Card # printed on the next card (1-{MAX_SHARES}): "),
+                    &format!("Share # printed on the next share (1-{MAX_SHARES}): "),
                     1,
                     MAX_SHARES,
                 )?
@@ -876,7 +876,7 @@ pub(crate) fn run_recover() -> io::Result<()> {
 
         if shares.iter().any(|s| s.x == meta.x) {
             error(&format!(
-                "Card #{} already entered. Pick another number.",
+                "Share #{} already entered. Pick another number.",
                 meta.x,
             ));
             continue;
@@ -885,7 +885,7 @@ pub(crate) fn run_recover() -> io::Result<()> {
         println!();
         let of_total = meta.total.map_or_else(String::new, |n| format!(" of {n}"));
         info(&format!(
-            "Recovery set {:04X} · card {}{of_total} · {} required to recover · {} words.",
+            "Recovery set {:04X} · share {}{of_total} · {} required to recover · {} words.",
             meta.nonce & 0x7FF,
             meta.x,
             meta.threshold,
@@ -910,11 +910,11 @@ pub(crate) fn run_recover() -> io::Result<()> {
                 println!();
                 if have >= need {
                     success(&format!(
-                        "Share added. Have {have} of {need} — ready to recover."
+                        "Share added. Have {have} of {need} - ready to recover."
                     ));
                 } else {
                     success(&format!(
-                        "Share added. Have {have} of {need} — need {} more.",
+                        "Share added. Have {have} of {need} - need {} more.",
                         need - have,
                     ));
                 }
@@ -947,15 +947,15 @@ pub(crate) fn run_recover() -> io::Result<()> {
         }
     };
 
-    banner("chela — Secret reconstructed");
+    banner("chela - Secret reconstructed");
     println!("Shares verified. The original secret has been reconstructed in memory.");
     println!();
     warn("Before revealing on screen, confirm nobody can see this terminal.");
     println!();
     let Some(reveal_choice) = select(
         &[
-            "Yes — show me the recovered secret on this screen",
-            "No — discard the result without showing it",
+            "Yes - show me the recovered secret on this screen",
+            "No - discard the result without showing it",
         ],
         None,
     )?
@@ -972,13 +972,13 @@ pub(crate) fn run_recover() -> io::Result<()> {
     }
 
     // Move the reveal to the alternate screen buffer so when we leave the buffer the
-    // displayed secret is gone — nothing lands in the user's scrollback. Falls back
+    // displayed secret is gone - nothing lands in the user's scrollback. Falls back
     // to the normal terminal with a best-effort scrollback wipe (`CSI 3J`) when
     // termios isn't available (Windows non-VT, dumb terminals).
     let alt_screen = crate::screen::Screen::enter();
     let in_alt_screen = alt_screen.is_some();
     if in_alt_screen {
-        banner("chela — Recovered secret");
+        banner("chela - Recovered secret");
     } else {
         println!();
     }
@@ -990,7 +990,7 @@ pub(crate) fn run_recover() -> io::Result<()> {
         } => {
             // Mnemonic words come from the BIP-39 wordlist (ASCII-only by construction),
             // but the passphrase is arbitrary UTF-8 derived from attacker-influenceable
-            // share bytes if any cards were forged — sanitize before display.
+            // share bytes if any shares were forged - sanitize before display.
             let mnemonic_safe =
                 chela_primitives::zeroize::Zeroizing::new(sanitize_for_terminal(mnemonic));
             println!("{BOLD}Kind:{RESET} BIP-39 mnemonic");
@@ -1018,7 +1018,7 @@ pub(crate) fn run_recover() -> io::Result<()> {
     let choice = wait_for_exit_or_menu()?;
     wipe_recovered(&mut recovered);
 
-    // Drop the alt-screen guard first — that swaps back to the normal terminal
+    // Drop the alt-screen guard first - that swaps back to the normal terminal
     // buffer with the secret display gone. If we never entered alt-screen, fall
     // back to wiping the visible screen and (best-effort) scrollback.
     drop(alt_screen);
@@ -1035,7 +1035,7 @@ pub(crate) fn run_recover() -> io::Result<()> {
 
 /// Build a [`ParsedHeader`] from a fully-parsed [`Share`]. Used after import to
 /// pre-populate the wizard's "expected" state so the manual-entry phase only
-/// asks for the remaining card numbers.
+/// asks for the remaining share numbers.
 fn parsed_header_from_share(share: &Share) -> ParsedHeader {
     ParsedHeader {
         nonce: share.nonce,
@@ -1050,10 +1050,10 @@ fn parsed_header_from_share(share: &Share) -> ParsedHeader {
 /// parse each, accumulate shares.
 ///
 /// Returns:
-///   - `Ok(Some(vec))` — shares the user successfully loaded (possibly empty if
+///   - `Ok(Some(vec))` - shares the user successfully loaded (possibly empty if
 ///     they finished without typing any paths; the caller still falls through
 ///     to manual entry in that case).
-///   - `Ok(None)` — the user cancelled (Ctrl-D / Esc); the caller returns to
+///   - `Ok(None)` - the user cancelled (Ctrl-D / Esc); the caller returns to
 ///     the main menu without recovering anything.
 fn import_html_phase() -> io::Result<Option<Vec<Share>>> {
     info("Type the path to each chela paper-backup file (HTML or text), one per line.");
@@ -1073,7 +1073,7 @@ fn import_html_phase() -> io::Result<Option<Vec<Share>>> {
             )
         };
         let Some(raw) = prompt(&prompt_msg)? else {
-            // EOF / Ctrl-D — treat as cancel only if nothing was imported.
+            // EOF / Ctrl-D - treat as cancel only if nothing was imported.
             return if shares.is_empty() {
                 Ok(None)
             } else {
@@ -1121,12 +1121,12 @@ fn import_html_phase() -> io::Result<Option<Vec<Share>>> {
                     s.nonce & 0x7FF,
                     expected_first_share.as_ref().unwrap().nonce & 0x7FF,
                 ));
-                // Skip the whole file — don't partially import a mismatched set.
+                // Skip the whole file - don't partially import a mismatched set.
                 continue;
             }
             if shares.iter().any(|existing| existing.x == s.x) {
                 warn(&format!(
-                    "{path}: card #{} already loaded — skipped duplicate.",
+                    "{path}: share #{} already loaded - skipped duplicate.",
                     s.x,
                 ));
                 continue;
@@ -1136,7 +1136,7 @@ fn import_html_phase() -> io::Result<Option<Vec<Share>>> {
             }
             let of_total = s.total.map_or_else(String::new, |n| format!(" of {n}"));
             success(&format!(
-                "Imported card #{}{of_total} from set {:04X} ({} required).",
+                "Imported share #{}{of_total} from set {:04X} ({} required).",
                 s.x,
                 s.nonce & 0x7FF,
                 s.threshold,
@@ -1150,12 +1150,12 @@ fn import_html_phase() -> io::Result<Option<Vec<Share>>> {
             if have >= need {
                 println!();
                 success(&format!(
-                    "Have {have} of {need} cards — enough to recover. (Add more files or press Enter to proceed.)"
+                    "Have {have} of {need} shares - enough to recover. (Add more files or press Enter to proceed.)"
                 ));
             } else {
                 println!();
                 info(&format!(
-                    "Have {have} of {need} cards from set {:04X}. Add another file, or press Enter to switch to typing the rest by hand.",
+                    "Have {have} of {need} shares from set {:04X}. Add another file, or press Enter to switch to typing the rest by hand.",
                     first.nonce & 0x7FF,
                 ));
             }
@@ -1164,7 +1164,7 @@ fn import_html_phase() -> io::Result<Option<Vec<Share>>> {
 }
 
 /// Auto-detect HTML / JSON / share-text and decode accordingly. Mirrors
-/// `chela-cli::read_one_file` — kept duplicated rather than shared because the
+/// `chela-cli::read_one_file` - kept duplicated rather than shared because the
 /// two binaries have very different error surfaces and the helper is tiny.
 fn decode_file(contents: &str) -> Result<Vec<Share>, String> {
     let trimmed = contents.trim_start();
@@ -1210,26 +1210,26 @@ fn wipe_recovered(r: &mut RecoveredSecret) {
 
 fn describe_format_error(e: &FormatError) -> &'static str {
     match e {
-        FormatError::BadHeader => "card code should look like CHELA-05DA-1-3-5-34",
+        FormatError::BadHeader => "share code should look like CHELA-05DA-1-3-5-34",
         FormatError::BadIdentifier => "recovery set must be four hex digits (e.g. 05DA)",
         FormatError::BadThresholdTotal => {
             "required and total must be small whole numbers, and required cannot exceed total"
         }
-        FormatError::BadShareIndex => "card # must be a whole number >= 1",
+        FormatError::BadShareIndex => "share # must be a whole number >= 1",
         FormatError::BadWordCount => "word count must be a whole number",
         FormatError::UnknownWord => "word not in the BIP-39 wordlist",
-        FormatError::MissingWords => "card has no words on the second line",
+        FormatError::MissingWords => "share has no words on the second line",
         FormatError::WordCountMismatch => {
-            "number of words doesn't match the word count in the card code"
+            "number of words doesn't match the word count in the share code"
         }
         FormatError::HeaderWordsMismatch => {
-            "the card code doesn't match the words — check for a transcription error"
+            "the share code doesn't match the words - check for a transcription error"
         }
-        FormatError::ShareCorrupt => "the words failed their checksum — re-check each one",
+        FormatError::ShareCorrupt => "the words failed their checksum - re-check each one",
     }
 }
 
-/// Parsed `CHELA-...` header without per-word data; lets us probe a card before
+/// Parsed `CHELA-...` header without per-word data; lets us probe a share before
 /// prompting for its words.
 #[derive(Debug, Clone, Copy)]
 struct ParsedHeader {
@@ -1337,7 +1337,7 @@ mod parsed_header_tests {
     #[test]
     fn accepts_random_x_greater_than_total() {
         // v2: x is a random coordinate in 1..=32, independent of N, so x may exceed N.
-        // A card with x=20 in a 3-share set is valid and must parse.
+        // A share with x=20 in a 3-share set is valid and must parse.
         let h = ParsedHeader::from_str("CHELA-02C9-20-2-3-6").expect("x>N must parse in v2");
         assert_eq!(h.x, 20);
         assert_eq!(h.threshold, 2);

@@ -8,7 +8,7 @@ use chela_field::{Field, Gf256};
 
 /// Field-theoretic ceiling for this generic SSS layer: GF(2^8) has 255 non-zero
 /// x-coordinates (`1..=255`), with x=0 reserved for the secret. This is the scratch
-/// buffer size, not chela's share-count limit — the wire format caps usable shares at
+/// buffer size, not chela's share-count limit - the wire format caps usable shares at
 /// 32 (`chela_engine::MAX_SHARES`).
 pub const MAX_THRESHOLD: u8 = 255;
 
@@ -123,7 +123,7 @@ pub fn split(
 }
 
 /// Volatile-wipe the polynomial coefficient buffer. Reinterprets `&mut [Gf256]` as
-/// `&mut [u8]` — sound because `Gf256` is `#[repr(transparent)]` over `u8`. A plain
+/// `&mut [u8]` - sound because `Gf256` is `#[repr(transparent)]` over `u8`. A plain
 /// `coeffs.fill(Gf256::ZERO)` is dead-store-eligible because `coeffs` isn't read
 /// afterwards; the volatile write + compiler fence inside `volatile_set` prevents that.
 #[allow(unsafe_code)]

@@ -35,7 +35,7 @@ pub enum FormatError {
     UnknownWord,
     MissingWords,
     WordCountMismatch,
-    /// The words decoded cleanly but the advisory header disagrees on x/M/nonce —
+    /// The words decoded cleanly but the advisory header disagrees on x/M/nonce -
     /// a transcription error on the human-readable label.
     HeaderWordsMismatch,
     /// The words failed to decode (bad CRC, reserved bit set, too few words).
@@ -50,7 +50,7 @@ impl core::fmt::Display for FormatError {
             Self::BadThresholdTotal => {
                 f.write_str("the CHELA header's threshold/total fields are malformed")
             }
-            Self::BadShareIndex => f.write_str("the CHELA header's card number is malformed"),
+            Self::BadShareIndex => f.write_str("the CHELA header's share number is malformed"),
             Self::BadWordCount => f.write_str("the CHELA header's word count is malformed"),
             Self::UnknownWord => {
                 f.write_str("a share contains a word that is not in the BIP-39 word list (check spelling)")
@@ -69,7 +69,7 @@ impl core::fmt::Display for FormatError {
     }
 }
 
-/// A folder-worth of paper-backup files. Pure strings — no filesystem access (this crate
+/// A folder-worth of paper-backup files. Pure strings - no filesystem access (this crate
 /// is `#![no_std]`); the binaries write each `(filename, contents)` pair to disk.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PaperFolder {
@@ -88,7 +88,7 @@ pub struct BackupMeta<'a> {
     /// Optional free-form note rendered at the top of each card.
     pub description: Option<&'a str>,
     /// Optional N shareholder names indexed by `x - 1`. When present, each card lists
-    /// every holder by name — this expands the social-graph attack surface, but reveals
+    /// every holder by name - this expands the social-graph attack surface, but reveals
     /// no share data. Rendering is suppressed if the count doesn't match the share set.
     pub shareholder_names: Option<&'a [String]>,
 }
@@ -137,9 +137,9 @@ fn render_readme(
 
     let title = match meta.backup_name {
         Some(name) if !name.trim().is_empty() => {
-            format!("chela recovery kit — {} (set {id})", name.trim())
+            format!("chela recovery kit - {} (set {id})", name.trim())
         }
-        _ => format!("chela recovery kit — set {id}"),
+        _ => format!("chela recovery kit - set {id}"),
     };
     let mut out = String::with_capacity(1024);
     out.push_str(&title);
@@ -165,10 +165,10 @@ fn render_readme(
     }
 
     out.push_str("Contents of this folder:\n");
-    out.push_str("  README.txt    — this file\n");
+    out.push_str("  README.txt    - this file\n");
     for share in shares {
         let filename = format!("share-{}.html", share.x);
-        writeln!(out, "  {filename:<13} — share #{} of {total}", share.x).expect("write");
+        writeln!(out, "  {filename:<13} - share #{} of {total}", share.x).expect("write");
     }
     out.push('\n');
 
@@ -225,7 +225,7 @@ pub fn format_share(share: &Share) -> String {
 }
 
 /// Parse a single share from a header line and a words line. The words are
-/// authoritative — they alone carry x, M, and the nonce. The header is advisory:
+/// authoritative - they alone carry x, M, and the nonce. The header is advisory:
 /// it is cross-checked against the decoded words (a disagreement is a transcription
 /// error, [`FormatError::HeaderWordsMismatch`]) and supplies the total `N`.
 ///
@@ -263,7 +263,7 @@ pub fn parse_share(header: &str, words_line: &str) -> Result<Share, FormatError>
     Ok(share)
 }
 
-/// Recover a share from its BIP-39 words alone — no header. This is the
+/// Recover a share from its BIP-39 words alone - no header. This is the
 /// authoritative path for words-only backups: the words carry x, M, and the nonce,
 /// verified by the per-share CRC. `total` and `kind` stay `None` (a lone share's
 /// words reveal neither).

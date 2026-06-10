@@ -1,4 +1,4 @@
-//! CRC-11/UMTS (poly 0x307, init 0x000, non-reflected, xorout 0x000) — the per-share
+//! CRC-11/UMTS (poly 0x307, init 0x000, non-reflected, xorout 0x000) - the per-share
 //! transcription checksum for the bip39-wordlist scheme. Chosen for hand-auditability:
 //! init 0, no reflection, no final XOR == textbook GF(2) polynomial long division.
 

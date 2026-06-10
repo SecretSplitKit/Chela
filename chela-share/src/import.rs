@@ -29,7 +29,7 @@ pub enum ImportError {
     /// `set_id` isn't a 4-character ASCII hex string.
     BadSetId,
     /// The advisory `card_number` / `threshold` / `total` / `set_id` disagree with the
-    /// values the words carry — a transcription error in the metadata.
+    /// values the words carry - a transcription error in the metadata.
     BadThresholdTotalOrIndex,
     /// The `words` array failed to decode (bad CRC, reserved bit set, too few words).
     ShareCorrupt,
@@ -39,7 +39,7 @@ pub enum ImportError {
 /// order of appearance in the document. An empty input or one with no chela
 /// blocks returns [`ImportError::NoChelaSharesFound`].
 ///
-/// Per-block parse / validate errors are returned in the result vector — the
+/// Per-block parse / validate errors are returned in the result vector - the
 /// caller can decide to keep the successes and surface the failures, or stop
 /// on any error.
 ///
@@ -69,9 +69,9 @@ pub fn extract_shares_strict(html: &str) -> Result<Vec<Share>, ImportError> {
 
 /// Extract shares from a standalone JSON file. Accepts either:
 ///
-/// - **A single share** (`{"type":"chela.share", …}`) — returns a one-element
+/// - **A single share** (`{"type":"chela.share", …}`) - returns a one-element
 ///   vector
-/// - **A bundle** (`{"type":"chela.shares", "shares":[…]}`) — returns each
+/// - **A bundle** (`{"type":"chela.shares", "shares":[…]}`) - returns each
 ///   share as a separate result (per-share validation errors preserved)
 ///
 /// The two formats are distinguished by the top-level `"type"` field. Other
@@ -116,7 +116,7 @@ fn find_chela_share_blocks(html: &str) -> Vec<&str> {
         };
         let tag_end = tag_start + tag_end_rel;
         let opening_tag = &html[tag_start..=tag_end];
-        // Skip if `<script` isn't followed by a recognised attribute char —
+        // Skip if `<script` isn't followed by a recognised attribute char -
         // avoids matching things like `<scripting>`.
         let after_script = tag_start + b"<script".len();
         let next_char = bytes.get(after_script).copied().unwrap_or(b'>');
@@ -138,7 +138,7 @@ fn find_chela_share_blocks(html: &str) -> Vec<&str> {
         // inside user data can't prematurely close the block.
         let body_start = tag_end + 1;
         let Some(close_rel) = find_subslice_ci(&bytes[body_start..], b"</script>") else {
-            // Unclosed script — abandon.
+            // Unclosed script - abandon.
             break;
         };
         let body_end = body_start + close_rel;
@@ -157,7 +157,7 @@ fn decode_share_json(json_text: &str) -> Result<Share, ImportError> {
 
 /// Decode a pre-parsed `Value` (a single chela.share object) into a
 /// [`Share`]. Used by `extract_shares_from_json` for the bundle path, where
-/// each array element is already a parsed `Value` — avoids re-serializing.
+/// each array element is already a parsed `Value` - avoids re-serializing.
 fn decode_share_value(v: &Value) -> Result<Share, ImportError> {
     // Schema version sentinel.
     let ty = v.get("type").and_then(Value::as_str);
@@ -305,7 +305,7 @@ fn tag_attribute_contains(tag: &str, name: &str, needle: &str) -> bool {
                     i += 1;
                 }
             } else {
-                // Unquoted value — read up to whitespace or `>`.
+                // Unquoted value - read up to whitespace or `>`.
                 let val_start = i;
                 while i < bytes.len()
                     && !matches!(bytes[i], b' ' | b'\t' | b'\n' | b'\r' | b'>' | b'/')
@@ -468,7 +468,7 @@ mod tests {
 
     #[test]
     fn attribute_order_tolerated() {
-        // `class` before `type` — our encoder uses the opposite order, but the
+        // `class` before `type` - our encoder uses the opposite order, but the
         // scanner shouldn't care.
         let s = sample();
         let json = share_json(&s);

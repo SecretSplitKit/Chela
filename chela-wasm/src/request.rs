@@ -1,7 +1,7 @@
 //! Binary request decoder.
 //!
 //! Wire format is a single tag byte followed by length-prefixed UTF-8 strings and small
-//! integers. Length prefixes are little-endian `u32` — over-provisioned vs. the actual
+//! integers. Length prefixes are little-endian `u32` - over-provisioned vs. the actual
 //! payload sizes, but it keeps the decoder trivial and leaves room for larger text.
 //!
 //! Per request type:

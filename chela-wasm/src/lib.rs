@@ -1,4 +1,4 @@
-//! `chela-wasm` — WebAssembly bindings for the chela cryptographic core.
+//! `chela-wasm` - WebAssembly bindings for the chela cryptographic core.
 //!
 //! Exposes a small C-ABI surface that an HTML / JavaScript UI calls. No `wasm-bindgen`,
 //! no third-party crates; we hand-roll the FFI marshalling so the dependency surface
@@ -101,7 +101,7 @@ pub unsafe extern "C" fn chela_dealloc(ptr: u32, len: u32) {
     // frees the buffer. The wipe is unconditional since this function can't tell secret
     // and non-secret payloads apart.
     let len = len as usize;
-    // SAFETY (clippy lint allow): length == capacity here is intentional —
+    // SAFETY (clippy lint allow): length == capacity here is intentional -
     // `chela_alloc` does `vec![0u8; len]`, which Vec promises produces
     // capacity == length. The action exports use `shrink_to_fit` before
     // forgetting, so their response buffers also satisfy length == capacity.
@@ -264,7 +264,7 @@ pub(crate) fn do_recover(input: &[u8]) -> Result<String, String> {
 
 /// Render a printable HTML page containing every share. Input is the tagged binary
 /// request documented in `request::RenderPaperRequest`; output is the HTML as raw
-/// bytes (not JSON-wrapped — the JS side gets a string it can drop into an iframe or
+/// bytes (not JSON-wrapped - the JS side gets a string it can drop into an iframe or
 /// offer for download).
 ///
 /// # Safety
@@ -484,14 +484,14 @@ fn engine_error_to_string(e: &EngineError) -> String {
         EngineError::Bip39(b) => format!("BIP-39 error: {b:?}"),
         EngineError::BundleTooLarge => "secret too large to fit in a share".to_string(),
         EngineError::BundleCorrupt => {
-            "combined shares didn't recover a valid secret — check the cards are from the same set"
+            "combined shares didn't recover a valid secret - check the shares are from the same set"
                 .to_string()
         }
         EngineError::MismatchedShares => {
             "shares are from different splits and can't be combined".to_string()
         }
         EngineError::ShareCorrupt => {
-            "one or more shares failed the per-card checksum — likely a typo".to_string()
+            "one or more shares failed the per-share checksum - likely a typo".to_string()
         }
         EngineError::UnknownWord => "word not in the BIP-39 wordlist".to_string(),
         EngineError::InsufficientShares => "not enough shares to recover".to_string(),
@@ -514,15 +514,15 @@ fn format_error_to_string(e: &FormatError) -> String {
             "number of words doesn't match the header's word count".to_string()
         }
         FormatError::HeaderWordsMismatch => {
-            "the CHELA-… label disagrees with the words — likely a mistyped header".to_string()
+            "the CHELA-… label disagrees with the words - likely a mistyped header".to_string()
         }
         FormatError::ShareCorrupt => {
-            "share failed its per-card checksum — likely a typo in the words".to_string()
+            "share failed its per-share checksum - likely a typo in the words".to_string()
         }
     }
 }
 
-// The FFI exports themselves can't be unit-tested on a 64-bit native target — they cast
+// The FFI exports themselves can't be unit-tested on a 64-bit native target - they cast
 // pointers to `u32`, which truncates outside `wasm32`. Instead these tests exercise the
 // inner `do_split` / `do_recover` / `do_render_paper` / `word_in_list` functions that
 // take `&[u8]` / `&str` directly. The FFI shells are exercised end-to-end in the
@@ -609,7 +609,7 @@ mod tests {
         let cards = parse_split_cards(&split_json);
         assert_eq!(cards.len(), 5, "got 5 cards");
 
-        // Recover from cards 1, 3, 5 — non-contiguous subset exercises Lagrange.
+        // Recover from cards 1, 3, 5 - non-contiguous subset exercises Lagrange.
         let subset: Vec<(&str, &str)> = [&cards[0], &cards[2], &cards[4]]
             .iter()
             .map(|(h, w)| (h.as_str(), w.as_str()))
@@ -842,7 +842,7 @@ mod tests {
         let single = &bundle_text[start..end];
 
         let extracted = do_extract_shares(single.as_bytes()).expect("extract ok");
-        // v2 x is a random field element + 1, not sequential — assert it round-trips
+        // v2 x is a random field element + 1, not sequential - assert it round-trips
         // from the source object's card_number rather than hard-coding x == 1.
         let cn_start = single.find("\"card_number\":").unwrap() + "\"card_number\":".len();
         let cn_end = single[cn_start..].find(',').unwrap();
@@ -879,7 +879,7 @@ mod tests {
         let html = String::from_utf8(html_bytes).expect("utf-8 html");
         assert!(html.contains("<article"));
         assert!(html.contains("Test wallet"));
-        assert!(html.contains("Card code"));
+        assert!(html.contains("Share code"));
         assert!(html.contains("Recovery set"));
         assert!(html.contains("How to recover the secret"));
     }

@@ -31,7 +31,7 @@ impl Screen {
     /// Clear screen and home the cursor.
     pub(crate) fn clear(&self) {
         let mut out = io::stdout();
-        // CSI 2J — erase entire screen; CSI H — move cursor to (1, 1).
+        // CSI 2J - erase entire screen; CSI H - move cursor to (1, 1).
         let _ = out.write_all(b"\x1b[2J\x1b[H");
         let _ = out.flush();
     }

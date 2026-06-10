@@ -78,7 +78,7 @@ mod macos {
     }
 }
 
-// Linux — calls libc `getrandom` (glibc ≥ 2.25, musl ≥ 1.1.20).
+// Linux - calls libc `getrandom` (glibc ≥ 2.25, musl ≥ 1.1.20).
 
 #[cfg(target_os = "linux")]
 mod linux {
@@ -167,7 +167,7 @@ mod windows {
     }
 }
 
-// WASM — host-provided import `chela.random_bytes(ptr, len) -> i32` (0 = success).
+// WASM - host-provided import `chela.random_bytes(ptr, len) -> i32` (0 = success).
 
 #[cfg(target_arch = "wasm32")]
 mod wasm {

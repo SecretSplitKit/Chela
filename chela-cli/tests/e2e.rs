@@ -95,7 +95,7 @@ fn round_trip_24_word_seed_with_passphrase_3_of_5_non_contiguous_subset() {
         "-n",
         "5",
     ]);
-    // Pick shares 1, 3, 5 — non-contiguous, exercises the "shares can be combined in
+    // Pick shares 1, 3, 5 - non-contiguous, exercises the "shares can be combined in
     // any order" property.
     let subset = pick_shares(&shares, &[1, 3, 5]);
     let (status, stdout, _) = recover_with_input(&subset);
@@ -171,7 +171,7 @@ fn round_trip_text_payload_2_of_4() {
 #[test]
 fn sub_threshold_recovery_fails_cleanly() {
     let shares = split_with_args(&["split", "--mnemonic", ABANDON_24, "-m", "3", "-n", "5"]);
-    // Pass only 2 of 5 shares — below the 3-of-5 threshold.
+    // Pass only 2 of 5 shares - below the 3-of-5 threshold.
     let subset = pick_shares(&shares, &[1, 2]);
     let (status, stdout, stderr) = recover_with_input(&subset);
     assert!(
@@ -681,7 +681,7 @@ fn shareholder_count_mismatch_emits_no_share_material() {
 
 #[test]
 fn subcommand_help_flag_prints_usage() {
-    // `split --help` and `recover --help` must print usage and exit 0 — not error on an
+    // `split --help` and `recover --help` must print usage and exit 0 - not error on an
     // unknown flag, and (recover) not treat --help as a filename to read.
     for cmd in ["split", "recover"] {
         let output = Command::new(CHELA_CLI)

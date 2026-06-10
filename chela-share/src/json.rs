@@ -7,7 +7,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::fmt;
 
-/// Maximum nesting depth — generous enough for future schema changes, small enough to
+/// Maximum nesting depth - generous enough for future schema changes, small enough to
 /// prevent stack overflow on adversarial input.
 const MAX_DEPTH: usize = 32;
 
@@ -251,7 +251,7 @@ impl Parser<'_> {
                         b't' => out.push('\t'),
                         b'u' => {
                             let cp = self.parse_unicode_escape()?;
-                            // Reject surrogates — chela only emits \u escapes below 0xD800.
+                            // Reject surrogates - chela only emits \u escapes below 0xD800.
                             if (0xD800..=0xDFFF).contains(&cp) {
                                 return Err(JsonError::BadEscape);
                             }

@@ -1,14 +1,14 @@
 //! Fuzz harness for `chela_share::parse_share` and `parse_shares`.
 //!
-//! Goal: prove that arbitrary byte input — including malformed cards, truncated lines,
-//! whitespace tortures, and unexpected unicode — never panics, never loops forever,
+//! Goal: prove that arbitrary byte input - including malformed cards, truncated lines,
+//! whitespace tortures, and unexpected unicode - never panics, never loops forever,
 //! and never grows memory beyond what the input bounds suggest.
 //!
 //! Run with:  cargo +nightly fuzz run parse_shares
 //!
 //! The fuzzer drives both entry points the user can reach with raw text:
-//!   - `parse_share(header, words)` — the per-card parse used by the recover wizard.
-//!   - `parse_shares(input)` — the bulk-paste parser that splits on blank lines.
+//!   - `parse_share(header, words)` - the per-card parse used by the recover wizard.
+//!   - `parse_shares(input)` - the bulk-paste parser that splits on blank lines.
 //!
 //! Input shape: the first byte of `data` is used as a "split offset" (modulo input
 //! length) to chop the rest into a header / words pair for `parse_share`. The full

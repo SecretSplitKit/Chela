@@ -38,7 +38,7 @@ pub const MIN_THRESHOLD: u8 = 2;
 pub const MAX_SHARES: u8 = 32;
 
 /// Draw `count` distinct x-coordinates in `1..=32` from the CSPRNG. Each draw is a raw
-/// 5-bit field (`0..31`, a power of two — uniform, no modulo bias); `x = field + 1`.
+/// 5-bit field (`0..31`, a power of two - uniform, no modulo bias); `x = field + 1`.
 fn sample_distinct_x(count: u8, rng: &mut dyn RandomSource) -> Result<Vec<u8>, EngineError> {
     if count == 0 || count > MAX_SHARES {
         return Err(EngineError::InvalidInput("total must be 1..=32"));
@@ -165,10 +165,10 @@ pub enum EngineError {
     Sss(SssError),
     Bip39(chela_bip39::Bip39Error),
     BundleTooLarge,
-    /// Combined body's trailing kind byte is invalid or its length doesn't fit — usually
+    /// Combined body's trailing kind byte is invalid or its length doesn't fit - usually
     /// the wrong share subset.
     BundleCorrupt,
-    /// Shares disagree on nonce/scheme/threshold/body length — different generation or corrupt.
+    /// Shares disagree on nonce/scheme/threshold/body length - different generation or corrupt.
     MismatchedShares,
     /// Share's CRC-11 doesn't verify, or its words are malformed.
     ShareCorrupt,
@@ -187,10 +187,10 @@ impl core::fmt::Display for EngineError {
             Self::Bip39(e) => e.fmt(f),
             Self::BundleTooLarge => f.write_str("the secret is too large to split"),
             Self::BundleCorrupt => f.write_str(
-                "the recovered secret is invalid — this is usually the wrong set of shares",
+                "the recovered secret is invalid - this is usually the wrong set of shares",
             ),
             Self::MismatchedShares => f.write_str(
-                "these shares are not from the same split (different nonce or threshold) — do not mix shares from two separate splits",
+                "these shares are not from the same split (different nonce or threshold) - do not mix shares from two separate splits",
             ),
             Self::ShareCorrupt => f.write_str(
                 "a share failed its built-in checksum: one of its words was mistyped, or the share has the wrong number of words",
@@ -290,7 +290,7 @@ fn build_bundle(
             passphrase,
         } => {
             // `indices` and `entropy` are secret-derived. Wrap them in `Zeroizing` so they
-            // wipe on every exit — including the `?` early returns below, which a mistyped
+            // wipe on every exit - including the `?` early returns below, which a mistyped
             // word of a real seed (bad BIP-39 checksum) reaches.
             let indices = chela_primitives::zeroize::Zeroizing::new(
                 mnemonic
@@ -346,8 +346,8 @@ fn build_bundle(
 /// Build the full SSS body: `payload ‖ tag ‖ kind_byte`.
 ///
 /// `tag` is a one-byte integrity check ([`body_integrity_tag`]) that binds the reconstructed
-/// secret, so a wrong recombination — e.g. two unrelated splits that happen to collide on the
-/// 11-bit nonce — is rejected at recovery rather than returned as a plausible wrong secret. The
+/// secret, so a wrong recombination - e.g. two unrelated splits that happen to collide on the
+/// 11-bit nonce - is rejected at recovery rather than returned as a plausible wrong secret. The
 /// kind byte stays last: it is never `0x00`, so it remains the terminator recovery uses to trim
 /// the trailing zero padding and find the true message end (see [`recover_secret`]).
 fn build_bundle_v2(
@@ -355,7 +355,7 @@ fn build_bundle_v2(
 ) -> Result<(chela_primitives::zeroize::Zeroizing<Vec<u8>>, u8), EngineError> {
     let (mut body, kind_byte) = build_bundle(input)?;
     let tag = body_integrity_tag(&body[..], kind_byte); // over the payload, before tag/kind appended
-    body.push(tag); // capacity for tag + kind reserved in `build_bundle` — no realloc, no orphan
+    body.push(tag); // capacity for tag + kind reserved in `build_bundle` - no realloc, no orphan
     body.push(kind_byte);
     Ok((body, kind_byte))
 }
@@ -479,7 +479,7 @@ fn encode_share_bip39_v2(share_bytes: &[u8], nonce: u16, x: u8, threshold: u8) -
     out
 }
 
-/// Candidate body-byte lengths for a Y-section of `k` words — every `B` with `ceil(8B/11) == k`.
+/// Candidate body-byte lengths for a Y-section of `k` words - every `B` with `ceil(8B/11) == k`.
 /// At most two consecutive values (the byte/word grids only realign every 11 bytes); `(min, max)`.
 fn candidate_body_lens(k: usize) -> (usize, usize) {
     let max_bytes = (k * 11) / 8;
@@ -487,7 +487,7 @@ fn candidate_body_lens(k: usize) -> (usize, usize) {
     (min_bytes, max_bytes)
 }
 
-/// CRC-11/UMTS over `[x, M] ‖ nonce_be ‖ y_bytes` — the per-share checksum input. `Zeroizing`
+/// CRC-11/UMTS over `[x, M] ‖ nonce_be ‖ y_bytes` - the per-share checksum input. `Zeroizing`
 /// because the scratch holds share material.
 fn share_crc(x: u8, threshold: u8, nonce: u16, y_bytes: &[u8]) -> u16 {
     let mut input =
@@ -517,7 +517,7 @@ fn unpack_y(y_words: &[u16], body_len: usize) -> chela_primitives::zeroize::Zero
     body
 }
 
-/// A share decoded from its words (everything the words carry — not kind or total).
+/// A share decoded from its words (everything the words carry - not kind or total).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DecodedShare {
     pub x: u8,
@@ -534,7 +534,7 @@ impl Drop for DecodedShare {
 }
 
 /// A share's header fields plus a borrow of its Y-section and stored CRC. The exact body length
-/// is *not* committed here — it is resolved across the whole set in [`recover_secret`].
+/// is *not* committed here - it is resolved across the whole set in [`recover_secret`].
 struct ShareParts<'a> {
     x: u8,
     threshold: u8,
@@ -569,7 +569,7 @@ fn decode_share_parts(words: &[u16]) -> Result<ShareParts<'_>, EngineError> {
     })
 }
 
-/// Decode a share from its BIP-39 word indices alone — the words-only recovery path. A single
+/// Decode a share from its BIP-39 word indices alone - the words-only recovery path. A single
 /// share's exact body length is ambiguous (it is resolved across the set at recovery via the
 /// kind-byte terminator), so this only validates the share's CRC at a candidate length and
 /// returns its authoritative `x` / `threshold` / `nonce`.
@@ -703,7 +703,7 @@ pub fn recover_secret(shares: &[Share]) -> Result<RecoveredSecret, EngineError> 
 
     // Combine at the longest candidate length, then let the kind byte mark the message end: it
     // is the body's last byte and is never 0x00, while any over-read phantom byte is built from
-    // zero padding — so a trailing 0x00 means the true body is one byte shorter. This resolves
+    // zero padding - so a trailing 0x00 means the true body is one byte shorter. This resolves
     // the byte↔word-count ambiguity deterministically for the whole set (no per-share guessing).
     let (min_bytes, max_bytes) = candidate_body_lens(first.y_words.len());
     let ys: Vec<chela_primitives::zeroize::Zeroizing<Vec<u8>>> = parts
@@ -721,7 +721,7 @@ pub fn recover_secret(shares: &[Share]) -> Result<RecoveredSecret, EngineError> 
         max_bytes
     };
 
-    // Verify every share's CRC at the resolved length — a mistyped word fails here.
+    // Verify every share's CRC at the resolved length - a mistyped word fails here.
     for (p, y) in parts.iter().zip(ys.iter()) {
         if share_crc(p.x, p.threshold, p.nonce, &y[..body_len]) != p.crc {
             return Err(EngineError::ShareCorrupt);
@@ -971,7 +971,7 @@ mod tests {
         // 32 entropy + 255 passphrase + tag + kind = 289 bytes, the largest legitimate body.
         // Guards the body-size bound after the integrity tag widened the body by one byte.
         let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art";
-        let passphrase: String = core::iter::repeat('p').take(255).collect();
+        let passphrase: String = "p".repeat(255);
         let shares = split_secret(
             &SplitInput::Bip39 {
                 mnemonic,
@@ -991,7 +991,7 @@ mod tests {
                 assert_eq!(m.as_str(), mnemonic);
                 assert_eq!(p, &passphrase);
             }
-            _ => panic!("expected bip39"),
+            RecoveredSecret::Text { .. } => panic!("expected bip39"),
         }
     }
 
@@ -1166,7 +1166,7 @@ mod tests {
 
     #[test]
     fn shares_of_different_secrets_rejected() {
-        // Different generations get different random nonces, so a mix is rejected — almost always
+        // Different generations get different random nonces, so a mix is rejected - almost always
         // MismatchedShares, and in the ~1/2048 nonce-collision case BundleCorrupt. Either way the
         // wrong secret is never returned, which is all this guards.
         let mnemonic_a = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
