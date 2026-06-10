@@ -28,14 +28,14 @@ checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
 name = "chela-bip39"
-version = "1.0.0-rc.1"
+version = "0.0.62"
 dependencies = [
  "chela-primitives",
 ]
 
 [[package]]
 name = "chela-engine"
-version = "1.0.0-rc.1"
+version = "0.0.62"
 dependencies = [
  "chela-bip39",
  "chela-field",
@@ -45,15 +45,15 @@ dependencies = [
 
 [[package]]
 name = "chela-field"
-version = "1.0.0-rc.1"
+version = "0.0.62"
 
 [[package]]
 name = "chela-primitives"
-version = "1.0.0-rc.1"
+version = "0.0.62"
 
 [[package]]
 name = "chela-share"
-version = "1.0.0-rc.1"
+version = "0.0.62"
 dependencies = [
  "chela-bip39",
  "chela-engine",
@@ -70,7 +70,7 @@ dependencies = [
 
 [[package]]
 name = "chela-sss"
-version = "1.0.0-rc.1"
+version = "0.0.62"
 dependencies = [
  "chela-field",
  "chela-primitives",
@@ -112,9 +112,9 @@ checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
 
 [[package]]
 name = "libfuzzer-sys"
-version = "0.4.12"
+version = "0.4.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f12a681b7dd8ce12bff52488013ba614b869148d54dd79836ab85aafdd53f08d"
+checksum = "a9fd2f41a1cba099f79a0b6b6c35656cf7c03351a7bae8ff0f28f25270f929d2"
 dependencies = [
  "arbitrary",
  "cc",
