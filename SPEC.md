@@ -9,7 +9,7 @@ explained three ways:
 
 - **Plain terms** - what it does and why, no math.
 - **The math** - the underlying theory (only high-school algebra assumed).
-- **In bits & bytes** - how that theory becomes the actual words on a card.
+- **In bits & bytes** - how that theory becomes the actual words on a share.
 
 Sections 1–3 build the idea, section 4 defines a share word by word, section 5 is
 recovery, and the rest is carriers, conformance, and reference tables.
@@ -166,8 +166,8 @@ in the words - so it does not need to be secret, only well-formed; see
 ### 3.3 Choosing the coordinates `x` and the threshold `M`
 
 **Plain terms.** Every share gets its own number, `x`. *Chela* picks each `x` *at
-random* from 1 to 32 (not 1, 2, 3, …). Random numbering means a stray card gives
-away neither how many cards exist nor where it sits in the set.
+random* from 1 to 32 (not 1, 2, 3, …). Random numbering means a stray share gives
+away neither how many shares exist nor where it sits in the set.
 
 **The math.** `x = 0` is reserved - that's the secret itself - so share
 coordinates live in `1..=32`. A split draws `N` **distinct** coordinates;
@@ -319,7 +319,7 @@ straddles a section boundary**, which keeps the layout auditable by hand:
 
 ```text
 word 0          : [ X:5 | M:5 | reserved:1 ]   which share this is, and how many are needed
-word 1          : [ nonce:11 ]                  the batch id (same on every card of one split)
+word 1          : [ nonce:11 ]                  the batch id (same on every share of one split)
 words 2 .. W-2  : [ Y values ]                  this share's piece of the secret
 word W-1        : [ CRC-11 ]                     a checksum that catches transcription errors
 
@@ -340,8 +340,8 @@ The sections below take them in order.
 this share's own number (`x`, from [§ 3.3, choosing x and M](#33-choosing-the-coordinates-x-and-the-threshold-m)) and how many shares are needed (`M`,
 the threshold).
 
-**The math.** `x` says which point on the curves ([§ 3.1, the curve](#31-the-idea-as-a-curve)) this card holds; `M` says
-how many cards must be combined. Both are stored as small **offsets** so the
+**The math.** `x` says which point on the curves ([§ 3.1, the curve](#31-the-idea-as-a-curve)) this share holds; `M` says
+how many shares must be combined. Both are stored as small **offsets** so the
 illegal values literally cannot be written down: `x − 1` (since `x = 0` is
 reserved) and `M − 2` (since `M < 2` is forbidden).
 
@@ -367,16 +367,16 @@ so `word0 = (4 << 6) = 0x100` - the word *cactus*.
 
 Reject the share if the reserved bit ≠ 0, or if the `M` field is 31 (that would
 decode to `M = 33`, above the cap). `M ≤ N` is not stored - it is enforced when
-splitting, and is automatic at recovery (you can't combine more cards than you
+splitting, and is automatic at recovery (you can't combine more shares than you
 hold).
 
 ### 4.2 Word 1 — the batch id (nonce)
 
 **Plain terms.** Suppose you back up the *same* secret twice, on two separate
-occasions. Each backup is its own batch of cards, and the two batches are **not
-interchangeable** - mixing a card from batch A with cards from batch B produces
-garbage. Word 1 is a random **batch stamp**, identical on every card of one
-split, so the tool can tell which cards belong together and refuse a mix. (The
+occasions. Each backup is its own batch of shares, and the two batches are **not
+interchangeable** - mixing a share from batch A with shares from batch B produces
+garbage. Word 1 is a random **batch stamp**, identical on every share of one
+split, so the tool can tell which shares belong together and refuse a mix. (The
 common name for such a one-shot random tag is a **nonce**.)
 
 **The math.** Each split (re)draws its random polynomials ([§ 3.2, one polynomial per byte](#32-chelas-construction-one-polynomial-per-byte)), so two splits
@@ -393,7 +393,7 @@ draw was `0x2C9` - the word *float* - the same word 1 on all three shares.
 
 ### 4.3 Words 2 … W−2 — this share's piece of the secret (the body)
 
-**Plain terms.** These words carry this card's **Y values** ([§ 3.2, one polynomial per byte](#32-chelas-construction-one-polynomial-per-byte)) - the secret,
+**Plain terms.** These words carry this share's **Y values** ([§ 3.2, one polynomial per byte](#32-chelas-construction-one-polynomial-per-byte)) - the secret,
 in split form, plus a one-byte integrity check (the **tag**) and one byte ([§ 4.4, the kind byte](#44-the-kind-byte--what-the-secret-is-and-where-it-ends)) that records what type of secret it is.
 
 **The math.** What actually gets split is the **body**:
@@ -526,7 +526,7 @@ recovery ([§ 5, recovery](#5-recovery-from-words-alone)), using the terminator.
 
 ## 5. Recovery (from words alone)
 
-**Plain terms.** Gather any `M` cards, transcribe their words, and the tool redraws
+**Plain terms.** Gather any `M` shares, transcribe their words, and the tool redraws
 the curves and reads the secret off at `x = 0`. Nothing but the words is needed -
 no label, no file.
 
@@ -582,7 +582,7 @@ words and cross-checks any carrier metadata against them.
 ### 6.1 Text
 
 ```text
-CHELA-<NONCE>-<x>-<M>-<N>-<W>      (line 1: the card label)
+CHELA-<NONCE>-<x>-<M>-<N>-<W>      (line 1: the share label)
 word1 word2 word3 … wordW           (line 2; blank line between multiple shares)
 ```
 
@@ -638,7 +638,8 @@ A bundle of shares:
 ```
 
 One block per `<article>`; tools extract via `querySelectorAll('script.chela-share')`.
-The encoder MUST escape `<` → `&lt;` inside JSON strings.
+The encoder MUST escape `<` as `\u003c` inside JSON strings, so a user-supplied
+`</script>` in a string field cannot break out of the surrounding `<script>` block.
 
 ---
 
