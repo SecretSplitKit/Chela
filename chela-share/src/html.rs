@@ -636,8 +636,10 @@ mod tests {
         s.kind = None;
         let html = super::render_share_card_html(&s, &BackupMeta::default());
         let json = extract_json_block(&html);
-        assert!(!json.contains("\"total\""));
-        assert!(!json.contains("\"payload_kind\""));
+        // Match the JSON keys, not the bare words: "total" is itself a BIP-39
+        // word, so a quoted "total" can legitimately appear in the words array.
+        assert!(!json.contains("\"total\":"));
+        assert!(!json.contains("\"payload_kind\":"));
     }
 
     #[test]

@@ -665,8 +665,10 @@ mod tests {
         s.total = None;
         s.kind = None;
         let json = render_share_json(&s, &BackupMeta::default());
-        assert!(!json.contains("\"total\""));
-        assert!(!json.contains("\"payload_kind\""));
+        // Match the JSON keys, not the bare words: "total" is itself a BIP-39
+        // word, so a quoted "total" can legitimately appear in the words array.
+        assert!(!json.contains("\"total\":"));
+        assert!(!json.contains("\"payload_kind\":"));
         let decoded = decode_share_json(&json).unwrap();
         assert_eq!(decoded.total, None);
         assert_eq!(decoded.kind, None);
