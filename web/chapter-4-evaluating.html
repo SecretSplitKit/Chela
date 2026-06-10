@@ -162,18 +162,17 @@
 
       <div class="card">
         <h3><a class="src" data-file="AGENTS.md">AGENTS.md</a></h3>
-        <p>Reference for AI agents auditing the repo. Lists the security and packaging
-        checks an agent can verify autonomously, with exact file paths and expected
-        outputs.</p>
+        <p>A map of the codebase for an AI agent - the same crate tour as this site, with
+        pointers to SPEC.md for the format and AUDITORS.md for the checks to run.</p>
       </div>
 
       <h2>Got an AI agent?</h2>
 
       <p>
-        Point it at <code>AGENTS.md</code>; that file lists the security and packaging
-        checks it can verify on its own. The checks in <code>AGENTS.md</code> mirror
-        the checks on this page, but are written in a form that an agent can execute
-        directly - with expected outputs to diff against, not just descriptions.
+        Point it at <code>AGENTS.md</code> to orient it, then <code>AUDITORS.md</code> for
+        the audit itself: each check there lists the exact command and the expected result,
+        written so an agent can run it and diff the output - the same checks described on
+        this page, in executable form.
       </p>
 
       <nav class="page-nav" aria-label="Pagination">
