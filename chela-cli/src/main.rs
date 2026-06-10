@@ -371,6 +371,9 @@ fn cmd_recover(file_paths: &[String]) -> Result<(), String> {
 
     let mut secret = recover_secret(&shares).map_err(|e| engine_err(&e))?;
 
+    // Caution to stderr (keeps stdout clean for redirects) before revealing the secret.
+    eprintln!("chela: recovered secret follows. Anyone who can see this screen can read it.");
+
     let stdout = io::stdout();
     let mut out = stdout.lock();
     let write_result = (|| -> Result<(), String> {

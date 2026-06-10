@@ -896,13 +896,16 @@ const phases = {
       const no = E("button", { type: "button" });
       no.className = state.data.useShareholderNames === false ? "chosen" : "";
       appendAll(no,
-        E("span", { class: "yesno-title", text: "No - keep cards anonymous" }),
-        E("span", { class: "yesno-desc", text: "The cards won't say who's holding what." }),
+        E("span", { class: "yesno-title", text: "No - keep shares anonymous" }),
+        E("span", { class: "yesno-desc", text: "The shares won't say who's holding what." }),
       );
       no.addEventListener("click", () => { state.data.useShareholderNames = false; render(); });
 
       appendAll(grid, yes, no);
       body.appendChild(grid);
+      if (state.data.useShareholderNames === null) {
+        body.appendChild(E("p", { class: "small muted", text: "Select one to continue." }));
+      }
     },
     validate: () => state.data.useShareholderNames === null ? "Please choose yes or no - both have meaningful trade-offs." : null,
   },
@@ -1049,42 +1052,45 @@ const phases = {
       grid.appendChild(buildHeaderField("Recovery set", "w-id", d.id, 4, locked, (v) => { d.id = v.toUpperCase(); }));
       grid.appendChild(E("span", { class: "dash", text: "-" }));
       // Card-number is always editable (different per card).
-      grid.appendChild(buildHeaderField("Card #", "w-num", d.x, 3, false, (v) => { d.x = v.replace(/[^0-9]/g, ""); }, true));
+      grid.appendChild(buildHeaderField("Share #", "w-num", d.x, 3, false, (v) => { d.x = v.replace(/[^0-9]/g, ""); }, true));
       grid.appendChild(E("span", { class: "dash", text: "-" }));
       grid.appendChild(buildHeaderField("# Required", "w-num", d.threshold, 3, locked, (v) => { d.threshold = v.replace(/[^0-9]/g, ""); }));
       grid.appendChild(E("span", { class: "dash", text: "-" }));
-      grid.appendChild(buildHeaderField("Total cards", "w-num", d.total, 3, locked, (v) => { d.total = v.replace(/[^0-9]/g, ""); }));
+      grid.appendChild(buildHeaderField("Total shares", "w-num", d.total, 3, locked, (v) => { d.total = v.replace(/[^0-9]/g, ""); }));
       grid.appendChild(E("span", { class: "dash", text: "-" }));
       grid.appendChild(buildHeaderField("Word count", "w-count", d.wordCount, 3, locked, (v) => { d.wordCount = v.replace(/[^0-9]/g, ""); }));
       body.appendChild(grid);
+      body.appendChild(E("p", { class: "small muted", text: "Format: CHELA - recovery set - share # - required - total - word count" }));
     },
     validate: () => {
       const d = state.data.headerDraft;
-      if (!d) return "Internal error: card-code draft missing.";
+      if (!d) return "Internal error: share-code draft missing.";
       const id = d.id.toUpperCase();
       if (!/^[0-9A-F]{4}$/.test(id)) return "Recovery set must be exactly 4 hex characters (0-9, A-F).";
       const x = parseInt(d.x, 10);
       const threshold = parseInt(d.threshold, 10);
       const total = parseInt(d.total, 10);
       const wc = parseInt(d.wordCount, 10);
-      if (!(x >= 1 && x <= 32)) return "Card # must be between 1 and 32.";
+      if (!(x >= 1 && x <= 32)) return "Share # must be between 1 and 32.";
       if (!(threshold >= 2 && threshold <= 32)) return "# Required must be between 2 and 32.";
-      if (!(total >= threshold)) return "Total cards must be at least as big as # Required.";
+      if (!(total >= threshold)) return "Total shares must be at least as big as # Required.";
       if (!(wc >= 1)) return "Word count must be 1 or higher.";
       if (state.data.expected) {
         const e = state.data.expected;
-        if (id !== e.id) return `Recovery set (${id}) doesn't match the first card (${e.id}).`;
-        if (threshold !== e.threshold) return `# Required (${threshold}) doesn't match the first card (${e.threshold}).`;
-        if (total !== e.total) return `Total cards (${total}) doesn't match the first card (${e.total}).`;
-        if (wc !== e.wordCount) return `Word count (${wc}) doesn't match the first card (${e.wordCount}).`;
+        if (id !== e.id) return `Recovery set (${id}) doesn't match the first share (${e.id}).`;
+        if (threshold !== e.threshold) return `# Required (${threshold}) doesn't match the first share (${e.threshold}).`;
+        if (total !== e.total) return `Total shares (${total}) doesn't match the first share (${e.total}).`;
+        if (wc !== e.wordCount) return `Word count (${wc}) doesn't match the first share (${e.wordCount}).`;
       } else {
         state.data.expected = { id, threshold, total, wordCount: wc };
       }
-      // Check this card number wasn't already collected.
-      if (state.data.collected.some(s => s.header.includes(`-${x}-`))) {
-        const match = state.data.collected.find(s => s.header === `CHELA-${id}-${x}-${threshold}-${total}-${wc}`);
-        if (match) return `You already entered card #${x}.`;
-      }
+      // Reject a share number already collected. Compare the parsed number, not a
+      // substring (`-${x}-` could match the threshold/total/word-count segments).
+      const already = state.data.collected.some(s => {
+        const m = /^CHELA-[0-9A-F]{4}-(\d+)-/i.exec(s.header);
+        return m && parseInt(m[1], 10) === x;
+      });
+      if (already) return `You already entered share #${x}.`;
       // Commit normalised values back into the draft so the words phase has them.
       d.id = id; d.x = String(x); d.threshold = String(threshold); d.total = String(total); d.wordCount = String(wc);
       return null;
@@ -1210,6 +1216,8 @@ function buildWordCell(index, total) {
   inp.autocomplete = "off";
   inp.autocapitalize = "off";
   inp.spellcheck = false;
+  inp.setAttribute("aria-label", "Word " + (index + 1));
+  inp.setAttribute("aria-invalid", "false");
   const check = E("span", { class: "check", text: "" });
   appendAll(cell, num, inp, check);
 
@@ -1217,13 +1225,15 @@ function buildWordCell(index, total) {
     const raw = inp.value.trim().toLowerCase();
     cell.classList.remove("valid", "invalid");
     check.textContent = "";
-    if (!raw) return;
+    if (!raw) { inp.setAttribute("aria-invalid", "false"); return; }
     if (isValidBip39Word(raw)) {
       cell.classList.add("valid");
       check.textContent = "✓";
+      inp.setAttribute("aria-invalid", "false");
     } else {
       cell.classList.add("invalid");
       check.textContent = "✗";
+      inp.setAttribute("aria-invalid", "true");
     }
   };
 
@@ -1733,16 +1743,29 @@ function renderRecovered(root) {
   ok.appendChild(E("p", { text: "Secret recovered." }));
   body.appendChild(ok);
 
+  // Keep the secret hidden until the holder asks for it, matching the entry screens.
+  const secretBox = E("div");
   if (r.kind === "bip39") {
-    body.appendChild(E("label", { text: "BIP-39 mnemonic" }));
-    body.appendChild(E("pre", { text: r.mnemonic }));
-    body.appendChild(E("label", { text: "Passphrase" }));
-    if (r.passphrase) body.appendChild(E("pre", { text: r.passphrase }));
-    else { const p = E("pre"); p.appendChild(E("em", { text: "(none)" })); body.appendChild(p); }
+    secretBox.appendChild(E("label", { text: "BIP-39 mnemonic" }));
+    secretBox.appendChild(E("pre", { text: r.mnemonic }));
+    secretBox.appendChild(E("label", { text: "Passphrase" }));
+    if (r.passphrase) secretBox.appendChild(E("pre", { text: r.passphrase }));
+    else { const p = E("pre"); p.appendChild(E("em", { text: "(none)" })); secretBox.appendChild(p); }
   } else {
-    body.appendChild(E("label", { text: "Text" }));
-    body.appendChild(E("pre", { text: r.text }));
+    secretBox.appendChild(E("label", { text: "Text" }));
+    secretBox.appendChild(E("pre", { text: r.text }));
   }
+  secretBox.style.display = "none";
+
+  const revealBtn = E("button", { type: "button", class: "reveal-btn", text: "Reveal secret" });
+  revealBtn.addEventListener("click", () => {
+    const shown = secretBox.style.display !== "none";
+    secretBox.style.display = shown ? "none" : "";
+    revealBtn.textContent = shown ? "Reveal secret" : "Hide secret";
+  });
+  body.appendChild(E("p", { class: "small muted", text: "The recovered secret is hidden. Click Reveal when no one else can see your screen." }));
+  body.appendChild(revealBtn);
+  body.appendChild(secretBox);
   card.appendChild(body);
 
   const footer = E("div", { class: "card-footer" });

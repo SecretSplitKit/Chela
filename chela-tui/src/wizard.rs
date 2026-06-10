@@ -290,25 +290,27 @@ pub(crate) fn run_split(kind: SplitKind) -> io::Result<()> {
     } else {
         None
     };
-    for share in &shares {
+    for (idx, share) in shares.iter().enumerate() {
+        let share_no = idx + 1;
+        let share_total = shares.len();
         banner(title);
         step_header(
             step,
             Some(record_total_steps),
-            &format!("Record Share {} of {}", share.x, shares.len()),
+            &format!("Record Share {share_no} of {share_total}"),
         );
         println!();
 
-        // Ask for the holder before drawing the card so the on-screen label matches the
+        // Ask for the holder before drawing the share so the on-screen label matches the
         // printed page.
         let this_name: Option<String> = if let Some(names) = shareholder_names.as_mut() {
-            let prompt_msg = format!("Who gets share #{} of {}? name ❯ ", share.x, shares.len());
+            let prompt_msg = format!("Who gets share {share_no} of {share_total}? name ❯ ");
             let Some(raw) = prompt(&prompt_msg)? else {
                 return Ok(());
             };
             let trimmed = raw.trim();
             let name = if trimmed.is_empty() {
-                format!("Share {} holder", share.x)
+                format!("Shareholder {share_no}")
             } else {
                 trimmed.to_owned()
             };
@@ -324,10 +326,7 @@ pub(crate) fn run_split(kind: SplitKind) -> io::Result<()> {
         if let Some(name) = &this_name {
             println!("Hand-write or print this share for {BOLD}{name}{RESET}.");
         } else {
-            println!(
-                "Hand-write or print this share for shareholder #{}.",
-                share.x
-            );
+            println!("Hand-write or print this share and give it to one of your {share_total} shareholders.");
         }
         println!();
         let prompt_msg = if step < record_total_steps {
