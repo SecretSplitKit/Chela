@@ -448,7 +448,7 @@ fn interpret_body(dec: DecodedKind, body: &[u8]) -> Result<RecoveredSecret, Engi
     }
 }
 
-/// Encode one share's words: [X:5|M:5|reserved:1] ‖ [nonce:11] ‖ Y-words ‖ [CRC-11].
+/// Encode one share's words: `[X:5|M:5|reserved:1] ‖ [nonce:11] ‖ Y-words ‖ [CRC-11]`.
 /// `share_bytes` is this share's SSS output (the Y values).
 fn encode_share_bip39_v2(share_bytes: &[u8], nonce: u16, x: u8, threshold: u8) -> Vec<u16> {
     let x_field = u16::from(x - 1) & 0x1F; // 1..32 -> 0..31
