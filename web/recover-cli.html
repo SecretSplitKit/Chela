@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Recovery on the command line - chela explained</title>
+  <link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body>
+  <header class="topbar">
+    <a href="index.html" class="brand">chela</a>
+    <a href="https://github.com/SecretSplitKit/Chela" class="repo-link">GitHub</a>
+  </header>
+
+  <div class="layout">
+    <nav class="sidebar" aria-label="Table of contents">
+      <button class="hamburger" aria-label="Toggle sidebar">≡</button>
+      <ol>
+        <li><a href="index.html">What is chela?</a></li>
+        <li><a href="chapter-1-shamir.html">Why secret sharing</a></li>
+        <li><span class="group">Splitting walkthrough</span>
+          <ol>
+            <li><a href="split-web.html">Website</a></li>
+            <li><a href="split-tui.html">Terminal wizard</a></li>
+            <li><a href="split-cli.html">Command line</a></li>
+          </ol>
+        </li>
+        <li><span class="group">Recovery walkthrough</span>
+          <ol>
+            <li><a href="recover-web.html">Website</a></li>
+            <li><a href="recover-tui.html">Terminal wizard</a></li>
+            <li><a href="recover-cli.html">Command line</a></li>
+          </ol>
+        </li>
+        <li><a href="the-share-format.html">The share format</a></li>
+        <li><a href="chapter-2-threat-model.html">Threat model</a></li>
+        <li><a href="chapter-3-touring.html">Tour of the codebase</a></li>
+        <li><a href="chapter-4-evaluating.html">Audit chela yourself</a></li>
+      </ol>
+    </nav>
+
+    <main class="content">
+      <h1>Recovery on the command line</h1>
+
+      <p>
+        <code>chela-cli recover</code> rebuilds the secret from any <code>M</code> shares of
+        a set. It reads share text from standard input, so you can pipe in a file or paste
+        the shares directly. To create shares in the first place, see
+        <a href="split-cli.html">splitting on the command line</a>.
+      </p>
+
+      <div class="card warn">
+        <p>
+          <strong>The recovered secret is printed in the clear.</strong> Anyone who can see
+          the screen - or your terminal scrollback, swap, or a screen recorder - can read
+          it. Recover only when you are about to use the secret, ideally on an offline
+          machine. The <a href="chapter-2-threat-model.html">threat model</a> spells out
+          what this does and does not protect.
+        </p>
+      </div>
+
+      <h2>Recover from share words</h2>
+      <p>
+        Collect any <code>M</code> shares - the header lines and their words - into one
+        file, or paste them in and end with <kbd>Ctrl-D</kbd>. chela verifies each share's
+        checksum, confirms the shares belong to the same set, and rebuilds the secret. Fewer
+        than the threshold is refused; shares from two different splits are refused.
+      </p>
+      <pre><code>chela-cli recover &lt; shares.txt</code></pre>
+      <figure>
+        <img class="shot" src="assets/ui/cli/5-recover.png"
+             alt="Terminal: chela-cli recover reads two shares from standard input and prints the recovered secret after a one-line caution.">
+        <figcaption>Recovery from two shares of a 2-of-3 set. The secret follows the caution line.</figcaption>
+      </figure>
+
+      <h2>Recover from saved paper backups</h2>
+      <p>
+        If you saved the <code>--paper</code> HTML files when you split, point
+        <code>recover</code> straight at them. Each file carries a machine-readable copy of
+        its share, so chela reads the words back without you re-typing them.
+      </p>
+      <pre><code>chela-cli recover backup-dir/share-*.html</code></pre>
+      <p>
+        The same works for a folder of <code>--json</code> shares. You only need
+        <code>M</code> of the files present; the rest can stay wherever their holders keep
+        them.
+      </p>
+
+      <div class="card">
+        <h3>Next steps</h3>
+        <p>
+          Recovery also works in the <a href="recover-tui.html">terminal wizard</a> and the
+          <a href="recover-web.html">website</a>, reading the same shares. To see exactly
+          what the words encode and how recovery rebuilds the secret, read
+          <a href="the-share-format.html">the share format</a>.
+        </p>
+      </div>
+
+      <nav class="page-nav" aria-label="Pagination">
+        <a class="prev" href="recover-tui.html">← Back: recovery in the terminal wizard</a>
+        <a class="next" href="the-share-format.html">Next: the share format →</a>
+      </nav>
+    </main>
+  </div>
+
+  <script src="assets/js/nav.js" defer></script>
+  <script src="assets/js/permalink.js" defer></script>
+</body>
+</html>

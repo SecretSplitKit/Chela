@@ -40,13 +40,18 @@ body {
 /* Layout grid */
 .layout { display: grid; grid-template-columns: 220px minmax(0, 760px); gap: 1.5rem; padding: 1.5rem 1.25rem; max-width: 1100px; margin: 0 auto; }
 
-/* Sidebar */
+/* Sidebar. Hierarchical numbering (1, 2, 3, 3.1, 3.2 ...) via nested CSS counters:
+   every <ol> resets `sec`, every <li> increments it, and counters(sec, ".") prints
+   the full chain so sub-pages read as 3.1, 3.2, and so on. */
 .sidebar { position: sticky; top: 1.5rem; align-self: start; }
-.sidebar ol { margin: 0; padding-left: 1.2rem; }
-.sidebar li { margin: 0.4rem 0; }
+.sidebar ol { margin: 0; padding-left: 1.4rem; list-style: none; counter-reset: sec; }
+.sidebar ol ol { margin: 0.3rem 0; }
+.sidebar li { margin: 0.4rem 0; counter-increment: sec; }
+.sidebar li::before { content: counters(sec, ".") " "; color: var(--muted); font-variant-numeric: tabular-nums; }
 .sidebar a { color: var(--ink); text-decoration: none; }
 .sidebar a:hover { color: var(--accent); text-decoration: underline; }
 .sidebar a.active { color: var(--accent); font-weight: 600; }
+.sidebar .group { color: var(--ink); font-weight: 600; }
 
 /* Main content */
 .content h1 { font-family: var(--mono); font-size: 1.5rem; margin: 0 0 0.5rem 0; }
@@ -84,6 +89,14 @@ body {
 .content figure { margin: 1.5rem 0; text-align: center; }
 .content figure svg, .content figure img { max-width: 100%; height: auto; }
 .content figcaption { color: var(--muted); font-size: 0.85rem; margin-top: 0.4rem; }
+
+/* Screenshots (CLI/TUI/website walkthroughs) get a frame so the capture edge is clear. */
+.content figure img.shot { border: 1px solid var(--soft); border-radius: 5px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+
+/* Numbered walkthrough steps. */
+.content .step { margin: 1.6rem 0; }
+.content .step > h3 { margin-top: 0; }
+.content .step-num { font-family: var(--mono); color: var(--accent); font-weight: 600; margin-right: 0.4rem; }
 
 /* Page navigation (prev/next) */
 .page-nav { display: flex; justify-content: space-between; margin: 3rem 0 1rem; padding-top: 1rem; border-top: 1px solid var(--hr); }

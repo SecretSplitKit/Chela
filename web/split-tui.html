@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Splitting in the terminal wizard - chela explained</title>
+  <link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body>
+  <header class="topbar">
+    <a href="index.html" class="brand">chela</a>
+    <a href="https://github.com/SecretSplitKit/Chela" class="repo-link">GitHub</a>
+  </header>
+
+  <div class="layout">
+    <nav class="sidebar" aria-label="Table of contents">
+      <button class="hamburger" aria-label="Toggle sidebar">≡</button>
+      <ol>
+        <li><a href="index.html">What is chela?</a></li>
+        <li><a href="chapter-1-shamir.html">Why secret sharing</a></li>
+        <li><span class="group">Splitting walkthrough</span>
+          <ol>
+            <li><a href="split-web.html">Website</a></li>
+            <li><a href="split-tui.html">Terminal wizard</a></li>
+            <li><a href="split-cli.html">Command line</a></li>
+          </ol>
+        </li>
+        <li><span class="group">Recovery walkthrough</span>
+          <ol>
+            <li><a href="recover-web.html">Website</a></li>
+            <li><a href="recover-tui.html">Terminal wizard</a></li>
+            <li><a href="recover-cli.html">Command line</a></li>
+          </ol>
+        </li>
+        <li><a href="the-share-format.html">The share format</a></li>
+        <li><a href="chapter-2-threat-model.html">Threat model</a></li>
+        <li><a href="chapter-3-touring.html">Tour of the codebase</a></li>
+        <li><a href="chapter-4-evaluating.html">Audit chela yourself</a></li>
+      </ol>
+    </nav>
+
+    <main class="content">
+      <h1>Splitting in the terminal wizard</h1>
+
+      <p>
+        Run <code>chela</code> with no arguments and it starts an interactive wizard that
+        walks you through a split one prompt at a time - the same engine as the
+        <a href="split-cli.html">command line</a>, but guided. It is the easiest way to
+        split if you would rather answer questions than remember flags. This page covers
+        splitting; to put the secret back together, see
+        <a href="recover-tui.html">recovery in the terminal wizard</a>.
+      </p>
+
+      <h2>1. Pick what to do</h2>
+      <p>
+        The wizard opens on a menu: split a new secret, or recover one. Choose to split.
+      </p>
+      <figure>
+        <img class="shot" src="assets/ui/tui/1-menu.png"
+             alt="The chela terminal wizard main menu offering to split a secret or recover one.">
+        <figcaption>The wizard's main menu.</figcaption>
+      </figure>
+
+      <h2>2. Enter the secret</h2>
+      <p>
+        For a text password, type it in directly. The wizard masks nothing it does not have
+        to and validates as you go.
+      </p>
+      <figure>
+        <img class="shot" src="assets/ui/tui/2-text-entry.png"
+             alt="The wizard prompting for a text secret to split.">
+        <figcaption>Entering a text password.</figcaption>
+      </figure>
+      <p>
+        Splitting a wallet seed instead? Choose the seed option and type the mnemonic; the
+        wizard checks it against the BIP-39 wordlist and its checksum, then asks for an
+        optional passphrase.
+      </p>
+      <figure>
+        <img class="shot" src="assets/ui/tui/10-seed-entry.png"
+             alt="The wizard prompting for a BIP-39 seed phrase.">
+        <figcaption>The seed-phrase variant.</figcaption>
+      </figure>
+      <figure>
+        <img class="shot" src="assets/ui/tui/11-passphrase.png"
+             alt="The wizard prompting for an optional BIP-39 passphrase.">
+        <figcaption>An optional passphrase, if your wallet uses one.</figcaption>
+      </figure>
+
+      <h2>3. Name the backup</h2>
+      <p>
+        Give the set a short name. It prints at the top of each share so a holder knows what
+        the words are for.
+      </p>
+      <figure>
+        <img class="shot" src="assets/ui/tui/3-name.png"
+             alt="The wizard prompting for a name for the backup.">
+        <figcaption>A name for the backup.</figcaption>
+      </figure>
+
+      <h2>4. Set the recovery rule</h2>
+      <p>
+        Choose the <strong>M-of-N</strong> rule: how many shares to make, and how many it
+        takes to recover. The wizard explains the common choices so you do not have to know
+        the jargon up front.
+      </p>
+      <figure>
+        <img class="shot" src="assets/ui/tui/4-recovery-rule.png"
+             alt="The wizard prompting for the recovery rule, listing common M-of-N options.">
+        <figcaption>Choosing how many shares, and how many are needed.</figcaption>
+      </figure>
+
+      <h2>5. Holders and a note</h2>
+      <p>
+        Optionally name who holds each share, and add a free-form note. As on the website,
+        naming holders is a trade-off: it makes distribution clearer but prints the roster
+        on every share, so the wizard asks rather than assuming.
+      </p>
+      <figure>
+        <img class="shot" src="assets/ui/tui/5-shareholders.png"
+             alt="The wizard asking whether to name the holders of each share.">
+        <figcaption>Name the holders, or keep the shares anonymous.</figcaption>
+      </figure>
+      <figure>
+        <img class="shot" src="assets/ui/tui/6-note.png"
+             alt="The wizard prompting for an optional note to print on the shares.">
+        <figcaption>An optional note.</figcaption>
+      </figure>
+
+      <h2>6. Confirm</h2>
+      <p>
+        The wizard summarizes the split - the rule, the name, the holders - before
+        generating anything. Confirm to proceed.
+      </p>
+      <figure>
+        <img class="shot" src="assets/ui/tui/7-confirm.png"
+             alt="A confirmation summary of the split before the shares are generated.">
+        <figcaption>Review, then generate.</figcaption>
+      </figure>
+
+      <h2>7. Record each share</h2>
+      <p>
+        The wizard then shows the shares one at a time and waits while you write each one
+        down or print it - "Record share 1 of N," then the next - so you cannot accidentally
+        skip one. Each share is a header line and its words.
+      </p>
+      <figure>
+        <img class="shot" src="assets/ui/tui/8-share-card.png"
+             alt="The wizard displaying the first share to record: its header and BIP-39 words, with a prompt to continue once saved.">
+        <figcaption>Record share 1, then continue.</figcaption>
+      </figure>
+      <figure>
+        <img class="shot" src="assets/ui/tui/9-share-card-2.png"
+             alt="The wizard displaying the second share to record.">
+        <figcaption>Share 2, and so on through the set.</figcaption>
+      </figure>
+
+      <div class="card">
+        <h3>Next steps</h3>
+        <p>
+          Hand out the shares. When you need the secret again, see
+          <a href="recover-tui.html">recovery in the terminal wizard</a>. The same split is
+          available on the <a href="split-web.html">website</a> and the
+          <a href="split-cli.html">command line</a>, and the words are explained in
+          <a href="the-share-format.html">the share format</a>.
+        </p>
+      </div>
+
+      <nav class="page-nav" aria-label="Pagination">
+        <a class="prev" href="split-web.html">← Back: splitting on the website</a>
+        <a class="next" href="split-cli.html">Next: splitting on the command line →</a>
+      </nav>
+    </main>
+  </div>
+
+  <script src="assets/js/nav.js" defer></script>
+  <script src="assets/js/permalink.js" defer></script>
+</body>
+</html>

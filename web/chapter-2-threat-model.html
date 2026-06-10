@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Threat model — chela explained</title>
+  <title>Threat model - chela explained</title>
   <link rel="stylesheet" href="assets/css/site.css">
 </head>
 <body>
@@ -18,6 +18,21 @@
       <ol>
         <li><a href="index.html">What is chela?</a></li>
         <li><a href="chapter-1-shamir.html">Why secret sharing</a></li>
+        <li><span class="group">Splitting walkthrough</span>
+          <ol>
+            <li><a href="split-web.html">Website</a></li>
+            <li><a href="split-tui.html">Terminal wizard</a></li>
+            <li><a href="split-cli.html">Command line</a></li>
+          </ol>
+        </li>
+        <li><span class="group">Recovery walkthrough</span>
+          <ol>
+            <li><a href="recover-web.html">Website</a></li>
+            <li><a href="recover-tui.html">Terminal wizard</a></li>
+            <li><a href="recover-cli.html">Command line</a></li>
+          </ol>
+        </li>
+        <li><a href="the-share-format.html">The share format</a></li>
         <li><a href="chapter-2-threat-model.html">Threat model</a></li>
         <li><a href="chapter-3-touring.html">Tour of the codebase</a></li>
         <li><a href="chapter-4-evaluating.html">Audit chela yourself</a></li>
@@ -29,7 +44,7 @@
 
       <p>
         chela has a well-defined perimeter. Inside it: the mathematics of secret sharing,
-        the encoding of shares onto cards, and the verification machinery that catches
+        the encoding of shares onto shares, and the verification machinery that catches
         transcription errors and cross-split contamination. Outside it: the machine you
         run chela on, the browser that executes the standalone bundle, the people you hand
         shares to, and the build pipeline that produced the binary. Knowing where the
@@ -53,15 +68,15 @@
               information. Each share is one point on a polynomial of degree M−1; with
               fewer than M points, infinitely many polynomials fit, each consistent with
               a different secret. Fewer than M shares leave the secret
-              information-theoretically undetermined — there is nothing to brute-force.
+              information-theoretically undetermined - there is nothing to brute-force.
               <br><a class="src" data-file="chela-sss/src/lib.rs">chela-sss::split</a>
             </td>
           </tr>
           <tr>
-            <td>A single transcription error on a card</td>
+            <td>A single transcription error on a share</td>
             <td>
               The last word of every share is an 11-bit CRC-11/UMTS checksum over the
-              share's decoded values — its x-coordinate, threshold, the generation nonce,
+              share's decoded values - its x-coordinate, threshold, the generation nonce,
               and its Shamir output bytes. A mistyped word changes at most 11 contiguous
               bits, and an 11-bit CRC catches every burst error that short. Recovery
               rejects the share with <code>ShareCorrupt</code> before any secret material
@@ -72,12 +87,12 @@
           <tr>
             <td>Shares from two unrelated splits accidentally combined</td>
             <td>
-              Every share carries an 11-bit generation nonce — a random value drawn once
+              Every share carries an 11-bit generation nonce - a random value drawn once
               per split from the OS CSPRNG and written identically into all of that
               split's shares. Recovery rejects any set whose nonces disagree with
               <code>MismatchedShares</code>. The nonce is not a hash of the secret, so it
               leaks nothing about a low-entropy payload, and re-splitting the same secret
-              draws a fresh nonce — so even those two runs are correctly refused.
+              draws a fresh nonce - so even those two runs are correctly refused.
               <br><a class="src" data-file="chela-engine/src/lib.rs">chela-engine::recover_secret</a>
             </td>
           </tr>
@@ -104,10 +119,10 @@
             </td>
           </tr>
           <tr>
-            <td>Coalition of M or more cardholders</td>
+            <td>Coalition of M or more shareholders</td>
             <td>
-              Choose trusted, geographically distributed cardholders. chela cannot defend
-              against the people you handed shares to — the threshold is a quorum, not a
+              Choose trusted, geographically distributed shareholders. chela cannot defend
+              against the people you handed shares to - the threshold is a quorum, not a
               safeguard against unanimous collusion.
             </td>
           </tr>
@@ -132,8 +147,8 @@
           <tr>
             <td>Forensic recovery of cleared scrollback</td>
             <td>
-              Use an ephemeral environment — a live USB, a throwaway VM, or a terminal
-              with scrollback disabled — for sensitive recovery sessions. Cleared terminal
+              Use an ephemeral environment - a live USB, a throwaway VM, or a terminal
+              with scrollback disabled - for sensitive recovery sessions. Cleared terminal
               scrollback may survive in swap, core dumps, or crash logs.
             </td>
           </tr>
@@ -145,13 +160,13 @@
       <figure>
         <pre class="mermaid">
 flowchart TB
-  subgraph outside["Outside chela's perimeter — you handle these"]
+  subgraph outside["Outside chela's perimeter - you handle these"]
     host[Compromised host machine]
     build[Tampered build artifact]
-    coalition[Coalition of M+ cardholders]
+    coalition[Coalition of M+ shareholders]
     browser[Compromised browser]
   end
-  subgraph chela_perimeter["chela's perimeter — chela handles these"]
+  subgraph chela_perimeter["chela's perimeter - chela handles these"]
     sss[Shamir split / combine]
     rng[OS RNG calls]
     enc[Share encoding &amp; checksums]
@@ -159,7 +174,7 @@ flowchart TB
   end
         </pre>
         <img class="mermaid-fallback" src="assets/svg/trust-boundaries.svg"
-             alt="Two nested boxes. The outer dashed box holds threats chela cannot defend against: a compromised host machine, a tampered build artifact, a coalition of M or more cardholders, and a compromised browser. The inner solid box holds what chela handles: Shamir split and combine, OS RNG calls, share encoding and checksums, and the BIP-39 codec.">
+             alt="Two nested boxes. The outer dashed box holds threats chela cannot defend against: a compromised host machine, a tampered build artifact, a coalition of M or more shareholders, and a compromised browser. The inner solid box holds what chela handles: Shamir split and combine, OS RNG calls, share encoding and checksums, and the BIP-39 codec.">
         <figcaption>chela's perimeter and what lives outside it.</figcaption>
       </figure>
 

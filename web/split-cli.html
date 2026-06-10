@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Splitting on the command line - chela explained</title>
+  <link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body>
+  <header class="topbar">
+    <a href="index.html" class="brand">chela</a>
+    <a href="https://github.com/SecretSplitKit/Chela" class="repo-link">GitHub</a>
+  </header>
+
+  <div class="layout">
+    <nav class="sidebar" aria-label="Table of contents">
+      <button class="hamburger" aria-label="Toggle sidebar">≡</button>
+      <ol>
+        <li><a href="index.html">What is chela?</a></li>
+        <li><a href="chapter-1-shamir.html">Why secret sharing</a></li>
+        <li><span class="group">Splitting walkthrough</span>
+          <ol>
+            <li><a href="split-web.html">Website</a></li>
+            <li><a href="split-tui.html">Terminal wizard</a></li>
+            <li><a href="split-cli.html">Command line</a></li>
+          </ol>
+        </li>
+        <li><span class="group">Recovery walkthrough</span>
+          <ol>
+            <li><a href="recover-web.html">Website</a></li>
+            <li><a href="recover-tui.html">Terminal wizard</a></li>
+            <li><a href="recover-cli.html">Command line</a></li>
+          </ol>
+        </li>
+        <li><a href="the-share-format.html">The share format</a></li>
+        <li><a href="chapter-2-threat-model.html">Threat model</a></li>
+        <li><a href="chapter-3-touring.html">Tour of the codebase</a></li>
+        <li><a href="chapter-4-evaluating.html">Audit chela yourself</a></li>
+      </ol>
+    </nav>
+
+    <main class="content">
+      <h1>Splitting on the command line</h1>
+
+      <p>
+        <code>chela-cli</code> is the scriptable interface: you pass flags, it prints
+        shares. It does one split per run and never prompts, so it drops cleanly into
+        shell scripts. This page covers splitting a secret; to put it back together, see
+        <a href="recover-cli.html">recovery on the command line</a>. Prefer to be walked
+        through the choices? Use the <a href="split-tui.html">terminal wizard</a>. Want
+        nothing installed? Use the <a href="split-web.html">website</a>. All three produce
+        the exact same shares.
+      </p>
+
+      <h2>See the options</h2>
+      <p>
+        Run it with no arguments, or <code>--help</code>, to print the full usage. There
+        are two verbs, <code>split</code> and <code>recover</code>; the rest is flags.
+      </p>
+      <figure>
+        <img class="shot" src="assets/ui/cli/1-help.png"
+             alt="Terminal showing chela-cli help: a split verb that takes --mnemonic or --text with -m and -n, a recover verb that reads from stdin, and output flags for writing paper-backup HTML and JSON files.">
+        <figcaption><code>chela-cli --help</code> - the two verbs and the output flags.</figcaption>
+      </figure>
+
+      <h2>Split a text password</h2>
+      <p>
+        Pass the secret with <code>--text</code>, the threshold with <code>-m</code>, and
+        the total with <code>-n</code>. This makes a 2-of-3 split: three shares, any two of
+        which recover the secret.
+      </p>
+      <pre><code>chela-cli split --text "correct horse battery staple" -m 2 -n 3</code></pre>
+      <p>
+        Each share prints as a short header line plus a list of BIP-39 words. The header
+        (<code>CHELA-...</code>) names the recovery set, this share's coordinate, and the
+        rule; the words carry everything needed to recover, so a share is complete on its
+        own piece of paper. <a href="the-share-format.html">The share format</a> breaks the
+        words down field by field.
+      </p>
+      <figure>
+        <img class="shot" src="assets/ui/cli/2-split-text.png"
+             alt="Terminal: chela-cli splits a text password into three shares, each printed as a CHELA header line followed by a row of BIP-39 words.">
+        <figcaption>A 2-of-3 split of a text password. Hand one share to each holder.</figcaption>
+      </figure>
+
+      <h2>Split a wallet seed</h2>
+      <p>
+        For a BIP-39 wallet seed, pass the words with <code>--mnemonic</code> (and
+        <code>--passphrase</code> if your wallet uses one). chela checks the mnemonic's own
+        checksum before splitting, so a mistyped seed is caught up front.
+      </p>
+      <pre><code>chela-cli split --mnemonic "abandon abandon abandon abandon abandon abandon \
+abandon abandon abandon abandon abandon about" -m 3 -n 5</code></pre>
+      <figure>
+        <img class="shot" src="assets/ui/cli/3-split-seed.png"
+             alt="Terminal: chela-cli splits a 12-word BIP-39 seed into a 3-of-5 set of shares.">
+        <figcaption>A 3-of-5 split of a wallet seed: five shares, any three recover.</figcaption>
+      </figure>
+
+      <h2>Save printable and machine-readable backups</h2>
+      <p>
+        Printing to the terminal is fine for a quick split, but for real backups add output
+        flags. <code>--paper</code> writes a print-ready HTML page (one share per sheet);
+        <code>--json</code> writes a machine-readable bundle any chela tool can read back.
+        <code>--name</code> and <code>--shareholders</code> label the printout.
+      </p>
+      <pre><code>chela-cli split --text "correct horse battery staple" -m 2 -n 3 \
+  --paper backup.html --json backup.json \
+  --name "Bitcoin cold wallet" --shareholders "Alice,Bob,Carol"</code></pre>
+      <figure>
+        <img class="shot" src="assets/ui/cli/4-split-files.png"
+             alt="Terminal: chela-cli split with --paper and --json flags, reporting that it wrote backup.html and backup.json.">
+        <figcaption>The same split, also written to a paper-backup page and a JSON bundle.</figcaption>
+      </figure>
+      <p>
+        The paper backup prints each share on its own page, words large enough to read and
+        re-type, with a recovery pointer and a machine-readable copy of the share for tools.
+      </p>
+      <figure>
+        <img class="shot" src="assets/ui/cli/6-paper-card.png"
+             alt="A printed chela paper backup: a single share shown as a titled page with its share code, its BIP-39 words laid out in a numbered grid, and recovery instructions.">
+        <figcaption>One printed share. Each holder keeps a page like this.</figcaption>
+      </figure>
+
+      <div class="card">
+        <h3>Next steps</h3>
+        <p>
+          You have shares. To put the secret back together, see
+          <a href="recover-cli.html">recovery on the command line</a>. The same split also
+          works in the <a href="split-tui.html">terminal wizard</a> and the
+          <a href="split-web.html">website</a>, and the exact wire format is in
+          <a class="src" data-file="SPEC.md">SPEC.md</a>.
+        </p>
+      </div>
+
+      <nav class="page-nav" aria-label="Pagination">
+        <a class="prev" href="split-tui.html">← Back: splitting in the terminal wizard</a>
+        <a class="next" href="recover-web.html">Next: recovery on the website →</a>
+      </nav>
+    </main>
+  </div>
+
+  <script src="assets/js/nav.js" defer></script>
+  <script src="assets/js/permalink.js" defer></script>
+</body>
+</html>

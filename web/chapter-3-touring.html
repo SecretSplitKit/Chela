@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Tour of the codebase — chela explained</title>
+  <title>Tour of the codebase - chela explained</title>
   <link rel="stylesheet" href="assets/css/site.css">
 </head>
 <body>
@@ -18,6 +18,21 @@
       <ol>
         <li><a href="index.html">What is chela?</a></li>
         <li><a href="chapter-1-shamir.html">Why secret sharing</a></li>
+        <li><span class="group">Splitting walkthrough</span>
+          <ol>
+            <li><a href="split-web.html">Website</a></li>
+            <li><a href="split-tui.html">Terminal wizard</a></li>
+            <li><a href="split-cli.html">Command line</a></li>
+          </ol>
+        </li>
+        <li><span class="group">Recovery walkthrough</span>
+          <ol>
+            <li><a href="recover-web.html">Website</a></li>
+            <li><a href="recover-tui.html">Terminal wizard</a></li>
+            <li><a href="recover-cli.html">Command line</a></li>
+          </ol>
+        </li>
+        <li><a href="the-share-format.html">The share format</a></li>
         <li><a href="chapter-2-threat-model.html">Threat model</a></li>
         <li><a href="chapter-3-touring.html">Tour of the codebase</a></li>
         <li><a href="chapter-4-evaluating.html">Audit chela yourself</a></li>
@@ -69,7 +84,7 @@ flowchart TB
         write away, and a thin wrapper around the OS random-number generator. Every
         security-sensitive operation in the workspace ultimately bottoms out here. The
         SHA-256 here is used only by <code>chela-bip39</code> to validate a mnemonic's
-        built-in checksum on recovery; the share engine uses none — its per-share
+        built-in checksum on recovery; the share engine uses none - its per-share
         checksum is an 11-bit CRC and its set id is a random nonce.
       </p>
 
@@ -101,7 +116,7 @@ flowchart TB
         BIP-0039 codec plus the 2048-word English wordlist, compiled in at build time.
         Converts between raw entropy bytes and the mnemonic word sequence, including
         the checksum appended to the last word. Also used to encode share bytes as
-        word lists on the printed cards so a human can transcribe a share using only
+        word lists on the printed shares so a human can transcribe a share using only
         a pen.
       </p>
 
@@ -110,7 +125,7 @@ flowchart TB
         Orchestration layer. Calls <code>chela-sss</code> for the core math and
         <code>chela-bip39</code> for encoding. To split, it draws an 11-bit generation
         nonce and N random distinct x-coordinates, appends the kind byte to the body and
-        Shamir-splits the whole thing — so the payload type stays hidden until recovery —
+        Shamir-splits the whole thing - so the payload type stays hidden until recovery -
         then encodes each share into the wire format defined in <code>SPEC.md</code>:
         word 0 packs <code>[x, M]</code>, word 1 is the nonce, the middle words are the
         Shamir output, and the last word is an 11-bit CRC. Recovery is the inverse:
@@ -122,7 +137,7 @@ flowchart TB
       <h3><a class="src" data-file="chela-share/">chela-share/</a></h3>
       <p>
         Share presentation layer. Takes the raw share bytes from <code>chela-engine</code>
-        and renders them as: a plain-text card (the word list plus metadata), a JSON
+        and renders them as: a plain-text share (the word list plus metadata), a JSON
         object for programmatic use, and a printable paper-backup HTML page styled to
         fit on a standard index card. Its parser is the one place chela reads
         externally supplied text, so the fuzz harness lives here too.
@@ -131,7 +146,7 @@ flowchart TB
       <h3><a class="src" data-file="chela-tui/">chela-tui/</a></h3>
       <p>
         The interactive terminal wizard. Walks the user through split or recovery with
-        prompts and confirmation steps, then prints each share card to the terminal for
+        prompts and confirmation steps, then prints each share to the terminal for
         transcription or saving. Intended for users who want a guided experience.
         Depends on <code>chela-engine</code>; does not touch the crypto directly.
       </p>
@@ -140,7 +155,7 @@ flowchart TB
       <p>
         The scriptable command-line interface. Takes flags rather than interactive
         prompts: the secret arrives via <code>--mnemonic</code> or <code>--text</code>,
-        share cards print to stdout, and the <code>--paper</code> / <code>--json</code>
+        shares print to stdout, and the <code>--paper</code> / <code>--json</code>
         flags write paper-backup or JSON files instead. Suited for automation, shell
         scripts, and users comfortable with the command line. The same engine and
         encoding as the TUI; different surface only.
@@ -149,7 +164,7 @@ flowchart TB
       <h3><a class="src" data-file="chela-wasm/">chela-wasm/</a></h3>
       <p>
         A WebAssembly FFI wrapper around <code>chela-engine</code>
-        and <code>chela-share</code>. The C-ABI is hand-rolled — no
+        and <code>chela-share</code>. The C-ABI is hand-rolled - no
         <code>wasm-bindgen</code>, no third-party crates. The exports are
         <code>chela_alloc</code> and <code>chela_dealloc</code> for memory management,
         plus <code>chela_split</code>, <code>chela_recover</code>,
@@ -169,14 +184,13 @@ flowchart TB
       </p>
 
       <div class="card">
-        <h3>Coming in sub-project 2</h3>
+        <h3>Going deeper</h3>
         <p>
-          Each crypto-core crate has its own walkthrough chapter — those will land in
-          sub-project 2 of this explainer. Sub-project 2 covers
-          <code>chela-primitives</code>, <code>chela-field</code>, <code>chela-sss</code>,
-          <code>chela-bip39</code>, <code>chela-engine</code>, and <code>chela-share</code>
-          in depth, with hand-crafted SVG illustrations of the field arithmetic and
-          the Lagrange interpolation steps.
+          To see how these crates combine into the words on a share, read
+          <a href="the-share-format.html">the share format</a>. For the exact byte layout,
+          the cryptographic reasoning, and the tests behind each claim, see
+          <a class="src" data-file="SPEC.md">SPEC.md</a> and
+          <a class="src" data-file="AUDITORS.md">AUDITORS.md</a>.
         </p>
       </div>
 

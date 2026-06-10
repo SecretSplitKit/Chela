@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Why secret sharing — chela explained</title>
+  <title>Why secret sharing - chela explained</title>
   <link rel="stylesheet" href="assets/css/site.css">
 </head>
 <body>
@@ -18,6 +18,21 @@
       <ol>
         <li><a href="index.html">What is chela?</a></li>
         <li><a href="chapter-1-shamir.html">Why secret sharing</a></li>
+        <li><span class="group">Splitting walkthrough</span>
+          <ol>
+            <li><a href="split-web.html">Website</a></li>
+            <li><a href="split-tui.html">Terminal wizard</a></li>
+            <li><a href="split-cli.html">Command line</a></li>
+          </ol>
+        </li>
+        <li><span class="group">Recovery walkthrough</span>
+          <ol>
+            <li><a href="recover-web.html">Website</a></li>
+            <li><a href="recover-tui.html">Terminal wizard</a></li>
+            <li><a href="recover-cli.html">Command line</a></li>
+          </ol>
+        </li>
+        <li><a href="the-share-format.html">The share format</a></li>
         <li><a href="chapter-2-threat-model.html">Threat model</a></li>
         <li><a href="chapter-3-touring.html">Tour of the codebase</a></li>
         <li><a href="chapter-4-evaluating.html">Audit chela yourself</a></li>
@@ -30,8 +45,8 @@
       <p>
         How do you store a secret such that no single point of failure can either lose
         or leak it? Back up the seed in one place and you
-        create a single point of loss — fire, flood, or theft destroys your only copy.
-        Copy it in multiple places and you create multiple points of compromise — each copy
+        create a single point of loss - fire, flood, or theft destroys your only copy.
+        Copy it in multiple places and you create multiple points of compromise - each copy
         is an independent risk. Secret sharing is the way out of this dilemma.
       </p>
 
@@ -43,7 +58,7 @@
         destroys confidentiality. Each additional copy is an independent surface for
         compromise: a house fire is avoided, but a burglary, a nosy relative, or a
         careless executor now exposes the entire secret. You have traded one failure mode
-        for another. More copies means more risk, not less — and there is no threshold
+        for another. More copies means more risk, not less - and there is no threshold
         property: one copy in the wrong hands is already a total loss.
       </p>
 
@@ -73,7 +88,7 @@
         In 1979, Adi Shamir observed that a polynomial of degree M−1 is uniquely
         determined by exactly M points. If you encode the secret as the constant term of
         a random degree-(M−1) polynomial, then each share is one point on that
-        polynomial — a pair (x, y) where x is the share's x-coordinate and y is the
+        polynomial - a pair (x, y) where x is the share's x-coordinate and y is the
         polynomial evaluated at x. To recover the secret you need M shares: M points
         uniquely determine the polynomial, and evaluating it at x=0 gives back the secret.
       </p>
@@ -81,7 +96,7 @@
       <p>
         chela picks each x at random from 1..32 rather than handing out a sequential
         1..N, so a share leaks neither the total number of shares nor its own position.
-        The x is public — it is printed on the card — so its randomness is a privacy
+        The x is public - it is printed on the share - so its randomness is a privacy
         property, not a confidentiality one; what must stay secret is the polynomial's
         coefficients.
       </p>
@@ -90,8 +105,8 @@
         Below M points, infinitely many polynomials of degree M−1 pass through any
         M−1 (or fewer) given points. Every possible
         secret is equally consistent with the shares you hold. This is not
-        "computationally hard to invert" — it is information-theoretically impossible to
-        distinguish. A share holder with M−1 cards learns exactly nothing about the secret
+        "computationally hard to invert" - it is information-theoretically impossible to
+        distinguish. A share holder with M−1 shares learns exactly nothing about the secret
         beyond what they already knew.
       </p>
 
@@ -99,7 +114,7 @@
         <img src="assets/svg/polynomial-3-of-5.svg"
              alt="Two panels: left shows three points uniquely determining a parabola; right shows two points with three plausible parabolas passing through them.">
         <figcaption>
-          Three points determine a parabola uniquely (left). Two points don't — infinitely
+          Three points determine a parabola uniquely (left). Two points don't - infinitely
           many parabolas fit, each corresponding to a different secret (right).
         </figcaption>
       </figure>
@@ -107,12 +122,11 @@
       <p>
         Ordinary polynomial arithmetic over the integers would leak information because
         share values can grow without bound and statistical relationships creep in.
-        chela works over GF(2^8) — a finite field of 256 elements
-        that operates on individual bytes — so each byte of the secret is processed
+        chela works over GF(2^8) - a finite field of 256 elements
+        that operates on individual bytes - so each byte of the secret is processed
         independently with no carry between bytes and no information leak.
-        The field arithmetic is
-        <span class="coming-soon">walk-through of the field arithmetic</span>
-        in the per-file walkthrough chapters (sub-project 2 of this explainer).
+        How that field arithmetic becomes the actual words on a share is laid out in
+        <a href="the-share-format.html">the share format</a>.
       </p>
 
       <p>If you want to skip to the implementation: <a class="src" data-file="chela-sss/src/lib.rs">chela-sss/src/lib.rs</a></p>

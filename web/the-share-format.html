@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The share format - chela explained</title>
+  <link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body>
+  <header class="topbar">
+    <a href="index.html" class="brand">chela</a>
+    <a href="https://github.com/SecretSplitKit/Chela" class="repo-link">GitHub</a>
+  </header>
+
+  <div class="layout">
+    <nav class="sidebar" aria-label="Table of contents">
+      <button class="hamburger" aria-label="Toggle sidebar">≡</button>
+      <ol>
+        <li><a href="index.html">What is chela?</a></li>
+        <li><a href="chapter-1-shamir.html">Why secret sharing</a></li>
+        <li><span class="group">Splitting walkthrough</span>
+          <ol>
+            <li><a href="split-web.html">Website</a></li>
+            <li><a href="split-tui.html">Terminal wizard</a></li>
+            <li><a href="split-cli.html">Command line</a></li>
+          </ol>
+        </li>
+        <li><span class="group">Recovery walkthrough</span>
+          <ol>
+            <li><a href="recover-web.html">Website</a></li>
+            <li><a href="recover-tui.html">Terminal wizard</a></li>
+            <li><a href="recover-cli.html">Command line</a></li>
+          </ol>
+        </li>
+        <li><a href="the-share-format.html">The share format</a></li>
+        <li><a href="chapter-2-threat-model.html">Threat model</a></li>
+        <li><a href="chapter-3-touring.html">Tour of the codebase</a></li>
+        <li><a href="chapter-4-evaluating.html">Audit chela yourself</a></li>
+      </ol>
+    </nav>
+
+    <main class="content">
+      <h1>The share format</h1>
+
+      <p>
+        A chela share is nothing but a short header and a list of ordinary BIP-39 words -
+        the same words a wallet seed uses. Everything needed to recover lives in those
+        words; the header is a human-readable summary of what the words already say. This
+        page explains what each word carries. It sits between
+        <a href="chapter-1-shamir.html">the theory</a> (why a handful of points rebuilds a
+        secret) and the exact, byte-level <a class="src" data-file="SPEC.md">SPEC.md</a>
+        (enough to write a compatible implementation).
+      </p>
+
+      <h2>The header line</h2>
+      <p>
+        Each share starts with a dashed code like <code>CHELA-013A-21-2-3-25</code>. It is a
+        convenience, not a secret, and it only repeats what the words encode:
+      </p>
+      <pre><code>CHELA - 013A - 21 - 2 - 3 - 25
+        │      │    │   │   │
+        │      │    │   │   └ word count
+        │      │    │   └ total shares made (N)
+        │      │    └ shares needed to recover (M)
+        │      └ this share's coordinate (x)
+        └ recovery-set id (which split this share belongs to)</code></pre>
+      <p>
+        Because the same facts are inside the words, a share recovers even if the header is
+        smudged or torn off - chela reads the words and re-derives all of it.
+      </p>
+
+      <h2>What the words encode</h2>
+      <p>
+        Each word is 11 bits (one of 2048 wordlist entries). The words lay out in four parts:
+      </p>
+      <pre><code>word 0          which share this is (x) and how many are needed (M)
+word 1          the recovery-set id (a random per-split nonce)
+words 2 … W-2   this share's piece of the secret (the body)
+word W-1        a checksum that catches transcription errors</code></pre>
+
+      <h3>Word 0: x and M</h3>
+      <p>
+        The first word packs this share's coordinate <code>x</code> and the threshold
+        <code>M</code>. They are stored as offsets (<code>x-1</code> and <code>M-2</code>)
+        so an impossible value literally cannot be written down. chela draws each
+        <code>x</code> at random from 1 to 32 rather than handing out 1, 2, 3 in order, so a
+        stray share gives away neither how many shares exist nor where it sits.
+      </p>
+
+      <h3>Word 1: the recovery-set id</h3>
+      <p>
+        Word 1 is a random 11-bit value drawn once per split and written identically into
+        every share of that split - a batch stamp. It lets recovery confirm that the shares
+        in front of it belong together and refuse a mix of two unrelated splits. It is not
+        derived from the secret, so it reveals nothing about a low-entropy payload, and a
+        fresh split draws a fresh id.
+      </p>
+
+      <h3>The body words: the secret, split</h3>
+      <p>
+        The middle words carry this share's <strong>Y values</strong> - its points on the
+        curves from <a href="chapter-1-shamir.html">the theory</a>. chela uses one curve per
+        byte of the secret, all sharing the same <code>x</code> coordinates, with the
+        arithmetic done over GF(2&#8312;) (a 256-element field, one byte at a time, no carries
+        between bytes). On their own the body words look random; only a threshold of shares,
+        combined, mean anything.
+      </p>
+
+      <h3>Where the secret ends, and what it is</h3>
+      <p>
+        What actually gets split is not the bare secret but a small <strong>body</strong>:
+        the secret, then a one-byte <strong>integrity tag</strong>, then a one-byte
+        <strong>kind byte</strong>. The kind byte records the payload type (a 12/15/18/21/24-word
+        seed, with or without a passphrase, or free text) and doubles as a terminator that
+        marks where the secret ends. The integrity tag is the first byte of
+        <code>SHA-256(secret&nbsp;‖&nbsp;kind)</code>; at recovery, a rebuilt body whose tag
+        does not match is rejected, so the wrong set of shares is caught instead of returning
+        a plausible-looking wrong secret.
+      </p>
+
+      <h3>The last word: the checksum</h3>
+      <p>
+        The final word is an 11-bit CRC-11/UMTS checksum over the share's decoded values -
+        its <code>x</code>, <code>M</code>, the recovery-set id, and its body bytes. A
+        mistyped word changes at most 11 bits, and an 11-bit CRC catches every burst error
+        that short, so recovery rejects a corrupted share up front rather than feeding bad
+        bytes into the math.
+      </p>
+
+      <h2>How recovery rebuilds the secret</h2>
+      <p>
+        Given any <code>M</code> shares, chela decodes and checksum-verifies each one,
+        confirms they share one recovery-set id and threshold, then runs Lagrange
+        interpolation at <code>x = 0</code> - independently for each byte - to recover the
+        body. It reads the kind byte to learn the payload type and where it ends, verifies
+        the integrity tag, and only then hands back the secret. Fewer than <code>M</code>
+        shares leave the body information-theoretically undetermined; there is nothing to
+        brute-force.
+      </p>
+
+      <div class="card">
+        <h3>The exact bytes</h3>
+        <p>
+          This page is the shape of the format. For the precise bit layout - field widths,
+          the CRC polynomial, the GF(2&#8312;) reduction polynomial, the kind-byte table, and
+          worked test vectors - read <a class="src" data-file="SPEC.md">SPEC.md</a>, which is
+          written to be enough to build a compatible implementation in another language. The
+          file-by-file reasoning is in <a class="src" data-file="AUDITORS.md">AUDITORS.md</a>.
+        </p>
+      </div>
+
+      <nav class="page-nav" aria-label="Pagination">
+        <a class="prev" href="recover-cli.html">← Back: recovery on the command line</a>
+        <a class="next" href="chapter-2-threat-model.html">Next: Threat model →</a>
+      </nav>
+    </main>
+  </div>
+
+  <script src="assets/js/nav.js" defer></script>
+  <script src="assets/js/permalink.js" defer></script>
+</body>
+</html>

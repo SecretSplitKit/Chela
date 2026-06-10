@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Audit chela yourself — chela explained</title>
+  <title>Audit chela yourself - chela explained</title>
   <link rel="stylesheet" href="assets/css/site.css">
 </head>
 <body>
@@ -18,6 +18,21 @@
       <ol>
         <li><a href="index.html">What is chela?</a></li>
         <li><a href="chapter-1-shamir.html">Why secret sharing</a></li>
+        <li><span class="group">Splitting walkthrough</span>
+          <ol>
+            <li><a href="split-web.html">Website</a></li>
+            <li><a href="split-tui.html">Terminal wizard</a></li>
+            <li><a href="split-cli.html">Command line</a></li>
+          </ol>
+        </li>
+        <li><span class="group">Recovery walkthrough</span>
+          <ol>
+            <li><a href="recover-web.html">Website</a></li>
+            <li><a href="recover-tui.html">Terminal wizard</a></li>
+            <li><a href="recover-cli.html">Command line</a></li>
+          </ol>
+        </li>
+        <li><a href="the-share-format.html">The share format</a></li>
         <li><a href="chapter-2-threat-model.html">Threat model</a></li>
         <li><a href="chapter-3-touring.html">Tour of the codebase</a></li>
         <li><a href="chapter-4-evaluating.html">Audit chela yourself</a></li>
@@ -37,8 +52,8 @@
 
       <h3>1. No third-party dependencies in the crypto core</h3>
       <p>
-        The cryptographic core — <code>chela-primitives</code>, <code>chela-field</code>,
-        <code>chela-sss</code>, and <code>chela-bip39</code> — has zero third-party
+        The cryptographic core - <code>chela-primitives</code>, <code>chela-field</code>,
+        <code>chela-sss</code>, and <code>chela-bip39</code> - has zero third-party
         crate dependencies. SHA-256, GF(2^8) arithmetic, the BIP-39 wordlist, and the OS
         RNG wrapper are all hand-written. You can verify the dependency graph by listing
         every crate name in the lock file and auditing each one, or by inspecting each
@@ -59,18 +74,18 @@
       <pre><code>grep -rn 'allow(unsafe_code)' chela-*/src</code></pre>
       <p>The five opt-in files:</p>
       <ul>
-        <li><a class="src" data-file="chela-primitives/src/rng.rs">chela-primitives/src/rng.rs</a> — OS RNG syscall</li>
-        <li><a class="src" data-file="chela-primitives/src/zeroize.rs">chela-primitives/src/zeroize.rs</a> — volatile write for zeroizing secrets</li>
-        <li><a class="src" data-file="chela-sss/src/lib.rs">chela-sss/src/lib.rs</a> — one <code>&mut [Gf256]</code> → <code>&mut [u8]</code> cast to volatile-wipe the polynomial coefficients after <code>split</code>, sound because <code>Gf256</code> is <code>#[repr(transparent)]</code></li>
-        <li><a class="src" data-file="chela-tui/src/term.rs">chela-tui/src/term.rs</a> — terminal raw-mode ioctl</li>
-        <li><a class="src" data-file="chela-wasm/src/lib.rs">chela-wasm/src/lib.rs</a> — WASM FFI boundary</li>
+        <li><a class="src" data-file="chela-primitives/src/rng.rs">chela-primitives/src/rng.rs</a> - OS RNG syscall</li>
+        <li><a class="src" data-file="chela-primitives/src/zeroize.rs">chela-primitives/src/zeroize.rs</a> - volatile write for zeroizing secrets</li>
+        <li><a class="src" data-file="chela-sss/src/lib.rs">chela-sss/src/lib.rs</a> - one <code>&mut [Gf256]</code> → <code>&mut [u8]</code> cast to volatile-wipe the polynomial coefficients after <code>split</code>, sound because <code>Gf256</code> is <code>#[repr(transparent)]</code></li>
+        <li><a class="src" data-file="chela-tui/src/term.rs">chela-tui/src/term.rs</a> - terminal raw-mode ioctl</li>
+        <li><a class="src" data-file="chela-wasm/src/lib.rs">chela-wasm/src/lib.rs</a> - WASM FFI boundary</li>
       </ul>
 
       <h3>3. Secret-bearing buffers are wiped via <code>volatile_set</code></h3>
       <p>
         A compiler is permitted to optimize away a zeroing write to memory that it can
-        prove is never read afterward. chela uses <code>volatile_set</code> — a pointer
-        write through a volatile cast — to force the write to take place even when the
+        prove is never read afterward. chela uses <code>volatile_set</code> - a pointer
+        write through a volatile cast - to force the write to take place even when the
         optimizer can prove the buffer is dead. You can find every location where secret
         material is wiped with:
       </p>
@@ -82,7 +97,7 @@
         Every GitHub Actions workflow in the repository pins third-party actions to a
         full 40-character commit SHA rather than a mutable version tag like
         <code>@v4</code>. A mutable tag can be silently moved by the action's maintainer
-        — a supply-chain risk. Pinning to a SHA means the action cannot change under
+        - a supply-chain risk. Pinning to a SHA means the action cannot change under
         you without an explicit update to the workflow file. You can verify the pinning
         discipline with:
       </p>
@@ -107,7 +122,7 @@
 
       <h3>Minisign signing</h3>
       <p>
-        Every release artifact is signed with minisign — a small tool that uses
+        Every release artifact is signed with minisign - a small tool that uses
         Ed25519 signatures. The public key is embedded in <code>README.md</code>.
         Before running any chela binary you download, verify its minisign signature
         against the published public key. The exact <code>minisign</code> commands are
@@ -118,7 +133,7 @@
       <h3>Fuzz harness</h3>
       <p>
         <code>chela-share</code> includes a fuzz harness that throws arbitrary bytes
-        at the share parser — the one place chela ingests externally supplied text —
+        at the share parser - the one place chela ingests externally supplied text -
         to prove it never panics, hangs, or over-allocates. A short smoke run executes
         in CI on every pull request; run it locally for longer with
         <code>cargo fuzz run</code>. It found a panic in the share parser: the
@@ -158,7 +173,7 @@
         Point it at <code>AGENTS.md</code>; that file lists the security and packaging
         checks it can verify on its own. The checks in <code>AGENTS.md</code> mirror
         the checks on this page, but are written in a form that an agent can execute
-        directly — with expected outputs to diff against, not just descriptions.
+        directly - with expected outputs to diff against, not just descriptions.
       </p>
 
       <nav class="page-nav" aria-label="Pagination">

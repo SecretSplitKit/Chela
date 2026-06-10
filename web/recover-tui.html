@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Recovery in the terminal wizard - chela explained</title>
+  <link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body>
+  <header class="topbar">
+    <a href="index.html" class="brand">chela</a>
+    <a href="https://github.com/SecretSplitKit/Chela" class="repo-link">GitHub</a>
+  </header>
+
+  <div class="layout">
+    <nav class="sidebar" aria-label="Table of contents">
+      <button class="hamburger" aria-label="Toggle sidebar">≡</button>
+      <ol>
+        <li><a href="index.html">What is chela?</a></li>
+        <li><a href="chapter-1-shamir.html">Why secret sharing</a></li>
+        <li><span class="group">Splitting walkthrough</span>
+          <ol>
+            <li><a href="split-web.html">Website</a></li>
+            <li><a href="split-tui.html">Terminal wizard</a></li>
+            <li><a href="split-cli.html">Command line</a></li>
+          </ol>
+        </li>
+        <li><span class="group">Recovery walkthrough</span>
+          <ol>
+            <li><a href="recover-web.html">Website</a></li>
+            <li><a href="recover-tui.html">Terminal wizard</a></li>
+            <li><a href="recover-cli.html">Command line</a></li>
+          </ol>
+        </li>
+        <li><a href="the-share-format.html">The share format</a></li>
+        <li><a href="chapter-2-threat-model.html">Threat model</a></li>
+        <li><a href="chapter-3-touring.html">Tour of the codebase</a></li>
+        <li><a href="chapter-4-evaluating.html">Audit chela yourself</a></li>
+      </ol>
+    </nav>
+
+    <main class="content">
+      <h1>Recovery in the terminal wizard</h1>
+
+      <p>
+        Run <code>chela</code> and choose <strong>Recover</strong>, and the wizard collects
+        your shares one at a time, then rebuilds the secret. It is the gentlest way to
+        recover from printed paper: it prompts for one word at a time and checks each as you
+        go. To create shares in the first place, see
+        <a href="split-tui.html">splitting in the terminal wizard</a>.
+      </p>
+
+      <h2>1. Choose how to enter shares</h2>
+      <p>
+        The wizard offers two ways in: import saved HTML backups from this computer, or type
+        each share by hand from the printed paper. This walkthrough types them by hand -
+        the common case when your shares are on paper in a safe.
+      </p>
+      <figure>
+        <img class="shot" src="assets/ui/tui/recover-1-method.png"
+             alt="The recover screen asking how to enter shares: import HTML files saved on this computer, or type each share by hand.">
+        <figcaption>Pick how to bring your shares in.</figcaption>
+      </figure>
+
+      <h2>2. Enter a share's code</h2>
+      <p>
+        Type the <code>CHELA-...</code> code printed near the top of the first share. From
+        it, the wizard knows the recovery set, which share this is, how many are needed, and
+        how many words to expect - so it can prompt you precisely.
+      </p>
+      <figure>
+        <img class="shot" src="assets/ui/tui/recover-2-code.png"
+             alt="The wizard explaining the share code and prompting for the code of the first share.">
+        <figcaption>Start each share with its code.</figcaption>
+      </figure>
+
+      <h2>3. Type the words, one at a time</h2>
+      <p>
+        The wizard then asks for each word in turn - "word 1 of 25," "word 2 of 25," and so
+        on. Every word is checked against the BIP-39 wordlist as you enter it, and you can
+        type <code>&lt;</code> to revise the previous word. A mistyped word is caught here,
+        not folded silently into a wrong secret.
+      </p>
+      <figure>
+        <img class="shot" src="assets/ui/tui/recover-3-words.png"
+             alt="The wizard prompting for each word of a share one at a time, with the recovery-set metadata shown above and the first few words entered.">
+        <figcaption>One prompt per word, each validated as you type.</figcaption>
+      </figure>
+
+      <h2>4. Add shares until you reach the threshold</h2>
+      <p>
+        After each share the wizard reports progress - "Have 1 of 2 - need 1 more" - and
+        asks for the next share's number, then its words. It confirms every share belongs to
+        the same set; a share from a different split is refused. Keep going until you have
+        entered the threshold.
+      </p>
+      <figure>
+        <img class="shot" src="assets/ui/tui/recover-4-progress.png"
+             alt="The wizard reporting that one of two required shares has been entered and prompting for the next share's number.">
+        <figcaption>Progress toward the threshold; enter the next share.</figcaption>
+      </figure>
+
+      <h2>5. Confirm, then reveal</h2>
+      <p>
+        Once you reach the threshold, the wizard reconstructs the secret <em>in memory</em>
+        and pauses before showing anything, asking you to confirm no one can see the screen.
+        Choose to reveal only when that is true.
+      </p>
+      <figure>
+        <img class="shot" src="assets/ui/tui/recover-5-reconstruct.png"
+             alt="The wizard reporting the secret was reconstructed in memory, warning to confirm nobody can see the terminal, and offering to show or discard it.">
+        <figcaption>Reconstructed, but not yet shown. You decide when to reveal.</figcaption>
+      </figure>
+      <div class="card warn">
+        <p>
+          <strong>Revealing prints the secret to the terminal.</strong> The wizard shows it
+          on an alternate screen so it does not linger in scrollback, but a screen recorder,
+          a shoulder-surfer, or swap on a compromised machine can still capture it. Reveal
+          on a machine and in a moment you trust. The
+          <a href="chapter-2-threat-model.html">threat model</a> covers what is and is not
+          in chela's reach.
+        </p>
+      </div>
+      <figure>
+        <img class="shot" src="assets/ui/tui/recover-6-revealed.png"
+             alt="The wizard displaying the recovered secret: kind and value, with a note to use it to recover access and a prompt to return to the menu or exit.">
+        <figcaption>The recovered secret, rebuilt from the shares.</figcaption>
+      </figure>
+
+      <div class="card">
+        <h3>Next steps</h3>
+        <p>
+          The same recovery is available on the <a href="recover-web.html">website</a> and
+          the <a href="recover-cli.html">command line</a>. To understand how a few word
+          lists rebuild an exact secret, read
+          <a href="the-share-format.html">the share format</a>.
+        </p>
+      </div>
+
+      <nav class="page-nav" aria-label="Pagination">
+        <a class="prev" href="recover-web.html">← Back: recovery on the website</a>
+        <a class="next" href="recover-cli.html">Next: recovery on the command line →</a>
+      </nav>
+    </main>
+  </div>
+
+  <script src="assets/js/nav.js" defer></script>
+  <script src="assets/js/permalink.js" defer></script>
+</body>
+</html>
