@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>chela — Shamir's Secret Sharing for inheritance &amp; recovery</title>
+<title>chela - Shamir's Secret Sharing for inheritance &amp; recovery</title>
 <style>
   :root {
     --bg: #f6f6f2;
@@ -205,6 +205,14 @@
   .common-configs strong { font-family: -apple-system, sans-serif; display: block; margin-bottom: 0.3rem; }
   .common-configs div { padding: 0.1rem 0; }
   .common-configs .cfg { color: var(--accent-bold); font-weight: 600; margin-right: 0.5rem; }
+  .cfg-preset {
+    display: block; width: 100%; text-align: left; cursor: pointer;
+    font-family: var(--mono); font-size: 0.85rem; color: var(--ink);
+    background: #fff; border: 1px solid var(--soft); border-radius: 4px;
+    padding: 0.35rem 0.6rem; margin: 0.25rem 0;
+  }
+  .cfg-preset:hover { border-color: var(--accent); background: var(--accent-bg); }
+  .field-head { margin: 1.1rem 0 0.2rem 0; }
 
   /* --- Alerts -------------------------------------------------------------------------- */
   .alert {
@@ -254,7 +262,7 @@
        row 1 = labels (only field columns populate this row)
        row 2 = inputs + CHELA literal + dashes
      Fields span both rows and use `grid-template-rows: subgrid` so their internal
-     label/input pair locks into the parent's row tracks — that's what keeps every label
+     label/input pair locks into the parent's row tracks - that's what keeps every label
      baseline aligned across all five fields. CHELA and the dashes are placed explicitly
      in row 2 only, so they sit at the vertical centre of the input boxes without any
      padding hacks. */
@@ -347,7 +355,7 @@
 
   /* --- Complete screen ----------------------------------------------------------------- */
   /* Big circular checkmark used at the top of the split-done and recover-done screens.
-     Replaces the TUI box-drawing banner — the ASCII art doesn't survive variable-width
+     Replaces the TUI box-drawing banner - the ASCII art doesn't survive variable-width
      box-drawing-glyph fallback in browser fonts. */
   .complete-banner {
     display: flex; flex-direction: column; align-items: center;
@@ -392,7 +400,7 @@
 <main>
   <div class="app-header">
     <h1 class="app-title">chela</h1>
-    <p class="app-tagline">Shamir's Secret Sharing for cryptocurrency wallets and master passwords. Everything runs locally in your browser — your secret never leaves this machine.</p>
+    <p class="app-tagline">Shamir's Secret Sharing for cryptocurrency wallets and master passwords. Everything runs locally in your browser - your secret never leaves this machine.</p>
   </div>
   <div id="app"></div>
   <footer>
@@ -403,7 +411,7 @@
 <script>
 "use strict";
 // =========================================================================================
-// chela web UI — wizard mirroring the TUI step-for-step.
+// chela web UI - wizard mirroring the TUI step-for-step.
 //
 // SECURITY: no innerHTML for any user-supplied or WASM-returned content. All dynamic DOM
 // is built via document.createElement / element.textContent / element.setAttribute. The
@@ -495,7 +503,7 @@ function encRenderPaper(shares, opts) {
 }
 
 // =========================================================================================
-// DOM helpers — direct createElement / textContent only.
+// DOM helpers - direct createElement / textContent only.
 // =========================================================================================
 function E(tag, attrs) {
   const el = document.createElement(tag);
@@ -627,7 +635,7 @@ function defaultDataFor(flow) {
   if (flow === "bip39")   return { mnemonic: "", passphrase: "", backupName: "", total: 5, threshold: 3, useShareholderNames: null, shareholderNames: [], description: "" };
   if (flow === "text")    return { text: "", backupName: "", total: 5, threshold: 3, useShareholderNames: null, shareholderNames: [], description: "" };
   if (flow === "recover") return {
-    collected: [],      // [{ header, words } ...] — committed shares
+    collected: [],      // [{ header, words } ...] - committed shares
     expected: null,     // { id, threshold, total, wordCount } from first share's header
     headerDraft: null,  // { id, x, threshold, total, wordCount } currently being entered
     wordsDraft: [],     // array of W strings for the current share
@@ -652,8 +660,8 @@ function firstPhaseFor(flow) {
 // =========================================================================================
 
 const phaseOrders = {
-  bip39: ["mnemonic", "passphrase", "name", "rule", "shareholders", "shareholder-names", "note", "confirm"],
-  text:  ["text", "name", "rule", "shareholders", "shareholder-names", "note", "confirm"],
+  bip39: ["mnemonic", "rule", "shareholders", "shareholder-names", "label", "confirm"],
+  text:  ["text", "rule", "shareholders", "shareholder-names", "label", "confirm"],
   // Recovery alternates between "header" and "words" per share until threshold is met.
   recover: ["recover-header", "recover-words"],
 };
@@ -697,7 +705,7 @@ function nextPhase() {
 const phases = {
   // --- BIP-39 mnemonic ------------------------------------------------------------------
   mnemonic: {
-    title: "Enter Your BIP-39 Mnemonic",
+    title: "Enter Your Seed Phrase",
     render: (body) => {
       appendAll(body,
         E("p", { text: "Paste your mnemonic on one line. 12, 15, 18, 21, or 24 words separated by single spaces." }),
@@ -709,6 +717,11 @@ const phases = {
         input: (e) => { state.data.mnemonic = e.target.value; },
       });
       body.appendChild(ta);
+      const ppHead = E("p", { class: "field-head" });
+      ppHead.appendChild(E("strong", { text: "Optional BIP-39 passphrase" }));
+      body.appendChild(ppHead);
+      body.appendChild(E("p", { class: "small muted", text: "Some wallets combine the seed with a passphrase to derive a different wallet. If yours does, enter it; otherwise leave it blank." }));
+      body.appendChild(buildSecretField(state.data.passphrase, (v) => { state.data.passphrase = v; }));
     },
     validate: () => {
       const m = (state.data.mnemonic || "").trim();
@@ -719,18 +732,6 @@ const phases = {
       }
       return null;
     },
-  },
-
-  // --- BIP-39 passphrase ----------------------------------------------------------------
-  passphrase: {
-    title: "Enter the BIP-39 Passphrase",
-    render: (body) => {
-      appendAll(body,
-        E("p", { text: "BIP-39 wallets optionally combine the mnemonic with a passphrase to derive a different seed. If your wallet uses one, enter it now. If not, leave it blank." }),
-      );
-      body.appendChild(buildSecretField(state.data.passphrase, (v) => { state.data.passphrase = v; }));
-    },
-    validate: () => null,
   },
 
   // --- Text secret ----------------------------------------------------------------------
@@ -750,19 +751,41 @@ const phases = {
     },
   },
 
-  // --- Backup name ----------------------------------------------------------------------
-  name: {
-    title: "Give This Backup a Name",
+  // --- Label: backup name + recovery note (both optional) -------------------------------
+  label: {
+    title: "Label These Cards (optional)",
     render: (body) => {
       appendAll(body,
-        E("p", { text: "A short name lets recipients see what this card is for at a glance (e.g. \"Alice's Ethereum wallet\" or \"Family password manager\")." }),
-        E("p", { class: "small muted", text: "Leave blank to skip — the cards still work without a name." }),
+        E("p", { text: "These appear printed on every card. Both are optional - the cards work without them." }),
       );
-      const inp = E("input", {
+      const nameHead = E("p", { class: "field-head" });
+      nameHead.appendChild(E("strong", { text: "Backup name" }));
+      body.appendChild(nameHead);
+      body.appendChild(E("p", { class: "small muted", text: "A short name so recipients see what this card is for at a glance." }));
+      body.appendChild(E("input", {
         type: "text", value: state.data.backupName,
+        placeholder: "Alice's Ethereum wallet",
         input: (e) => { state.data.backupName = e.target.value; },
-      });
-      body.appendChild(inp);
+      }));
+      const noteHead = E("p", { class: "field-head" });
+      noteHead.appendChild(E("strong", { text: "Recovery note" }));
+      body.appendChild(noteHead);
+      body.appendChild(E("p", { class: "small muted", text: "Context for the recipient (not recovery steps - the cards already print those at the bottom)." }));
+      const ex = E("div", { class: "examples-block" });
+      const ul = E("ul");
+      const examples = [
+        "“My Ethereum wallet seed phrase; ask Scott to help you recover it.”",
+        "“Bitwarden master password; vault lives at https://vw.myserver.lol”",
+        "“Family Bitcoin wallet backup - call Alice at (555) 123-4567 first.”",
+      ];
+      for (const text of examples) ul.appendChild(E("li", { text }));
+      appendAll(ex, E("strong", { text: "Examples:" }), ul);
+      body.appendChild(ex);
+      body.appendChild(E("textarea", {
+        placeholder: "(leave blank for no note)",
+        value: state.data.description,
+        input: (e) => { state.data.description = e.target.value; },
+      }));
     },
     validate: () => null,
   },
@@ -780,8 +803,8 @@ const phases = {
         E("strong", { text: "Trade-offs:" }),
         (() => {
           const ul = E("ul");
-          const li1 = E("li"); appendAll(li1, E("strong", { text: "More total shares" }), " = more redundancy if a card is lost — but also more cards an attacker might find.");
-          const li2 = E("li"); appendAll(li2, E("strong", { text: "Higher required-to-recover" }), " = harder for an attacker who finds some cards — but also harder for legitimate recipients to coordinate.");
+          const li1 = E("li"); appendAll(li1, E("strong", { text: "More total shares" }), " = more redundancy if a card is lost - but also more cards an attacker might find.");
+          const li2 = E("li"); appendAll(li2, E("strong", { text: "Higher required-to-recover" }), " = harder for an attacker who finds some cards - but also harder for legitimate recipients to coordinate.");
           const li3 = E("li", { text: "Required must be at least 2; a 1-of-N split just makes N copies." });
           appendAll(ul, li1, li2, li3);
           return ul;
@@ -797,9 +820,18 @@ const phases = {
         ["4-of-7", "wider distribution, more loss tolerance"],
         ["5-of-9", "institutional / multi-jurisdiction"],
       ];
+      appendAll(cfg, E("span", { class: "small muted", text: " (click one to use it)" }));
       for (const [c, desc] of configs) {
-        const row = E("div");
-        appendAll(row, E("span", { class: "cfg", text: c }), "— " + desc);
+        const [mStr, nStr] = c.split("-of-");
+        const row = E("button", {
+          type: "button", class: "cfg-preset",
+          click: () => {
+            state.data.threshold = parseInt(mStr, 10);
+            state.data.total = parseInt(nStr, 10);
+            render();
+          },
+        });
+        appendAll(row, E("span", { class: "cfg", text: c }), " - " + desc);
         cfg.appendChild(row);
       }
       body.appendChild(cfg);
@@ -840,7 +872,7 @@ const phases = {
     title: "Identify Each Shareholder on Their Card?",
     render: (body) => {
       appendAll(body,
-        E("p", { text: "If you say yes, each printed share will list every shareholder by name with this card's recipient marked. That helps the recipients find each other later — without it, they may not know who else holds a card." }),
+        E("p", { text: "If you say yes, each printed share will list every shareholder by name with this card's recipient marked. That helps the recipients find each other later - without it, they may not know who else holds a card." }),
       );
 
       const trade = E("div", { class: "tradeoffs" });
@@ -856,7 +888,7 @@ const phases = {
       yes.classList.add("yesno-btn"); if (state.data.useShareholderNames === true) yes.classList.add("chosen");
       yes.className = "" + (state.data.useShareholderNames === true ? "chosen" : "");
       appendAll(yes,
-        E("span", { class: "yesno-title", text: "Yes — list every shareholder on each card" }),
+        E("span", { class: "yesno-title", text: "Yes - list every shareholder on each card" }),
         E("span", { class: "yesno-desc", text: "You'll be asked for each name on the next screen." }),
       );
       yes.addEventListener("click", () => { state.data.useShareholderNames = true; render(); });
@@ -864,7 +896,7 @@ const phases = {
       const no = E("button", { type: "button" });
       no.className = state.data.useShareholderNames === false ? "chosen" : "";
       appendAll(no,
-        E("span", { class: "yesno-title", text: "No — keep cards anonymous" }),
+        E("span", { class: "yesno-title", text: "No - keep cards anonymous" }),
         E("span", { class: "yesno-desc", text: "The cards won't say who's holding what." }),
       );
       no.addEventListener("click", () => { state.data.useShareholderNames = false; render(); });
@@ -872,7 +904,7 @@ const phases = {
       appendAll(grid, yes, no);
       body.appendChild(grid);
     },
-    validate: () => state.data.useShareholderNames === null ? "Please choose yes or no — both have meaningful trade-offs." : null,
+    validate: () => state.data.useShareholderNames === null ? "Please choose yes or no - both have meaningful trade-offs." : null,
   },
 
   // --- Shareholder names ----------------------------------------------------------------
@@ -900,35 +932,6 @@ const phases = {
     validate: () => null,
   },
 
-  // --- Recovery note --------------------------------------------------------------------
-  note: {
-    title: "Add a Note to Each Card",
-    render: (body) => {
-      appendAll(body,
-        E("p", { text: "Write a short note that will appear at the top of every printed share. This is context for the recipient, not recovery instructions (the cards already include step-by-step instructions at the bottom)." }),
-      );
-      const ex = E("div", { class: "examples-block" });
-      const exHead = E("strong", { text: "Examples:" });
-      const ul = E("ul");
-      const examples = [
-        "“This is my Ethereum wallet seed phrase, ask Scott to help you recover it.”",
-        "“Bitwarden master password; vault lives at https://vw.myserver.lol”",
-        "“Backup for the family Bitcoin wallet — call Alice at (555) 123-4567 first.”",
-      ];
-      for (const text of examples) ul.appendChild(E("li", { text }));
-      appendAll(ex, exHead, ul);
-      body.appendChild(ex);
-
-      const ta = E("textarea", {
-        placeholder: "(leave blank for no note)",
-        value: state.data.description,
-        input: (e) => { state.data.description = e.target.value; },
-      });
-      body.appendChild(ta);
-    },
-    validate: () => null,
-  },
-
   // --- Confirm --------------------------------------------------------------------------
   confirm: {
     title: "Confirm",
@@ -946,7 +949,7 @@ const phases = {
       }
       appendAll(dl,
         E("dt", { text: "Shareholder names on each card" }),
-        E("dd", { text: state.data.useShareholderNames ? "Yes — names listed on every card" : "No — cards stay anonymous" }),
+        E("dd", { text: state.data.useShareholderNames ? "Yes - names listed on every card" : "No - cards stay anonymous" }),
       );
       appendAll(dl,
         E("dt", { text: "Recovery note" }),
@@ -967,8 +970,8 @@ const phases = {
   // --- Recover: card code (CHELA-XXXX-x-M-N-W broken into 5 fields) -------------------
   // Labels match the printed cards: "Card code" (whole thing), "Recovery set" (the 4-hex
   // tag), "Card #" (the per-card index). The "Required to recover / Total cards / Word
-  // count" trio doesn't have separate labels on the card itself — they're just the last
-  // three numbers in the card code — so the inline help explains the mapping.
+  // count" trio doesn't have separate labels on the card itself - they're just the last
+  // three numbers in the card code - so the inline help explains the mapping.
   "recover-header": {
     title: "Enter the Card Code",
     render: (body) => {
@@ -998,13 +1001,13 @@ const phases = {
         importBlock.appendChild(picker);
         importBlock.appendChild(pickerLabel);
         body.appendChild(importBlock);
-        body.appendChild(E("div", { class: "import-divider", text: "— or type the card by hand —" }));
+        body.appendChild(E("div", { class: "import-divider", text: "- or type the card by hand -" }));
 
         appendAll(body,
-          E("p", { text: "Find \"Card code\" on the printed card — it's the dashed line near the top, e.g. CHELA-9DA3-17-3-5-25. Card numbers are random, not positions, so they can be any value from 1 to 32. Type each part into the matching box below." }),
+          E("p", { text: "Find \"Card code\" on the printed card - it's the dashed line near the top, e.g. CHELA-9DA3-17-3-5-25. Card numbers are random, not positions, so they can be any value from 1 to 32. Type each part into the matching box below." }),
         );
 
-        // Words-only path. A share is fully recoverable from its BIP-39 words alone —
+        // Words-only path. A share is fully recoverable from its BIP-39 words alone -
         // the card code is advisory. If a card's code is missing or damaged, skip
         // straight to typing words; the words carry the card number, threshold, and
         // recovery-set nonce.
@@ -1024,7 +1027,7 @@ const phases = {
         body.appendChild(wordsOnlyP);
       } else {
         appendAll(body,
-          E("p", { text: `Now read the card code from card #${have + 1}. Most fields are locked because they have to match the first card — just type this card's number.` }),
+          E("p", { text: `Now read the card code from card #${have + 1}. Most fields are locked because they have to match the first card - just type this card's number.` }),
         );
         const counter = E("div", { class: "share-counter" });
         counter.textContent = `Recovery set ${exp.id} · ${have} of ${exp.threshold} cards entered.`;
@@ -1042,16 +1045,16 @@ const phases = {
 
       const grid = E("div", { class: "header-grid" });
       grid.appendChild(E("span", { class: "lit", text: "CHELA" }));
-      grid.appendChild(E("span", { class: "dash", text: "—" }));
+      grid.appendChild(E("span", { class: "dash", text: "-" }));
       grid.appendChild(buildHeaderField("Recovery set", "w-id", d.id, 4, locked, (v) => { d.id = v.toUpperCase(); }));
-      grid.appendChild(E("span", { class: "dash", text: "—" }));
+      grid.appendChild(E("span", { class: "dash", text: "-" }));
       // Card-number is always editable (different per card).
       grid.appendChild(buildHeaderField("Card #", "w-num", d.x, 3, false, (v) => { d.x = v.replace(/[^0-9]/g, ""); }, true));
-      grid.appendChild(E("span", { class: "dash", text: "—" }));
+      grid.appendChild(E("span", { class: "dash", text: "-" }));
       grid.appendChild(buildHeaderField("# Required", "w-num", d.threshold, 3, locked, (v) => { d.threshold = v.replace(/[^0-9]/g, ""); }));
-      grid.appendChild(E("span", { class: "dash", text: "—" }));
+      grid.appendChild(E("span", { class: "dash", text: "-" }));
       grid.appendChild(buildHeaderField("Total cards", "w-num", d.total, 3, locked, (v) => { d.total = v.replace(/[^0-9]/g, ""); }));
-      grid.appendChild(E("span", { class: "dash", text: "—" }));
+      grid.appendChild(E("span", { class: "dash", text: "-" }));
       grid.appendChild(buildHeaderField("Word count", "w-count", d.wordCount, 3, locked, (v) => { d.wordCount = v.replace(/[^0-9]/g, ""); }));
       body.appendChild(grid);
     },
@@ -1101,10 +1104,10 @@ const phases = {
       }
       if (wordsOnly) {
         appendAll(body,
-          E("p", { text: "Type every word on the card into its own box, in order. The words carry the card number, threshold, and recovery set — no card code needed." }),
+          E("p", { text: "Type every word on the card into its own box, in order. The words carry the card number, threshold, and recovery set - no card code needed." }),
           E("p", { class: "small muted", text: "Each word lights up green when it matches the BIP-39 wordlist, red if it doesn't. Tab moves to the next field." }),
         );
-        // Word-count picker — the user sets how many boxes to show. Changing it
+        // Word-count picker - the user sets how many boxes to show. Changing it
         // re-renders the grid, preserving any words already typed.
         const countWrap = E("div");
         appendAll(countWrap, E("label", { text: "How many words on this card?" }));
@@ -1231,7 +1234,7 @@ function buildWordCell(index, total) {
     updateCellState();
   });
   inp.addEventListener("keydown", (e) => {
-    // Space, comma, or Enter advance to the next field — handy when typing fast.
+    // Space, comma, or Enter advance to the next field - handy when typing fast.
     if ((e.key === " " || e.key === "," || e.key === "Enter") && index + 1 < total) {
       const raw = inp.value.trim();
       if (raw.length > 0) {
@@ -1328,7 +1331,7 @@ function renderWizardPhase(root) {
   appendAll(toolbar, back, counter);
   card.appendChild(toolbar);
 
-  // Body — title + phase render
+  // Body - title + phase render
   const body = E("div", { class: "card-body" });
   body.appendChild(E("h2", { class: "step-title", text: phase.title }));
   const phaseBody = E("div");
@@ -1351,6 +1354,7 @@ function renderWizardPhase(root) {
   }
   const continueLabel = continueButtonLabel();
   const next = E("button", { type: "button", class: "primary", text: continueLabel, click: handleContinue });
+  if (state.phase === "shareholders" && state.data.useShareholderNames === null) next.disabled = true;
   footer.appendChild(next);
   card.appendChild(footer);
 
@@ -1403,7 +1407,7 @@ function commitWordsAndRecover(forceRecover) {
   const d = state.data.headerDraft;
   const wordsOnly = state.data.wordsOnly;
   const wc = parseInt(d.wordCount, 10);
-  // A words-only share leaves the header blank — the WASM layer recovers it from the
+  // A words-only share leaves the header blank - the WASM layer recovers it from the
   // words alone. A card-code share keeps its CHELA-… label for the duplicate/mismatch
   // guards and the advisory cross-check.
   const header = wordsOnly
@@ -1416,7 +1420,7 @@ function commitWordsAndRecover(forceRecover) {
 
   const have = state.data.collected.length;
   if (wordsOnly) {
-    // No threshold to compare against — recover when the user asks, otherwise loop.
+    // No threshold to compare against - recover when the user asks, otherwise loop.
     if (forceRecover) { runRecover(); return; }
     state.data.headerDraft = { id: "", x: "", threshold: "", total: "", wordCount: String(state.data.wordsOnlyCount) };
     state.history.push("recover-words");
@@ -1463,7 +1467,7 @@ function runSplit() {
   const shareholderNames = state.data.useShareholderNames
     ? state.data.shareholderNames.map((n, i) => (n && n.trim()) ? n.trim() : `Shareholder ${i + 1}`)
     : null;
-  // Render both output formats — HTML (printable) and JSON bundle (machine-
+  // Render both output formats - HTML (printable) and JSON bundle (machine-
   // readable). The user picks which to download on the success screen; we just
   // do the work up front since both take the same input.
   let paperHtml;
@@ -1519,7 +1523,7 @@ function runRecover() {
   render();
 }
 
-// On a failed recovery, words-only mode has already consumed its draft — restore a
+// On a failed recovery, words-only mode has already consumed its draft - restore a
 // fresh card so the user can fix words or add another and try again, then surface the
 // error. (Card-code mode keeps its own draft, so it just shows the flash in place.)
 function recoverFailed(msg) {
@@ -1579,7 +1583,7 @@ async function handleHtmlImport(ev) {
         continue;
       }
       // Mismatched-set guard: every accumulated share must share the same set ID
-      // (and threshold/total) — otherwise recovery would mix unrelated splits.
+      // (and threshold/total) - otherwise recovery would mix unrelated splits.
       if (state.data.expected) {
         const e = state.data.expected;
         if (block.set_id !== e.id || block.threshold !== e.threshold || block.total !== e.total) {
@@ -1624,7 +1628,7 @@ async function handleHtmlImport(ev) {
     if (errors.length > 0) {
       // Show the first error inline so the user knows what was wrong; the rest
       // appear in the console for debugging.
-      msg += ` — first error: ${errors[0]}`;
+      msg += ` - first error: ${errors[0]}`;
       console.warn("chela import errors:", errors);
     }
     showFlash(msg, kind);
@@ -1690,7 +1694,7 @@ function renderComplete(root) {
     E("strong", { text: "HTML" }),
     document.createTextNode(": open in any browser and use "),
     E("strong", { text: "File → Print" }),
-    document.createTextNode(" (or “Save as PDF”) — one share per page. "),
+    document.createTextNode(" (or “Save as PDF”) - one share per page. "),
     E("strong", { text: "JSON" }),
     document.createTextNode(": machine-readable backup for programmatic recovery (import with "),
     E("code", { text: "chela-cli recover *.share.json" }),
