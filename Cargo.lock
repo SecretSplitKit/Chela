@@ -47,6 +47,7 @@ dependencies = [
  "chela-bip39",
  "chela-engine",
  "chela-primitives",
+ "chela-sss",
 ]
 
 [[package]]

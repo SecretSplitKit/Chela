@@ -352,11 +352,15 @@ mod tests {
     use alloc::borrow::ToOwned;
     use alloc::string::String;
     use alloc::vec::Vec;
-    use chela_engine::{split_secret, OutputMode, Share, SplitInput};
+    use chela_engine::{split_secret, split_with_rng, OutputMode, Share, SplitInput};
 
-    /// A real 3-share 2-of-3 generation; words decode and pass the CRC.
+    use crate::test_rng::SeededRng;
+
+    /// A real 3-share 2-of-3 generation; words decode and pass the CRC. Deterministic
+    /// (fixed seed) so every assertion below runs on the same share data.
     fn fixture() -> Vec<Share> {
-        split_secret(
+        let mut rng = SeededRng(0x5EED_1234_ABCD_0001);
+        split_with_rng(
             &SplitInput::Bip39 {
                 mnemonic: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
                 passphrase: "test passphrase",
@@ -364,6 +368,7 @@ mod tests {
             2,
             3,
             OutputMode::Bip39Wordlist,
+            &mut rng,
         )
         .unwrap()
     }
@@ -544,7 +549,9 @@ mod tests {
 
     #[test]
     fn corrupt_words_rejected() {
-        // Flip one Y word to a different valid wordlist index → CRC fails.
+        // Flip one Y word to a different valid wordlist index → the per-share CRC fails.
+        // Relies on the deterministic fixture: at an ambiguous body length the 11-bit CRC
+        // can miss a single-bit error ~1/2048 of the time, so random data would be flaky.
         let mut s = sample();
         s.word_indices[2] ^= 1;
         let html = wrap_block(&share_json(&s));

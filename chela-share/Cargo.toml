@@ -11,5 +11,11 @@ chela-engine = { path = "../chela-engine" }
 chela-bip39 = { path = "../chela-bip39" }
 chela-primitives = { path = "../chela-primitives" }
 
+[dev-dependencies]
+# Test-only: the import tests drive `chela_engine::split_with_rng` with a seeded
+# RandomSource so share data is deterministic (OS-random words make data-dependent
+# assertions flaky). SssError/RandomSource live here.
+chela-sss = { path = "../chela-sss" }
+
 [lints]
 workspace = true

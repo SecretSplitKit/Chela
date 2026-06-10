@@ -12,6 +12,9 @@ use html::render_share_card_html;
 pub mod export;
 pub mod import;
 pub mod json;
+
+#[cfg(test)]
+mod test_rng;
 pub use export::{
     render_combined_folder, render_json_folder, render_share_json, render_shares_json,
     share_json_filename, shares_bundle_filename, CombinedFolder, JsonFolder,
@@ -320,18 +323,22 @@ pub fn parse_shares(input: &str) -> Result<Vec<Share>, FormatError> {
 #[cfg(test)]
 mod tests {
     use super::{format_share, parse_share, parse_share_words, parse_shares, FormatError};
+    use crate::test_rng::SeededRng;
     use alloc::string::String;
-    use chela_engine::{split_secret, OutputMode, Share, SplitInput};
+    use chela_engine::{split_with_rng, OutputMode, Share, SplitInput};
 
     /// A real 2-of-3 generation. The words carry x/M/nonce; fixtures are never hand-built.
+    /// Deterministic (fixed seed) so data-dependent assertions below cannot flake.
     fn fixture() -> alloc::vec::Vec<Share> {
-        split_secret(
+        let mut rng = SeededRng(0x5EED_1234_ABCD_0001);
+        split_with_rng(
             &SplitInput::Text {
                 text: "correct horse battery staple",
             },
             2,
             3,
             OutputMode::Bip39Wordlist,
+            &mut rng,
         )
         .unwrap()
     }
@@ -516,7 +523,9 @@ mod tests {
 
     #[test]
     fn parse_share_words_rejects_corrupt_words() {
-        // Real words, single transcription flip → CRC rejects.
+        // Real words, single transcription flip → CRC rejects. Relies on the deterministic
+        // fixture: the 11-bit CRC can miss a flip ~1/2048 of the time at an ambiguous body
+        // length, so random data would make this flaky.
         let s = &fixture()[0];
         let mut idx = s.word_indices.clone();
         idx[2] ^= 1;
