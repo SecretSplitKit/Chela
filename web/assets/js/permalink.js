@@ -7,8 +7,10 @@
     fetch("assets/pinned-commit.json", { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (pin) {
-        const sha = pin.sha;
-        if (!sha) throw new Error("pinned-commit.json missing sha");
+        // Prefer a ref/tag (e.g. "main", or a release tag) over a raw SHA so the
+        // source links resolve even before a release is cut.
+        const sha = pin.tag || pin.sha;
+        if (!sha) throw new Error("pinned-commit.json missing tag/sha");
         document.querySelectorAll("a.src").forEach(function (a) {
           const file = a.getAttribute("data-file");
           const lines = a.getAttribute("data-lines");

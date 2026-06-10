@@ -43,37 +43,41 @@
       <h1>Why secret sharing exists</h1>
 
       <p>
-        How do you store a secret such that no single point of failure can either lose
-        or leak it? Back up the seed in one place and you
-        create a single point of loss - fire, flood, or theft destroys your only copy.
-        Copy it in multiple places and you create multiple points of compromise - each copy
-        is an independent risk. Secret sharing is the way out of this dilemma.
+        How do you store a secret - a wallet seed, a master password, a safe combination,
+        a short message - such that no single point of failure can either lose or leak it?
+        Keep it in one place and you create a single point of loss: fire, flood, or theft
+        destroys your only copy. Copy it to several places and you create several points of
+        compromise, each an independent risk. Secret sharing is the way out of this dilemma.
       </p>
 
       <h2>Approaches that don't work</h2>
 
-      <h3>Photocopy the seed</h3>
+      <h3>Photocopy the secret</h3>
       <p>
-        Storing the same seed in multiple locations solves the availability problem but
+        Storing the same secret in several locations solves the availability problem but
         destroys confidentiality. Each additional copy is an independent surface for
-        compromise: a house fire is avoided, but a burglary, a nosy relative, or a
-        careless executor now exposes the entire secret. You have traded one failure mode
+        compromise: a house fire is survived, but a burglary, a nosy relative, or a
+        careless executor now exposes the whole secret. You have traded one failure mode
         for another. More copies means more risk, not less - and there is no threshold
         property: one copy in the wrong hands is already a total loss.
       </p>
 
-      <h3>Split the seed in half</h3>
+      <h3>Split the secret in half</h3>
       <p>
-        Splitting a 24-word seed into two 12-word halves feels intuitive, and each half
-        is incomplete on its own. But BIP-39 seeds are uniformly random; if an attacker
-        obtains 12 words of a 24-word seed, only 12 words remain unknown. A modern GPU
-        can grind 2^128 candidates in hours, not decades. Half a seed leaves far less
-        than half the security standing.
+        Giving two people half the secret each feels intuitive, but it fails three ways.
+        First, there is no redundancy: lose either half and the secret is gone for good -
+        worse than a single copy, not better. Second, recombining the halves is an informal
+        ritual - you have to remember which half is which and in what order they join, with
+        nothing to record or verify it. Third, half a secret is rarely half-secret: for a
+        password, a combination, or a message, the missing half is often guessable from the
+        half an attacker already holds. Only a uniformly random value, like a wallet seed's
+        entropy, keeps real strength in its remaining bits - and even then, cutting it in
+        two has bought you nothing over keeping it whole in one place.
       </p>
 
       <h3>Encrypt with a passphrase</h3>
       <p>
-        Encrypting the seed backup with a strong passphrase sounds like a defense in
+        Encrypting the secret backup with a strong passphrase sounds like a defense in
         depth, but it moves the problem rather than solving it. The passphrase is now the
         single point of failure. Forget the passphrase and the backup is useless; write
         it down and you have a new unprotected secret to protect; split it across

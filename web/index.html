@@ -53,6 +53,13 @@
       </p>
 
       <p>
+        The secret can be anything short you must not lose and must not leak: a BIP-39
+        wallet seed, a master password, a safe or lock combination, two-factor recovery
+        codes, the location of an important document, even a plain message - any text up to
+        255 bytes.
+      </p>
+
+      <p>
         It runs three ways, all producing and reading the same shares: a
         <a href="split-web.html">website</a> that works entirely in your browser with
         nothing installed, an interactive <a href="split-tui.html">terminal wizard</a>, and
@@ -85,9 +92,10 @@
           seed; your hardware wallet protects day-to-day signing. Use both.
         </li>
         <li>
-          <strong>It does not hide secrets from yourself.</strong> Recovery requires M
-          shares in the same room. If you lock all shares in inaccessible places, you lock
-          yourself out too.
+          <strong>It cannot recover what you can no longer gather.</strong> chela removes
+          single points of failure, but you still have to bring M shares back together. Give
+          them to people and places you can reach again; scatter every share beyond recall
+          and you have locked yourself out.
         </li>
         <li>
           <strong>It does not defend against a coalition of M shareholders.</strong> If M
