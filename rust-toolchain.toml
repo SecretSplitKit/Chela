@@ -1,0 +1,8 @@
+# Local-dev toolchain: ensures contributors have rustfmt, clippy, and the wasm target.
+# CI and release builds also track the `stable` channel (see .github/workflows/); none of
+# them pin an exact rustc version.
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]
+targets = ["wasm32-unknown-unknown"]
+profile = "minimal"

@@ -1,0 +1,20 @@
+[package]
+name = "chela-tui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Wizard-style terminal UI for chela. Hand-rolled raw-mode + ANSI rendering, no external terminal-library dependencies."
+
+[[bin]]
+name = "chela"
+path = "src/main.rs"
+
+[dependencies]
+chela-engine = { path = "../chela-engine" }
+chela-share = { path = "../chela-share" }
+chela-bip39 = { path = "../chela-bip39" }
+chela-primitives = { path = "../chela-primitives" }
+
+[lints]
+workspace = true

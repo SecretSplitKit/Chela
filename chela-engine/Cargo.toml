@@ -1,0 +1,16 @@
+[package]
+name = "chela-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "High-level orchestration: bundle a secret (BIP39 seed+passphrase or arbitrary text), split into shares, encode share bytes to BIP-39-wordlist mnemonics; decode shares, combine, parse bundle. This is the public API consumed by chela-tui, chela-cli, and (later) chela-wasm."
+
+[dependencies]
+chela-bip39 = { path = "../chela-bip39" }
+chela-sss = { path = "../chela-sss" }
+chela-field = { path = "../chela-field" }
+chela-primitives = { path = "../chela-primitives" }
+
+[lints]
+workspace = true

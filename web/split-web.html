@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Splitting on the website - chela explained</title>
+  <link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body>
+  <header class="topbar">
+    <a href="index.html" class="brand">chela</a>
+    <a href="https://github.com/SecretSplitKit/Chela" class="repo-link">GitHub</a>
+  </header>
+
+  <div class="layout">
+    <nav class="sidebar" aria-label="Table of contents">
+      <button class="hamburger" aria-label="Toggle sidebar">≡</button>
+      <ol>
+        <li><a href="index.html">What is chela?</a></li>
+        <li><a href="chapter-1-shamir.html">Why secret sharing</a></li>
+        <li><a href="try-it-live.html">Try it live</a></li>
+        <li><span class="group">Splitting walkthrough</span>
+          <ol>
+            <li><a href="split-web.html">Website</a></li>
+            <li><a href="split-tui.html">Terminal wizard</a></li>
+            <li><a href="split-cli.html">Command line</a></li>
+          </ol>
+        </li>
+        <li><span class="group">Recovery walkthrough</span>
+          <ol>
+            <li><a href="recover-web.html">Website</a></li>
+            <li><a href="recover-tui.html">Terminal wizard</a></li>
+            <li><a href="recover-cli.html">Command line</a></li>
+          </ol>
+        </li>
+        <li><a href="the-share-format.html">The share format</a></li>
+        <li><a href="chapter-2-threat-model.html">Threat model</a></li>
+        <li><a href="chapter-3-touring.html">Tour of the codebase</a></li>
+        <li><a href="chapter-4-evaluating.html">Audit chela yourself</a></li>
+      </ol>
+    </nav>
+
+    <main class="content">
+      <h1>Splitting on the website</h1>
+
+      <p>
+        The website is a single file, <code>chela.html</code>, that runs entirely in your
+        browser. There is nothing to install and no network request: download it from the
+        release page, open it, and - ideally - turn off your network or use an offline
+        machine first. Everything below happens locally; your secret never leaves the page.
+        This walkthrough splits a wallet seed; to put it back together, see
+        <a href="recover-web.html">recovery on the website</a>. Splitting a text password is
+        the identical flow, just choose <strong>text</strong> instead of a seed phrase.
+      </p>
+
+      <p>
+        Want to click around first? <a href="try-it-live.html">Try the live app</a>
+        (demonstration only).
+      </p>
+
+      <h2>1. Choose to split</h2>
+      <p>
+        The opening screen offers two paths: split a secret into shares, or recover one from
+        shares you already hold. Pick the split path.
+      </p>
+      <figure>
+        <img class="shot" src="assets/ui/web/01-main-menu.png"
+             alt="chela website home screen with two large choices: split a secret into shares, or recover a secret from shares.">
+        <figcaption>The home screen. Start a split.</figcaption>
+      </figure>
+
+      <h2>2. Enter the secret</h2>
+      <p>
+        Type or paste your BIP-39 seed phrase. The page validates each word against the
+        wordlist and checks the mnemonic's built-in checksum as you go, so a wrong or
+        misspelled word is flagged before you continue. If your wallet uses a passphrase
+        (the "25th word"), add it in the optional field.
+      </p>
+      <figure>
+        <img class="shot" src="assets/ui/web/seed-1-enter-seed.png"
+             alt="The seed-entry screen: a grid of word inputs for a BIP-39 mnemonic plus an optional passphrase field.">
+        <figcaption>Enter the seed phrase. Each word is checked against the wordlist.</figcaption>
+      </figure>
+      <figure>
+        <img class="shot" src="assets/ui/web/seed-2-seed-filled.png"
+             alt="The seed-entry screen filled in with a complete, valid 12-word mnemonic and an optional passphrase.">
+        <figcaption>A complete, valid seed. The optional passphrase rides along with it.</figcaption>
+      </figure>
+
+      <h2>3. Set the recovery rule</h2>
+      <p>
+        Choose how many shares to make and how many it takes to recover - the
+        <strong>M-of-N</strong> rule. Presets cover the common cases (2-of-3, 3-of-5);
+        pick one or set your own. Any <code>M</code> shares recover the secret; fewer reveal
+        nothing at all.
+      </p>
+      <figure>
+        <img class="shot" src="assets/ui/web/seed-3-recovery-rule.png"
+             alt="The recovery-rule screen with presets for common M-of-N splits and controls to set a custom threshold and total.">
+        <figcaption>Choose the recovery rule: how many shares, and how many are needed.</figcaption>
+      </figure>
+      <figure>
+        <img class="shot" src="assets/ui/web/seed-4-rule-preset.png"
+             alt="The recovery-rule screen with the 3-of-5 preset selected.">
+        <figcaption>A 3-of-5 rule selected: five shares, any three recover.</figcaption>
+      </figure>
+
+      <h2>4. Decide whether to name the holders</h2>
+      <p>
+        Optionally label who gets each share. Names make the printouts easier to hand out,
+        but printing the full roster on every share means one captured share reveals the
+        whole group - so it is a deliberate trade-off, and chela makes you choose.
+      </p>
+      <figure>
+        <img class="shot" src="assets/ui/web/seed-5-shareholders.png"
+             alt="A prompt asking whether to name the people who will hold each share, with an explanation of the privacy trade-off.">
+        <figcaption>Name the holders, or keep the shares anonymous. Your call.</figcaption>
+      </figure>
+      <figure>
+        <img class="shot" src="assets/ui/web/seed-6-shareholders-chosen.png"
+             alt="The shareholders step after a choice has been made, ready to continue.">
+        <figcaption>Choice made; continue.</figcaption>
+      </figure>
+
+      <h2>5. Label the backup</h2>
+      <p>
+        Give the set a name and an optional note - "Bitcoin cold wallet," "where the deed
+        is," whatever future-you needs. This is printed at the top of every share so a
+        holder knows what they are looking at.
+      </p>
+      <figure>
+        <img class="shot" src="assets/ui/web/seed-7-label.png"
+             alt="The label screen with fields for a backup title and an optional description.">
+        <figcaption>Title and note for the backup.</figcaption>
+      </figure>
+      <figure>
+        <img class="shot" src="assets/ui/web/seed-8-label-filled.png"
+             alt="The label screen filled in with a backup title and a short description.">
+        <figcaption>Filled in. This text heads each printed share.</figcaption>
+      </figure>
+
+      <h2>6. Confirm and generate</h2>
+      <p>
+        chela shows a summary - the rule, the labels, the holders - before it generates
+        anything. Confirm, and it splits the secret locally and lays out the shares.
+      </p>
+      <figure>
+        <img class="shot" src="assets/ui/web/seed-9-confirm.png"
+             alt="A confirmation screen summarizing the split: the recovery rule, backup label, and holder choices.">
+        <figcaption>Review everything before generating.</figcaption>
+      </figure>
+      <figure>
+        <img class="shot" src="assets/ui/web/seed-10-shares-generated.png"
+             alt="The generated shares: each shown as a CHELA header and a list of BIP-39 words, with options to print.">
+        <figcaption>The finished shares. Print each one and give it to its holder.</figcaption>
+      </figure>
+
+      <div class="card">
+        <h3>Next steps</h3>
+        <p>
+          Print each share (or save the page) and distribute them. When it is time to
+          rebuild the secret, see <a href="recover-web.html">recovery on the website</a>.
+          The same split is available in the <a href="split-tui.html">terminal wizard</a>
+          and on the <a href="split-cli.html">command line</a>, and the words themselves are
+          explained in <a href="the-share-format.html">the share format</a>.
+        </p>
+      </div>
+
+      <nav class="page-nav" aria-label="Pagination">
+        <a class="prev" href="try-it-live.html">← Back: try it live</a>
+        <a class="next" href="split-tui.html">Next: splitting in the terminal wizard →</a>
+      </nav>
+    </main>
+  </div>
+
+  <script src="assets/js/nav.js" defer></script>
+  <script src="assets/js/permalink.js" defer></script>
+</body>
+</html>

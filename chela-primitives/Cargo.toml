@@ -1,0 +1,10 @@
+[package]
+name = "chela-primitives"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "From-scratch cryptographic primitives for chela: SHA-2, HMAC, PBKDF2, constant-time helpers, zeroize, and OS RNG access. No external dependencies."
+
+[lints]
+workspace = true

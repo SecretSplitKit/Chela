@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The share format - chela explained</title>
+  <link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body>
+  <header class="topbar">
+    <a href="index.html" class="brand">chela</a>
+    <a href="https://github.com/SecretSplitKit/Chela" class="repo-link">GitHub</a>
+  </header>
+
+  <div class="layout">
+    <nav class="sidebar" aria-label="Table of contents">
+      <button class="hamburger" aria-label="Toggle sidebar">≡</button>
+      <ol>
+        <li><a href="index.html">What is chela?</a></li>
+        <li><a href="chapter-1-shamir.html">Why secret sharing</a></li>
+        <li><a href="try-it-live.html">Try it live</a></li>
+        <li><span class="group">Splitting walkthrough</span>
+          <ol>
+            <li><a href="split-web.html">Website</a></li>
+            <li><a href="split-tui.html">Terminal wizard</a></li>
+            <li><a href="split-cli.html">Command line</a></li>
+          </ol>
+        </li>
+        <li><span class="group">Recovery walkthrough</span>
+          <ol>
+            <li><a href="recover-web.html">Website</a></li>
+            <li><a href="recover-tui.html">Terminal wizard</a></li>
+            <li><a href="recover-cli.html">Command line</a></li>
+          </ol>
+        </li>
+        <li><a href="the-share-format.html">The share format</a></li>
+        <li><a href="chapter-2-threat-model.html">Threat model</a></li>
+        <li><a href="chapter-3-touring.html">Tour of the codebase</a></li>
+        <li><a href="chapter-4-evaluating.html">Audit chela yourself</a></li>
+      </ol>
+    </nav>
+
+    <main class="content">
+      <h1>The share format</h1>
+
+      <p>
+        A chela share is nothing but a short header and a list of ordinary BIP-39 words -
+        the same words a wallet seed uses. Everything needed to recover lives in those
+        words; the header just restates, for humans, what the words already say. This page
+        walks the format field by field, using one running example throughout: the text
+        secret <strong>"42"</strong> split 2-of-3. It sits between
+        <a href="chapter-1-shamir.html">the theory</a> and the exact, byte-level
+        <a class="src" data-file="SPEC.md">SPEC.md</a> - which is precise enough to write a
+        compatible implementation in another language.
+      </p>
+
+      <h2>The header line</h2>
+      <p>
+        Each share is two lines of text: a dashed code, then the words. Our example's
+        <code>x = 5</code> share looks like this:
+      </p>
+      <pre><code>CHELA-02C9-5-2-3-6
+cactus float ghost shine baby talk</code></pre>
+      <p>
+        The code is a convenience, not a secret, and it only echoes what the words encode:
+      </p>
+      <pre><code>CHELA - 02C9 - 5 - 2 - 3 - 6
+        │      │   │   │   │
+        │      │   │   │   └ word count
+        │      │   │   └ total shares made (N)
+        │      │   └ shares needed to recover (M)
+        │      └ this share's coordinate (x)
+        └ recovery set id (which split this share belongs to)</code></pre>
+      <p>
+        Because all of that is inside the words too, a share still recovers if the header is
+        smudged or torn off - chela reads the words and re-derives it.
+      </p>
+
+      <h2>A share, word by word</h2>
+      <p>
+        Each word is one of 2048 BIP-39 entries, so it stands for an 11-bit number (0-2047).
+        chela packs values into those words <strong>most-significant-bit first</strong>, in
+        four sections, and no byte ever straddles a section boundary - which keeps the layout
+        checkable by hand. A share is <code>W</code> words (<code>W ≥ 4</code>):
+      </p>
+      <pre><code>word 0          [ X:5 | M:5 | reserved:1 ]   which share this is, and how many are needed
+word 1          [ recovery set id:11 ]                  the recovery set id (same on every share)
+words 2 … W-2   [ Y values ]                  this share's piece of the secret
+word W-1        [ CRC-11 ]                     a checksum that catches transcription errors</code></pre>
+      <figure>
+        <img src="assets/svg/sss-wordmap.svg"
+             alt="The six words of the x=5 share of the 42 example, grouped into the four sections: word 0 (x and M), word 1 (recovery set id), three body words, and the CRC word.">
+        <figcaption>The six words of the example's <code>x = 5</code> share, grouped into the
+        four sections. The words alone carry <code>x</code>, <code>M</code> and the
+        recovery set id; any printed label only repeats them.</figcaption>
+      </figure>
+
+      <h3>Word 0: x and M</h3>
+      <p>
+        The first word carries the two numbers recovery cannot run without: this share's own
+        number <code>x</code>, and the threshold <code>M</code>. Both are stored as offsets
+        (<code>x − 1</code> and <code>M − 2</code>) so the illegal values literally cannot be
+        written down. Bits 10..6 are the <code>x</code> field, bits 5..1 the <code>M</code>
+        field, and bit 0 is reserved and must be 0.
+      </p>
+      <pre><code>x_field = x − 1     # x in 1..32  → 0..31   (x = 0 is the secret itself, never a share)
+m_field = M − 2     # M in 2..32  → 0..30
+word0   = (x_field &lt;&lt; 6) | (m_field &lt;&lt; 1)</code></pre>
+      <p>
+        For the example's <code>x = 5</code>, <code>M = 2</code> share that is
+        <code>word0 = 4 &lt;&lt; 6 = 0x100</code> - the word <em>cactus</em>. A decoder rejects the
+        share if the reserved bit is set, or if the <code>M</code> field would decode above
+        the 32-share cap.
+      </p>
+      <figure>
+        <img src="assets/svg/sss-word0.svg"
+             alt="Word 0 split into a 5-bit X field, a 5-bit M field, and one reserved bit, for the x=5 M=2 share.">
+        <figcaption>Word 0 of the <code>x = 5</code>, <code>M = 2</code> share. Storing X and
+        M as offsets means an out-of-range value can't be encoded at all.</figcaption>
+      </figure>
+
+      <h3>Word 1: the recovery set id</h3>
+      <p>
+        Word 1 is the recovery set id: a random 11-bit value drawn once per split and written
+        identically into every share of that split - a batch stamp (the cryptographic name
+        for such a one-shot random tag is a nonce). It lets recovery confirm the shares in
+        front of it belong together and refuse a mix of two unrelated splits. It is
+        <strong>not</strong> derived from the secret, so it leaks nothing about a low-entropy
+        payload, and re-splitting the same secret draws a fresh id. In the example the draw
+        was <code>0x2C9</code> - the word <em>float</em> - identical on all three shares.
+      </p>
+
+      <h3>The body words: the secret, split</h3>
+      <p>
+        The middle words carry this share's <strong>Y values</strong> - its points on the
+        curves from <a href="chapter-1-shamir.html">the theory</a>. chela uses one curve per
+        byte of the body, all sharing the same <code>x</code> coordinates, with arithmetic
+        over GF(2&#8312;) (a 256-element field, one byte at a time, no carries between bytes).
+      </p>
+      <figure>
+        <img src="assets/svg/sss-perbyte.svg"
+             alt="One polynomial per body byte; a share is the column of each curve's value at one x.">
+        <figcaption>One curve per body byte. A share is the column of their values at a single
+        <code>x</code>; one share alone reveals nothing about the values at <code>x = 0</code>.</figcaption>
+      </figure>
+      <p>
+        What actually gets split is not the bare secret but a small <strong>body</strong>:
+      </p>
+      <pre><code>body = payload ‖ integrity-tag (1 byte) ‖ kind-byte (1 byte)</code></pre>
+      <p>
+        The payload is the raw secret bytes. For our example the secret <code>"42"</code> is
+        <code>0x34 0x32</code>, the tag is <code>0x43</code>, and the kind byte is
+        <code>0x0B</code> (Text), so the body is <code>34 32 43 0B</code>. SSS turns those four
+        body bytes into four <code>Y</code> bytes per share (the <code>x = 5</code> share's are
+        <code>61 98 BC 44</code>), which pack MSB-first, 11 bits at a time, into the body words.
+        Because 8-bit bytes and 11-bit words do not line up, the last word is zero-padded on
+        the right.
+      </p>
+      <figure>
+        <img src="assets/svg/sss-packing.svg"
+             alt="Packing four Y bytes into three 11-bit words, MSB-first, the last word zero-padded on the right.">
+        <figcaption>The <code>x = 5</code> share's <code>Y = 61 98 BC 44</code> packed
+        MSB-first: four bytes fill two whole words plus part of a third, the leftover bit is
+        zero padding.</figcaption>
+      </figure>
+
+      <h3>The kind byte: what the secret is, and where it ends</h3>
+      <p>
+        The body's last byte names the payload type. Because it is split <em>inside</em> the
+        body, a single share never reveals what kind of secret it is. It is always non-zero,
+        and the packing pads with zero bits, so once a body is reconstructed
+        <strong>the last non-zero byte is the kind byte</strong> - which is exactly how
+        recovery pins down the true length despite the 8-vs-11-bit misalignment.
+      </p>
+      <table>
+        <thead><tr><th>kind byte</th><th>meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>0x01</code>–<code>0x05</code></td><td>BIP-39 12 / 15 / 18 / 21 / 24 words (16-32 B entropy), no passphrase</td></tr>
+          <tr><td><code>0x06</code>–<code>0x0A</code></td><td>BIP-39 12 / 15 / 18 / 21 / 24 words, with passphrase</td></tr>
+          <tr><td><code>0x0B</code></td><td>Text (1-255 bytes of UTF-8)</td></tr>
+        </tbody>
+      </table>
+      <p>
+        Any value outside this table is rejected. A BIP-39 mnemonic is interchangeable with
+        its underlying entropy, so chela splits the compact entropy and re-derives the words
+        on recovery; a passphrase, if present, is appended to the entropy as UTF-8.
+      </p>
+
+      <h3>The integrity tag: catching the wrong shares</h3>
+      <p>
+        The tag is one byte: the first byte of <code>SHA-256(payload ‖ kind-byte)</code>. It
+        binds the whole secret. Combine shares from two different splits whose recovery set
+        ids happened to collide (a 1-in-2048 chance), or otherwise reconstruct a body that
+        isn't the original, and the recovered tag won't match - so recovery <em>fails</em>
+        rather than handing back a plausible-looking wrong secret. It is checked in constant
+        time.
+      </p>
+
+      <h3>The last word: the checksum</h3>
+      <p>
+        The final word is an 11-bit <strong>CRC-11/UMTS</strong> checksum (generator
+        polynomial <code>0x307</code>, no reflection, no final XOR) computed over the share's
+        decoded meaning - its <code>x</code>, <code>M</code>, the recovery set id, and its
+        body bytes. An 11-bit CRC is guaranteed to catch any error confined to a single word,
+        and a mistyped word changes at most 11 adjacent bits, so a transcription slip is
+        rejected up front instead of feeding bad bytes into the math. For the example's
+        <code>x = 5</code> share the CRC is <code>0x6EC</code> - the word <em>talk</em>, the
+        sixth and last word.
+      </p>
+
+      <h3>Why the word count is slightly ambiguous</h3>
+      <p>
+        Because 8 (bits per byte) and 11 (bits per word) only realign every 88 bits, two body
+        lengths that differ by one byte can pack into the same number of words. A single share
+        on its own therefore can't be sure of its exact byte length - it is validated (does a
+        candidate length's CRC match?) but not length-pinned. The authoritative length is
+        decided across the whole set at recovery, using the kind-byte terminator.
+      </p>
+
+      <h2>How recovery rebuilds the secret</h2>
+      <p>
+        Given any <code>M</code> shares, a decoder accepts the bare word lists and:
+      </p>
+      <pre><code>1. Per share  - decode word 0 (x, M), word 1 (recovery set id), the CRC word, and the body words;
+                reject a bad word, a set reserved bit, or a failing checksum.
+2. Agree      - every share must carry the same recovery set id, the same M, and the
+                same body-word count; need M shares with distinct x (x = 0 is refused).
+3. Rebuild    - Lagrange-interpolate at x = 0, one byte at a time, to recover the body.
+4. Terminate  - the last non-zero byte is the kind byte; it fixes the true length.
+5. Verify     - recompute the integrity tag over the payload and kind; mismatch → reject.</code></pre>
+      <figure>
+        <img src="assets/svg/sss-recover.svg"
+             alt="Recovery: two shares determine one straight line; its value at x = 0 is the secret.">
+        <figcaption>Two shares (threshold M = 2) fix the whole line; extend it back to
+        <code>x = 0</code> and read off the secret. chela does this once per body byte.</figcaption>
+      </figure>
+      <p>
+        Fewer than <code>M</code> shares leave the body information-theoretically undetermined
+        - there is nothing to brute-force. The Lagrange weights and the field arithmetic are
+        in <a href="chapter-1-shamir.html">Why secret sharing</a>; the exact bytes, the CRC
+        algorithm, the GF(2&#8312;) reduction polynomial, and full test vectors are in
+        <a class="src" data-file="SPEC.md">SPEC.md</a>.
+      </p>
+
+      <div class="card">
+        <h3>The whole example</h3>
+        <p>
+          The text <code>"42"</code>, split 2-of-3, produced the share
+          <code>CHELA-02C9-5-2-3-6 / cactus float ghost shine baby talk</code>: <em>cactus</em>
+          = word 0 (<code>x = 5</code>, <code>M = 2</code>), <em>float</em> = the recovery set
+          id, <em>ghost shine baby</em> = the body (<code>Y = 61 98 BC 44</code>), and
+          <em>talk</em> = the CRC. The other two shares share <em>float</em> and differ
+          everywhere else; any two of the three rebuild <code>"42"</code>. This and other
+          vectors are checkable in <a class="src" data-file="SPEC.md">SPEC.md</a> §8, and the
+          reasoning behind each file is in <a class="src" data-file="AUDITORS.md">AUDITORS.md</a>.
+        </p>
+      </div>
+
+      <nav class="page-nav" aria-label="Pagination">
+        <a class="prev" href="recover-cli.html">← Back: recovery on the command line</a>
+        <a class="next" href="chapter-2-threat-model.html">Next: Threat model →</a>
+      </nav>
+    </main>
+  </div>
+
+  <script src="assets/js/nav.js" defer></script>
+  <script src="assets/js/permalink.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+[package]
+name = "chela-bip39"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "BIP-0039 wordlist and entropy <-> mnemonic encoder/decoder, including the BIP-39 SHA-256 checksum. Wordlist vendored verbatim from the public BIP-0039 specification."
+
+[dependencies]
+chela-primitives = { path = "../chela-primitives" }
+
+[lints]
+workspace = true

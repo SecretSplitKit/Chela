@@ -1,0 +1,53 @@
+# chela workspace manifest.
+
+[workspace]
+resolver = "2"
+members = [
+    "chela-primitives",
+    "chela-field",
+    "chela-sss",
+    "chela-bip39",
+    "chela-share",
+    "chela-engine",
+    "chela-tui",
+    "chela-cli",
+    "chela-wasm",
+    "chela-bundle",
+]
+# chela-share/fuzz is its own workspace so libfuzzer-sys stays out of the main build.
+exclude = ["chela-share/fuzz"]
+
+[workspace.package]
+# Version: a pre-release of the 1.0.0 series. Bump the -beta.N counter for each
+# beta; drop the pre-release suffix (-> "1.0.0") to cut the final release.
+version = "1.0.0-beta.1"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/SecretSplitKit/Chela"
+rust-version = "1.89"
+
+[workspace.lints.rust]
+# Workspace default: deny `unsafe`; crates that genuinely need it opt in at the module level.
+unsafe_code = "deny"
+missing_debug_implementations = "warn"
+unreachable_pub = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+
+# Release profile: tuned for reproducibility; per-target linker flags that strip
+# nondeterministic blobs live in the release workflow as RUSTFLAGS.
+[profile.release]
+strip = "symbols"
+debug = false
+incremental = false
+codegen-units = 1
+lto = "thin"
+overflow-checks = true
+# `panic` is left at the default (`unwind`) deliberately: aborting on panic would skip
+# Drop, including the `SecretString` zeroize destructor in chela-tui. With unwind, a
+# panic still wipes secret-bearing buffers before the process exits.

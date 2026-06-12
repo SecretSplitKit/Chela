@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Audit chela yourself - chela explained</title>
+  <link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body>
+  <header class="topbar">
+    <a href="index.html" class="brand">chela</a>
+    <a href="https://github.com/SecretSplitKit/Chela" class="repo-link">GitHub</a>
+  </header>
+
+  <div class="layout">
+    <nav class="sidebar" aria-label="Table of contents">
+      <button class="hamburger" aria-label="Toggle sidebar">≡</button>
+      <ol>
+        <li><a href="index.html">What is chela?</a></li>
+        <li><a href="chapter-1-shamir.html">Why secret sharing</a></li>
+        <li><a href="try-it-live.html">Try it live</a></li>
+        <li><span class="group">Splitting walkthrough</span>
+          <ol>
+            <li><a href="split-web.html">Website</a></li>
+            <li><a href="split-tui.html">Terminal wizard</a></li>
+            <li><a href="split-cli.html">Command line</a></li>
+          </ol>
+        </li>
+        <li><span class="group">Recovery walkthrough</span>
+          <ol>
+            <li><a href="recover-web.html">Website</a></li>
+            <li><a href="recover-tui.html">Terminal wizard</a></li>
+            <li><a href="recover-cli.html">Command line</a></li>
+          </ol>
+        </li>
+        <li><a href="the-share-format.html">The share format</a></li>
+        <li><a href="chapter-2-threat-model.html">Threat model</a></li>
+        <li><a href="chapter-3-touring.html">Tour of the codebase</a></li>
+        <li><a href="chapter-4-evaluating.html">Audit chela yourself</a></li>
+      </ol>
+    </nav>
+
+    <main class="content">
+      <h1>Audit chela yourself</h1>
+
+      <p>
+        This chapter gives you the grep commands and file pointers to check chela's
+        claims yourself: no hidden dependencies, no unsafe footguns, secrets wiped after
+        use, reproducible builds.
+      </p>
+
+      <h2>Security audit</h2>
+
+      <h3>1. No third-party dependencies in the crypto core</h3>
+      <p>
+        The cryptographic core - <code>chela-primitives</code>, <code>chela-field</code>,
+        <code>chela-sss</code>, and <code>chela-bip39</code> - has zero third-party
+        crate dependencies. SHA-256, GF(2^8) arithmetic, the BIP-39 wordlist, and the OS
+        RNG wrapper are all hand-written. You can verify the dependency graph by listing
+        every crate name in the lock file and auditing each one, or by inspecting each
+        crate's <code>Cargo.toml</code> directly.
+      </p>
+      <pre><code>grep '^name = ' Cargo.lock | sort -u</code></pre>
+      <p><a class="src" data-file="Cargo.lock">Cargo.lock</a></p>
+
+      <h3>2. <code>unsafe_code</code> is denied workspace-wide</h3>
+      <p>
+        <code>#![deny(unsafe_code)]</code> is set in <code>Cargo.toml</code> at the
+        workspace level, so any crate that uses <code>unsafe</code> must explicitly
+        opt in with <code>#![allow(unsafe_code)]</code>. Exactly five files do so, each
+        for a narrowly scoped reason: the OS RNG call, the volatile-write primitive,
+        the polynomial-coefficient wipe in <code>chela-sss</code>, the TUI terminal
+        raw-mode toggle, and the WASM FFI boundary. You can enumerate all opt-in files with:
+      </p>
+      <pre><code>grep -rn 'allow(unsafe_code)' chela-*/src</code></pre>
+      <p>The five opt-in files:</p>
+      <ul>
+        <li><a class="src" data-file="chela-primitives/src/rng.rs">chela-primitives/src/rng.rs</a> - OS RNG syscall</li>
+        <li><a class="src" data-file="chela-primitives/src/zeroize.rs">chela-primitives/src/zeroize.rs</a> - volatile write for zeroizing secrets</li>
+        <li><a class="src" data-file="chela-sss/src/lib.rs">chela-sss/src/lib.rs</a> - one <code>&mut [Gf256]</code> → <code>&mut [u8]</code> cast to volatile-wipe the polynomial coefficients after <code>split</code>, sound because <code>Gf256</code> is <code>#[repr(transparent)]</code></li>
+        <li><a class="src" data-file="chela-tui/src/term.rs">chela-tui/src/term.rs</a> - terminal raw-mode ioctl</li>
+        <li><a class="src" data-file="chela-wasm/src/lib.rs">chela-wasm/src/lib.rs</a> - WASM FFI boundary</li>
+      </ul>
+
+      <h3>3. Secret-bearing buffers are wiped via <code>volatile_set</code></h3>
+      <p>
+        A compiler is permitted to optimize away a zeroing write to memory that it can
+        prove is never read afterward. chela uses <code>volatile_set</code> - a pointer
+        write through a volatile cast - to force the write to take place even when the
+        optimizer can prove the buffer is dead. You can find every location where secret
+        material is wiped with:
+      </p>
+      <pre><code>grep -rn 'volatile_set\|.zeroize()\|impl Drop' chela-*/src</code></pre>
+      <p>The primitive: <a class="src" data-file="chela-primitives/src/zeroize.rs">chela-primitives/src/zeroize.rs</a></p>
+
+      <h3>4. Pinned third-party GitHub Actions</h3>
+      <p>
+        Every GitHub Actions workflow in the repository pins third-party actions to a
+        full 40-character commit SHA rather than a mutable version tag like
+        <code>@v4</code>. A mutable tag can be silently moved by the action's maintainer
+        - a supply-chain risk. Pinning to a SHA means the action cannot change under
+        you without an explicit update to the workflow file. You can verify the pinning
+        discipline with:
+      </p>
+      <pre><code>grep -rn 'uses:' .github/workflows/</code></pre>
+      <p>
+        Every line should end with a 40-character hexadecimal SHA, not a short version
+        string. A <code>@v4</code> or <code>@main</code> reference would be a finding.
+      </p>
+
+      <h2>Packaging audit</h2>
+
+      <h3>Reproducible builds</h3>
+      <p>
+        The release workflow builds chela in a fixed, pinned environment: a specific
+        Ubuntu runner version, a pinned Rust toolchain, and a pinned set of GitHub
+        Actions. Two independent builds of the same commit produce byte-identical
+        artifacts. The workflow publishes a <code>SHA256SUMS</code> file alongside each
+        release so you can verify the artifact you downloaded matches the artifact
+        produced by CI.
+      </p>
+      <p><a class="src" data-file=".github/workflows/release.yml">.github/workflows/release.yml</a></p>
+
+      <h3>Minisign signing</h3>
+      <p>
+        Every release artifact is signed with minisign - a small tool that uses
+        Ed25519 signatures. The public key is embedded in <code>README.md</code>.
+        Before running any chela binary you download, verify its minisign signature
+        against the published public key. The exact <code>minisign</code> commands are
+        in <code>README.md</code> under "Verifying a release."
+      </p>
+      <p><a class="src" data-file="README.md">README.md</a></p>
+
+      <h3>Fuzz harness</h3>
+      <p>
+        <code>chela-share</code> includes a fuzz harness that throws arbitrary bytes
+        at the share parser - the one place chela ingests externally supplied text -
+        to prove it never panics, hangs, or over-allocates. Run it locally with
+        <code>cargo +nightly fuzz run</code>, and for longer before a release. It
+        found a panic in the share parser: the
+        <code>recovery_set_id</code> field passed the four-byte length check but a four-byte
+        non-ASCII value (e.g. <code>"\u{FFFD}W"</code>) crossed a UTF-8 char boundary
+        when sliced, crashing the byte slicer. The fix adds an <code>is_ascii()</code>
+        guard before the slice.
+      </p>
+      <p><a class="src" data-file="chela-share/fuzz/">chela-share/fuzz/</a></p>
+
+      <h2>Ground truth</h2>
+
+      <div class="card">
+        <h3><a class="src" data-file="AUDITORS.md">AUDITORS.md</a></h3>
+        <p>Full file-by-file walkthrough for human auditors. Steps through each
+        security-relevant source file, explains the design decisions, and lists the
+        exact claims the code makes and the tests that verify them.</p>
+      </div>
+
+      <div class="card">
+        <h3><a class="src" data-file="SPEC.md">SPEC.md</a></h3>
+        <p>Normative wire-format spec for reimplementations. If you want to write a
+        compatible implementation in another language, or verify that chela's output
+        matches the spec byte-for-byte, start here.</p>
+      </div>
+
+      <div class="card">
+        <h3><a class="src" data-file="AGENTS.md">AGENTS.md</a></h3>
+        <p>A map of the codebase for an AI agent - the same crate tour as this site, with
+        pointers to SPEC.md for the format and AUDITORS.md for the checks to run.</p>
+      </div>
+
+      <h2>Got an AI agent?</h2>
+
+      <p>
+        Point it at <code>AGENTS.md</code> to orient it, then <code>AUDITORS.md</code> for
+        the audit itself: each check there lists the exact command and the expected result,
+        written so an agent can run it and diff the output - the same checks described on
+        this page, in executable form.
+      </p>
+
+      <nav class="page-nav" aria-label="Pagination">
+        <a class="prev" href="chapter-3-touring.html">← Back: Tour of the codebase</a>
+        <span class="next"></span>
+      </nav>
+    </main>
+  </div>
+
+  <script src="assets/js/nav.js" defer></script>
+  <script src="assets/js/permalink.js" defer></script>
+</body>
+</html>

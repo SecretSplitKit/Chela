@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Threat model - chela explained</title>
+  <link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body>
+  <header class="topbar">
+    <a href="index.html" class="brand">chela</a>
+    <a href="https://github.com/SecretSplitKit/Chela" class="repo-link">GitHub</a>
+  </header>
+
+  <div class="layout">
+    <nav class="sidebar" aria-label="Table of contents">
+      <button class="hamburger" aria-label="Toggle sidebar">≡</button>
+      <ol>
+        <li><a href="index.html">What is chela?</a></li>
+        <li><a href="chapter-1-shamir.html">Why secret sharing</a></li>
+        <li><a href="try-it-live.html">Try it live</a></li>
+        <li><span class="group">Splitting walkthrough</span>
+          <ol>
+            <li><a href="split-web.html">Website</a></li>
+            <li><a href="split-tui.html">Terminal wizard</a></li>
+            <li><a href="split-cli.html">Command line</a></li>
+          </ol>
+        </li>
+        <li><span class="group">Recovery walkthrough</span>
+          <ol>
+            <li><a href="recover-web.html">Website</a></li>
+            <li><a href="recover-tui.html">Terminal wizard</a></li>
+            <li><a href="recover-cli.html">Command line</a></li>
+          </ol>
+        </li>
+        <li><a href="the-share-format.html">The share format</a></li>
+        <li><a href="chapter-2-threat-model.html">Threat model</a></li>
+        <li><a href="chapter-3-touring.html">Tour of the codebase</a></li>
+        <li><a href="chapter-4-evaluating.html">Audit chela yourself</a></li>
+      </ol>
+    </nav>
+
+    <main class="content">
+      <h1>What chela defends against (and what it doesn't)</h1>
+
+      <p>
+        chela has a well-defined perimeter. Inside it: the mathematics of secret sharing,
+        the encoding of shares onto shares, and the verification machinery that catches
+        transcription errors and cross-split contamination. Outside it: the machine you
+        run chela on, the browser that executes the standalone bundle, the people you hand
+        shares to, and the build pipeline that produced the binary. Knowing where the
+        perimeter falls tells you exactly where your own due diligence begins.
+      </p>
+
+      <h2>Defended attacks</h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Attack</th>
+            <th>How chela defends</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Loss or leak of fewer than M shares</td>
+            <td>
+              Information-theoretic: any subset smaller than the threshold reveals zero
+              information. Each share is one point on a polynomial of degree M−1; with
+              fewer than M points, infinitely many polynomials fit, each consistent with
+              a different secret. Fewer than M shares leave the secret
+              information-theoretically undetermined - there is nothing to brute-force.
+              <br><a class="src" data-file="chela-sss/src/lib.rs">chela-sss::split</a>
+            </td>
+          </tr>
+          <tr>
+            <td>A single transcription error on a share</td>
+            <td>
+              The last word of every share is an 11-bit CRC-11/UMTS checksum over the
+              share's decoded values - its x-coordinate, threshold, the recovery set id,
+              and its Shamir output bytes. A mistyped word changes at most 11 contiguous
+              bits, and an 11-bit CRC catches every burst error that short. Recovery
+              rejects the share with <code>ShareCorrupt</code> before any secret material
+              is assembled.
+              <br><a class="src" data-file="chela-engine/src/lib.rs">chela-engine::decode_share_bip39_v2</a>
+            </td>
+          </tr>
+          <tr>
+            <td>Shares from two unrelated splits accidentally combined</td>
+            <td>
+              Every share carries an 11-bit recovery set id (a nonce) - a random value drawn once
+              per split from the OS CSPRNG and written identically into all of that
+              split's shares. Recovery rejects any set whose nonces disagree with
+              <code>MismatchedShares</code>. The recovery set id is not a hash of the secret, so it
+              leaks nothing about a low-entropy payload, and re-splitting the same secret
+              draws a fresh recovery set id - so even those two runs are correctly refused.
+              <br><a class="src" data-file="chela-engine/src/lib.rs">chela-engine::recover_secret</a>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>Undefended attacks</h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Attack</th>
+            <th>What you should do</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Tampered build artifact</td>
+            <td>
+              Verify the minisign signature against the public key published in
+              <code>README.md</code> before running the binary. chela ships a
+              <code>SHA256SUMS</code> file and a <code>.minisig</code> for every release
+              asset; the verification commands are in <code>README.md</code>.
+            </td>
+          </tr>
+          <tr>
+            <td>Coalition of M or more shareholders</td>
+            <td>
+              Choose trusted, geographically distributed shareholders. chela cannot defend
+              against the people you handed shares to - the threshold is a quorum, not a
+              safeguard against unanimous collusion.
+            </td>
+          </tr>
+          <tr>
+            <td>Compromised host machine</td>
+            <td>
+              Run recovery on an air-gapped machine. Clipboard sniffers, swap, and
+              hibernation files are outside chela's reach. For the highest-assurance case,
+              boot from a live USB and recover on a machine that has never connected to a
+              network.
+            </td>
+          </tr>
+          <tr>
+            <td>Compromised browser running the bundle</td>
+            <td>
+              Verify the SHA-256 of the standalone <code>chela.html</code> against the
+              <code>SHA256SUMS</code> published on the release page before opening it in a
+              browser. A browser extension or injected script with access to the page can
+              read DOM content.
+            </td>
+          </tr>
+          <tr>
+            <td>Forensic recovery of cleared scrollback</td>
+            <td>
+              Use an ephemeral environment - a live USB, a throwaway VM, or a terminal
+              with scrollback disabled - for sensitive recovery sessions. Cleared terminal
+              scrollback may survive in swap, core dumps, or crash logs.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>Where chela's perimeter ends</h2>
+
+      <figure>
+        <pre class="mermaid">
+flowchart TB
+  subgraph outside["Outside chela's perimeter - you handle these"]
+    host[Compromised host machine]
+    build[Tampered build artifact]
+    coalition[Coalition of M+ shareholders]
+    browser[Compromised browser]
+  end
+  subgraph chela_perimeter["chela's perimeter - chela handles these"]
+    sss[Shamir split / combine]
+    rng[OS RNG calls]
+    enc[Share encoding &amp; checksums]
+    bip[BIP-39 codec]
+  end
+        </pre>
+        <img class="mermaid-fallback" src="assets/svg/trust-boundaries.svg"
+             alt="Two nested boxes. The outer dashed box holds threats chela cannot defend against: a compromised host machine, a tampered build artifact, a coalition of M or more shareholders, and a compromised browser. The inner solid box holds what chela handles: Shamir split and combine, OS RNG calls, share encoding and checksums, and the BIP-39 codec.">
+        <figcaption>chela's perimeter and what lives outside it.</figcaption>
+      </figure>
+
+      <nav class="page-nav" aria-label="Pagination">
+        <a class="prev" href="the-share-format.html">← Back: the share format</a>
+        <a class="next" href="chapter-3-touring.html">Next: Tour of the codebase →</a>
+      </nav>
+    </main>
+  </div>
+
+  <script src="assets/js/nav.js" defer></script>
+  <script src="assets/js/permalink.js" defer></script>
+  <script src="assets/js/mermaid-lazy.js" defer></script>
+</body>
+</html>

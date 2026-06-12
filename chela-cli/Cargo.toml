@@ -1,0 +1,19 @@
+[package]
+name = "chela-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Non-interactive CLI for chela. Reads stdin / writes stdout in a scriptable format. Used directly for automation and as the engine behind chela-tui's --noninteractive flag."
+
+[[bin]]
+name = "chela-cli"
+path = "src/main.rs"
+
+[dependencies]
+chela-engine = { path = "../chela-engine" }
+chela-share = { path = "../chela-share" }
+chela-primitives = { path = "../chela-primitives" }
+
+[lints]
+workspace = true

@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Recovery on the website - chela explained</title>
+  <link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body>
+  <header class="topbar">
+    <a href="index.html" class="brand">chela</a>
+    <a href="https://github.com/SecretSplitKit/Chela" class="repo-link">GitHub</a>
+  </header>
+
+  <div class="layout">
+    <nav class="sidebar" aria-label="Table of contents">
+      <button class="hamburger" aria-label="Toggle sidebar">≡</button>
+      <ol>
+        <li><a href="index.html">What is chela?</a></li>
+        <li><a href="chapter-1-shamir.html">Why secret sharing</a></li>
+        <li><a href="try-it-live.html">Try it live</a></li>
+        <li><span class="group">Splitting walkthrough</span>
+          <ol>
+            <li><a href="split-web.html">Website</a></li>
+            <li><a href="split-tui.html">Terminal wizard</a></li>
+            <li><a href="split-cli.html">Command line</a></li>
+          </ol>
+        </li>
+        <li><span class="group">Recovery walkthrough</span>
+          <ol>
+            <li><a href="recover-web.html">Website</a></li>
+            <li><a href="recover-tui.html">Terminal wizard</a></li>
+            <li><a href="recover-cli.html">Command line</a></li>
+          </ol>
+        </li>
+        <li><a href="the-share-format.html">The share format</a></li>
+        <li><a href="chapter-2-threat-model.html">Threat model</a></li>
+        <li><a href="chapter-3-touring.html">Tour of the codebase</a></li>
+        <li><a href="chapter-4-evaluating.html">Audit chela yourself</a></li>
+      </ol>
+    </nav>
+
+    <main class="content">
+      <h1>Recovery on the website</h1>
+
+      <p>
+        Open <code>chela.html</code> in your browser, offline if you can, and choose to
+        recover. You will enter your shares one at a time - each share's short code, then
+        its words - until you reach the threshold, and the page rebuilds the secret locally.
+        To create shares in the first place, see
+        <a href="split-web.html">splitting on the website</a>.
+      </p>
+
+      <p>
+        You can also <a href="try-it-live.html">try the live app</a> (demonstration only).
+      </p>
+
+      <h2>1. Enter the first share's code</h2>
+      <p>
+        Each share starts with a short <code>CHELA-...</code> code. Type the first share's
+        code; it tells chela which set this share belongs to, its coordinate, and how many
+        words to expect.
+      </p>
+      <figure>
+        <img class="shot" src="assets/ui/web/recover-1-card-code.png"
+             alt="The recovery screen with an empty field for the first share's CHELA code.">
+        <figcaption>Start with the first share's code.</figcaption>
+      </figure>
+      <figure>
+        <img class="shot" src="assets/ui/web/recover-2-card1-code.png"
+             alt="The recovery screen with the first share's CHELA code typed in.">
+        <figcaption>The code identifies the set and the share.</figcaption>
+      </figure>
+
+      <h2>2. Type the first share's words</h2>
+      <p>
+        Enter that share's word list. As with splitting, every word is checked against the
+        wordlist as you type, and the share's own checksum is verified - a single mistyped
+        word is caught here, not silently absorbed into a wrong secret.
+      </p>
+      <figure>
+        <img class="shot" src="assets/ui/web/recover-3-card1-words.png"
+             alt="A grid of empty word inputs for the first share.">
+        <figcaption>Type the share's words.</figcaption>
+      </figure>
+      <figure>
+        <img class="shot" src="assets/ui/web/recover-4-card1-words-filled.png"
+             alt="The first share's word grid filled in with a valid word list.">
+        <figcaption>First share complete and checksum-verified.</figcaption>
+      </figure>
+
+      <h2>3. Add the next share</h2>
+      <p>
+        Repeat for the next share: its code, then its words. chela confirms each new share
+        belongs to the same set as the first - shares from a different split are refused.
+        Keep going until you have entered the threshold number of shares.
+      </p>
+      <figure>
+        <img class="shot" src="assets/ui/web/recover-5-card2-code.png"
+             alt="The recovery screen prompting for the second share's code.">
+        <figcaption>The second share's code.</figcaption>
+      </figure>
+      <figure>
+        <img class="shot" src="assets/ui/web/recover-6-card2-code-filled.png"
+             alt="The second share's code typed in, matching the same set as the first.">
+        <figcaption>Same set, confirmed.</figcaption>
+      </figure>
+      <figure>
+        <img class="shot" src="assets/ui/web/recover-7-card2-words.png"
+             alt="An empty word grid for the second share.">
+        <figcaption>Type the second share's words.</figcaption>
+      </figure>
+      <figure>
+        <img class="shot" src="assets/ui/web/recover-8-card2-words-filled.png"
+             alt="The second share's word grid filled in and verified.">
+        <figcaption>Threshold reached: two of three shares entered.</figcaption>
+      </figure>
+
+      <h2>4. Reveal the secret</h2>
+      <p>
+        Once you reach the threshold, chela rebuilds the secret - but keeps it
+        <strong>hidden</strong> behind a Reveal button. Nothing is shown until you ask, so
+        the secret is not sitting on screen while you are still typing or if someone is
+        watching.
+      </p>
+      <figure>
+        <img class="shot" src="assets/ui/web/recover-9-recovered.png"
+             alt="The recovered secret is hidden behind a Reveal button, with a note that it stays hidden until clicked.">
+        <figcaption>Recovered, but hidden. Reveal only when no one can see your screen.</figcaption>
+      </figure>
+      <div class="card warn">
+        <p>
+          <strong>Reveal puts the secret on screen in the clear.</strong> A browser
+          extension or injected script with access to the page can read it, and so can
+          anyone looking. Reveal only on a machine and in a moment you trust. The
+          <a href="chapter-2-threat-model.html">threat model</a> covers the browser's limits.
+        </p>
+      </div>
+      <figure>
+        <img class="shot" src="assets/ui/web/recover-10-revealed.png"
+             alt="The recovered secret shown in full after clicking Reveal.">
+        <figcaption>Revealed. This is the original secret, rebuilt locally from the shares.</figcaption>
+      </figure>
+
+      <div class="card">
+        <h3>Next steps</h3>
+        <p>
+          The same recovery works in the <a href="recover-tui.html">terminal wizard</a> and
+          on the <a href="recover-cli.html">command line</a>. To understand how a handful of
+          word lists rebuilds an exact secret, read
+          <a href="the-share-format.html">the share format</a>.
+        </p>
+      </div>
+
+      <nav class="page-nav" aria-label="Pagination">
+        <a class="prev" href="split-cli.html">← Back: splitting on the command line</a>
+        <a class="next" href="recover-tui.html">Next: recovery in the terminal wizard →</a>
+      </nav>
+    </main>
+  </div>
+
+  <script src="assets/js/nav.js" defer></script>
+  <script src="assets/js/permalink.js" defer></script>
+</body>
+</html>

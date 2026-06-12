@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 240" width="100%"
+     stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <title>3-of-5 polynomial threshold</title>
+  <desc>Left panel: three points uniquely determine a single parabola. Right panel: two points leave many parabolas fitting, illustrating why M shares are needed to reconstruct the secret.</desc>
+
+  <!-- Divider -->
+  <line x1="320" y1="10" x2="320" y2="230" stroke-width="1" opacity="0.3"/>
+
+  <!-- ===== LEFT PANEL: 3 points determine a parabola ===== -->
+  <!-- Coordinate cross, center at (160, 130) -->
+  <line x1="60" y1="130" x2="270" y2="130" stroke-width="1" opacity="0.3"/>
+  <line x1="160" y1="40" x2="160" y2="220" stroke-width="1" opacity="0.3"/>
+
+  <!-- Caption -->
+  <text x="160" y="22" text-anchor="middle" fill="currentColor" stroke="none"
+        font-family="ui-monospace, SF Mono, Menlo, Consolas, monospace" font-size="11">3 points uniquely determine a parabola</text>
+
+  <!--
+    Parabola: y = a(x-h)^2 + k with vertex near center.
+    Using a parabola through:
+      P1 = (80, 170)   P2 = (160, 90)   P3 = (240, 150)
+    These three points define a unique polynomial of degree 2.
+    Parametric path from x=65 to x=265 in SVG coords.
+    The polynomial through those three points:
+      Using Lagrange interpolation (screen coords, y increases down):
+      Points in chart space: (80,170), (160,90), (240,150)
+      f(x) = 170*(x-160)(x-240)/((80-160)(80-240))
+           + 90*(x-80)(x-240)/((160-80)(160-240))
+           + 150*(x-80)(x-160)/((240-80)(240-160))
+      f(80)  = 170
+      f(160) = 90
+      f(240) = 150
+    Computing a few points for the path:
+      x=65:  t1=(65-160)(65-240)/((-80)(-160)) = (-95)(-175)/12800 = 16625/12800 ≈ 1.2988; *170 ≈ 220.8
+             t2=(65-80)(65-240)/((80)(-80)) = (-15)(-175)/(-6400) = 2625/(-6400) ≈ -0.4102; *90 ≈ -36.9
+             t3=(65-80)(65-160)/((160)(80)) = (-15)(-95)/12800 = 1425/12800 ≈ 0.1113; *150 ≈ 16.7
+             f ≈ 200.6
+      x=80:  170 (given)
+      x=120: t1=(120-160)(120-240)/((-80)(-160))=(-40)(-120)/12800=4800/12800=0.375;*170=63.75
+             t2=(120-80)(120-240)/((80)(-80))=(40)(-120)/(-6400)=-4800/-6400=0.75;*90=67.5
+             t3=(120-80)(120-160)/((160)(80))=(40)(-40)/12800=-1600/12800=-0.125;*150=-18.75
+             f=112.5
+      x=160: 90
+      x=200: t1=(200-160)(200-240)/((-80)(-160))=(40)(-40)/12800=-1600/12800=-0.125;*170=-21.25
+             t2=(200-80)(200-240)/((80)(-80))=(120)(-40)/(-6400)=-4800/-6400=0.75;*90=67.5
+             t3=(200-80)(200-160)/((160)(80))=(120)(40)/12800=4800/12800=0.375;*150=56.25
+             f=102.5
+      x=240: 150
+      x=265: t1=(265-160)(265-240)/((-80)(-160))=(105)(25)/12800=2625/12800≈0.2051;*170≈34.9
+             t2=(265-80)(265-240)/((80)(-80))=(185)(25)/(-6400)=4625/-6400≈-0.7227;*90≈-65
+             t3=(265-80)(265-160)/((160)(80))=(185)(105)/12800=19425/12800≈1.5176;*150≈227.6
+             f≈197.5
+    Path: M65,201 C80,170 120,113 160,90 C200,67 240,150 265,198
+    (using cubic bezier handles for smooth curve)
+  -->
+  <path d="M65,201 C80,170 115,112 160,90 C205,68 238,148 265,198"
+        stroke-width="2" fill="none"/>
+
+  <!-- Three marked points -->
+  <circle cx="80" cy="170" r="4" fill="currentColor" stroke="none"/>
+  <circle cx="160" cy="90" r="4" fill="currentColor" stroke="none"/>
+  <circle cx="240" cy="150" r="4" fill="currentColor" stroke="none"/>
+
+  <!-- Point labels -->
+  <text x="70" y="188" text-anchor="middle" fill="currentColor" stroke="none"
+        font-family="ui-monospace, SF Mono, Menlo, Consolas, monospace" font-size="10">P₁</text>
+  <text x="170" y="85" text-anchor="start" fill="currentColor" stroke="none"
+        font-family="ui-monospace, SF Mono, Menlo, Consolas, monospace" font-size="10">P₂</text>
+  <text x="250" y="155" text-anchor="start" fill="currentColor" stroke="none"
+        font-family="ui-monospace, SF Mono, Menlo, Consolas, monospace" font-size="10">P₃</text>
+
+  <!-- ===== RIGHT PANEL: 2 points underdetermine ===== -->
+  <!-- Coordinate cross, center at (480, 130) -->
+  <line x1="380" y1="130" x2="590" y2="130" stroke-width="1" opacity="0.3"/>
+  <line x1="480" y1="40" x2="480" y2="220" stroke-width="1" opacity="0.3"/>
+
+  <!-- Caption -->
+  <text x="480" y="22" text-anchor="middle" fill="currentColor" stroke="none"
+        font-family="ui-monospace, SF Mono, Menlo, Consolas, monospace" font-size="11">2 points: many parabolas fit</text>
+
+  <!-- The original parabola (same shape, solid) -->
+  <path d="M385,201 C400,170 435,112 480,90 C525,68 558,148 585,198"
+        stroke-width="2" fill="none"/>
+
+  <!-- Alternative parabolas passing through P1=(400,170) and P2=(480,90) but diverging -->
+  <!-- Alt 1: flatter, higher vertex -->
+  <path d="M385,175 C400,165 440,95 480,90 C520,85 555,130 585,155"
+        stroke-width="1.5" fill="none" opacity="0.25"/>
+  <!-- Alt 2: steeper, deep vertex between points -->
+  <path d="M385,215 C400,180 435,145 480,90 C525,55 555,110 585,140"
+        stroke-width="1.5" fill="none" opacity="0.25"/>
+  <!-- Alt 3: curves the other way after P2 -->
+  <path d="M385,185 C400,168 440,105 480,90 C520,75 558,175 585,220"
+        stroke-width="1.5" fill="none" opacity="0.25"/>
+
+  <!-- Only two points shown -->
+  <circle cx="400" cy="170" r="4" fill="currentColor" stroke="none"/>
+  <circle cx="480" cy="90" r="4" fill="currentColor" stroke="none"/>
+
+  <!-- Point labels -->
+  <text x="390" y="188" text-anchor="middle" fill="currentColor" stroke="none"
+        font-family="ui-monospace, SF Mono, Menlo, Consolas, monospace" font-size="10">P₁</text>
+  <text x="490" y="85" text-anchor="start" fill="currentColor" stroke="none"
+        font-family="ui-monospace, SF Mono, Menlo, Consolas, monospace" font-size="10">P₂</text>
+
+  <!-- "?" label to indicate ambiguity -->
+  <text x="540" y="230" text-anchor="middle" fill="currentColor" stroke="none"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="18" opacity="0.5">?</text>
+</svg>

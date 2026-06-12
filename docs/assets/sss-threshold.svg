@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 300" font-family="ui-sans-serif,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="Threshold three is a parabola: three shares pin it down and P of 0 is the secret 42">
+<title>Threshold three is a parabola: three shares pin it down and P of 0 is the secret 42</title>
+<rect x="0.5" y="0.5" width="459" height="299" rx="10" fill="#ffffff" stroke="#e5e7eb"/>
+<defs><marker id="ar" markerWidth="8" markerHeight="8" refX="5" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L6,3 L0,6 Z" fill="#94a3b8"/></marker></defs>
+<line x1="70" y1="250" x2="430" y2="250" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ar)"/>
+<line x1="70" y1="250" x2="70" y2="34" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ar)"/>
+<text x="428" y="270" fill="#334155" font-size="13" font-style="italic" text-anchor="end">x</text>
+<text x="62" y="30" fill="#334155" font-size="13" font-style="italic" text-anchor="middle">P(x)</text>
+<text x="70" y="270" fill="#334155" font-size="12" text-anchor="middle">0</text>
+<line x1="130.0" y1="247" x2="130.0" y2="253" stroke="#94a3b8" stroke-width="1.4"/>
+<text x="130.0" y="270" fill="#334155" font-size="12" text-anchor="middle">1</text>
+<line x1="250.0" y1="247" x2="250.0" y2="253" stroke="#94a3b8" stroke-width="1.4"/>
+<text x="250.0" y="270" fill="#334155" font-size="12" text-anchor="middle">3</text>
+<line x1="370.0" y1="247" x2="370.0" y2="253" stroke="#94a3b8" stroke-width="1.4"/>
+<text x="370.0" y="270" fill="#334155" font-size="12" text-anchor="middle">5</text>
+<polyline points="70.0,82.0 82.0,94.2 94.0,105.5 106.0,116.0 118.0,125.7 130.0,134.5 142.0,142.5 154.0,149.6 166.0,155.9 178.0,161.4 190.0,166.0 202.0,169.8 214.0,172.7 226.0,174.8 238.0,176.1 250.0,176.5 262.0,176.1 274.0,174.8 286.0,172.7 298.0,169.8 310.0,166.0 322.0,161.4 334.0,155.9 346.0,149.6 358.0,142.5 370.0,134.5 382.0,125.7 394.0,116.0 406.0,105.5" fill="none" stroke="#2563eb" stroke-width="2.6"/>
+<circle cx="130.0" cy="134.5" r="5.5" fill="#2563eb" stroke="#ffffff" stroke-width="1.6"/>
+<circle cx="250.0" cy="176.5" r="5.5" fill="#2563eb" stroke="#ffffff" stroke-width="1.6"/>
+<circle cx="370.0" cy="134.5" r="5.5" fill="#2563eb" stroke="#ffffff" stroke-width="1.6"/>
+<text x="121.0" y="125.5" fill="#334155" font-size="12" font-weight="normal" text-anchor="end">share #1</text>
+<text x="250.0" y="198.5" fill="#334155" font-size="12" font-weight="normal" text-anchor="middle">share #2</text>
+<text x="379.0" y="125.5" fill="#334155" font-size="12" font-weight="normal" text-anchor="start">share #3</text>
+<circle cx="70.0" cy="82.0" r="6.5" fill="#e11d48" stroke="#ffffff" stroke-width="1.6"/>
+<text x="80.0" y="74.0" fill="#e11d48" font-size="12" font-weight="bold" text-anchor="start">secret = 42</text>
+</svg>
