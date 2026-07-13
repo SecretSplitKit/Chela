@@ -200,6 +200,49 @@ tag is a random recovery set id, not a hash. Six things matter here:
    `chela-sss` - the engine builds the `Vec<&mut [u8]>` of slice refs that
    `chela-sss::split` needs.)
 
+### 9a. `SplitState` - the extendable-split profile (rev-3)
+
+`chela-engine` exposes an optional *extendable* split. `split_extendable` /
+`split_extendable_with_rng` behave exactly like `split` but also return a
+`SplitState`; `extend` issues further shares on that same polynomial at fresh
+CSPRNG-drawn x-coordinates. The shares are ordinary Shamir shares - the
+coefficients are drawn from the CSPRNG exactly as in § 6, merely **retained**
+instead of wiped - so SPEC.md § 3.1's information-theoretic below-threshold
+guarantee is unqualified. A decoder cannot tell an extended share from an
+original one, and the wire format (SPEC.md § 4-5) is untouched.
+
+What an auditor must check:
+
+- **`SplitState` is secret-equivalent.** Its `coeffs` field stores each
+  polynomial constant-term-first, and those constant terms *are* the body bytes
+  (`payload ‖ tag ‖ kind`). State alone reconstructs the secret - no shares
+  needed. Treat it as sensitivity-equal to the plaintext secret.
+- **Chela never persists or seals it.** `SplitState` is deliberately *not*
+  `Serialize`; its `Debug` is redacted; it wipes `coeffs` (and `issued_x`) on
+  drop via `volatile_set`. Bytes leave only through the explicit, versioned
+  `to_bytes` (a self-zeroizing `Zeroizing<Vec<u8>>`). The **embedder** MUST
+  encrypt those bytes with an AEAD (binding `rsid ‖ M` as associated data) under
+  a key at least as protected as the secret, before any persistence. Losing the
+  sealed state loses only the ability to extend; existing-share recovery and
+  full re-split are unaffected.
+- **`extend` re-derives and checks the body.** It rebuilds `body` from the
+  supplied secret and constant-time-compares it against the retained constant
+  terms (`ct_eq`), so a wrong secret/state pairing is a clean `WrongSecret`
+  error, never shares incompatible with the originals.
+- **Byte-identity is one code path.** Extended shares come from
+  `chela-sss::evaluate_shares`, which reuses the same Horner evaluation and the
+  same `encode_share_bip39_v2` path as `split`. The SSS math is *not* duplicated:
+  `split` and `split_retaining_coeffs` share one `split_inner`.
+- **Issuance caps.** `x ∈ 1..=32` hard-caps lifetime issuance at 32
+  (`ExtendError::Exhausted`); a soft cap of `3·M − 1` requires an explicit
+  `allow_over_cap` override (`ExtendError::OverSoftCap`). Extension never
+  re-randomizes - a leaked or lost-then-found card is live forever on this
+  polynomial; suspected compromise means a full re-split with a new `rsid`.
+- **`from_bytes` is fuzz-robust.** It parses a fixed 7-byte header and validates
+  every field (version, threshold, rsid range, issued count, body length,
+  distinct in-range x) with no panic on arbitrary input. SPEC.md § 8 amendment
+  sketch: "Extendable splits (optional profile)."
+
 ### 10. `chela-share/` - share text format + JSON + paper-backup HTML
 
 `parse_share` / `parse_shares` is the only parser that ingests externally-
@@ -239,6 +282,9 @@ optimiser may elide it.
 | `chela-engine::{encode_share_bip39_v2, decode_share_bip39_v2}` | CRC input (holds the Y bytes), wrapped in `Zeroizing`; decoded share `body` buffer  |
 | `chela-engine::recover_secret`            | body (recovered secret), all share payload `Vec`s                                        |
 | `chela-engine::interpret_body`            | re-encoded mnemonic `indices`                                                            |
+| `chela-engine::{split_core, extend}`      | retained coefficient matrix (`Zeroizing`, pre-sized), per-share `sb`, `extend`'s body/constant-terms scratch |
+| `chela-engine::SplitState` (`impl Drop`)  | `coeffs` (secret-equivalent) and `issued_x`; `to_bytes` returns a self-zeroizing buffer |
+| `chela-sss::{split_retaining_coeffs, evaluate_shares}` | RNG scratch and the `row`/`coeffs` field-element scratch (`wipe_coeffs`); the retained matrix is the caller's to wipe (`SplitState` does) |
 | `chela-tui::wizard`                       | input mnemonic (via `SecretString`), recovered secret on reveal-decline and post-display |
 | `chela-cli`                               | argv-derived mnemonic / passphrase / text, stdin share buffer, recovered secret. argv copies in the OS process listing still leak - CLI-inherent. |
 | `chela-wasm`                              | `SplitRequest` / `RawShare` `impl Drop`; `chela_dealloc` volatile-wipes every buffer it frees |

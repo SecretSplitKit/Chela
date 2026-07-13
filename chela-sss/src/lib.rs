@@ -67,6 +67,56 @@ pub fn split(
     out_x: &mut [u8],
     out_shares: &mut [&mut [u8]],
 ) -> Result<(), SssError> {
+    split_inner(secret, threshold, total, rng, out_x, out_shares, None)
+}
+
+/// As [`split`], but additionally *retains* the polynomial coefficients in `out_coeffs`
+/// instead of only wiping them, so a caller can later evaluate the same polynomials at
+/// fresh x-coordinates (chela's extendable-split profile - see `chela_engine::SplitState`).
+///
+/// `out_coeffs` MUST be `secret.len() * threshold` bytes. It is filled row-major, one
+/// polynomial per secret byte, each row `[constant_term, c_1, …, c_{M-1}]` with the
+/// constant term (the secret byte itself) first. The coefficients are drawn from `rng`
+/// exactly as [`split`] draws them, so shares are byte-identical between the two entry
+/// points; only the disposal of the coefficients differs.
+///
+/// The retained matrix is *secret-equivalent* - its constant terms ARE the secret. The
+/// caller owns it and MUST wipe it (chela-engine's `SplitState` does, on drop). The local
+/// scratch this function uses is still volatile-wiped before returning.
+pub fn split_retaining_coeffs(
+    secret: &[u8],
+    threshold: u8,
+    total: u8,
+    rng: &mut dyn RandomSource,
+    out_x: &mut [u8],
+    out_shares: &mut [&mut [u8]],
+    out_coeffs: &mut [u8],
+) -> Result<(), SssError> {
+    split_inner(
+        secret,
+        threshold,
+        total,
+        rng,
+        out_x,
+        out_shares,
+        Some(out_coeffs),
+    )
+}
+
+/// Shared implementation of [`split`] and [`split_retaining_coeffs`]: one polynomial per
+/// secret byte, drawn from `rng` and evaluated at the caller's x-coordinates. When
+/// `out_coeffs` is `Some`, each polynomial's coefficients (constant term first) are copied
+/// out before the local scratch is wiped; otherwise they are only wiped, exactly as the
+/// original `split` did. This keeps a single implementation of the SSS math.
+fn split_inner(
+    secret: &[u8],
+    threshold: u8,
+    total: u8,
+    rng: &mut dyn RandomSource,
+    out_x: &mut [u8],
+    out_shares: &mut [&mut [u8]],
+    mut out_coeffs: Option<&mut [u8]>,
+) -> Result<(), SssError> {
     if threshold == 0 || threshold > total {
         return Err(SssError::InvalidThreshold);
     }
@@ -78,6 +128,11 @@ pub fn split(
     }
     for share in out_shares.iter() {
         if share.len() != secret.len() {
+            return Err(SssError::InconsistentLength);
+        }
+    }
+    if let Some(c) = out_coeffs.as_deref() {
+        if c.len() != secret.len() * usize::from(threshold) {
             return Err(SssError::InconsistentLength);
         }
     }
@@ -100,13 +155,27 @@ pub fn split(
 
         let random_slice = &mut rand_buf[..m - 1];
         if let Err(e) = rng.fill_random(random_slice) {
-            // `coeffs[0]` already holds this secret byte; wipe scratch on the error path.
+            // `coeffs[0]` already holds this secret byte; wipe scratch (and any partially
+            // retained coefficients) on the error path.
             chela_primitives::zeroize::volatile_set(&mut rand_buf);
             wipe_coeffs(&mut coeffs);
+            if let Some(c) = out_coeffs.as_deref_mut() {
+                chela_primitives::zeroize::volatile_set(c);
+            }
             return Err(e);
         }
         for k in 1..m {
             coeffs[k] = Gf256(rand_buf[k - 1]);
+        }
+
+        // Retain this polynomial (constant term first) if the caller asked. The local
+        // `coeffs`/`rand_buf` scratch is still wiped below; the retained copy is the
+        // caller's to zeroize.
+        if let Some(c) = out_coeffs.as_deref_mut() {
+            let dst = &mut c[byte_idx * m..byte_idx * m + m];
+            for (slot, &coeff) in dst.iter_mut().zip(coeffs[..m].iter()) {
+                *slot = coeff.as_u8();
+            }
         }
 
         for (share_idx, &x) in out_x.iter().enumerate() {
@@ -118,6 +187,60 @@ pub fn split(
     // Polynomial coefficients and random scratch reveal the sharing polynomial; wipe.
     chela_primitives::zeroize::volatile_set(&mut rand_buf);
     wipe_coeffs(&mut coeffs);
+
+    Ok(())
+}
+
+/// Evaluate a coefficient matrix retained by [`split_retaining_coeffs`] at each
+/// x-coordinate in `xs`, writing one share per x into `out_shares`. Because it reuses the
+/// same Horner evaluation as [`split`], a share produced here at coordinate `x` is
+/// byte-identical to the one [`split`] produced at `x` from the same coefficients - this is
+/// what makes an extended share indistinguishable from an original one.
+///
+/// `coeffs` is row-major, `threshold` field elements per secret byte, constant term first
+/// (the layout [`split_retaining_coeffs`] writes). Each `out_shares[k]` (length
+/// `coeffs.len() / threshold`) receives the share at `xs[k]`. `x = 0` is rejected: it is
+/// the secret's own coordinate and would hand out the secret directly.
+pub fn evaluate_shares(
+    coeffs: &[u8],
+    threshold: u8,
+    xs: &[u8],
+    out_shares: &mut [&mut [u8]],
+) -> Result<(), SssError> {
+    if threshold == 0 {
+        return Err(SssError::InvalidThreshold);
+    }
+    let m = usize::from(threshold);
+    if coeffs.is_empty() || !coeffs.len().is_multiple_of(m) {
+        return Err(SssError::InconsistentLength);
+    }
+    let body_len = coeffs.len() / m;
+    if xs.len() != out_shares.len() {
+        return Err(SssError::InconsistentLength);
+    }
+    for share in out_shares.iter() {
+        if share.len() != body_len {
+            return Err(SssError::InconsistentLength);
+        }
+    }
+    for &x in xs {
+        if x == 0 {
+            return Err(SssError::DuplicateXCoordinate);
+        }
+    }
+
+    // Scratch for one polynomial's coefficients (constant term = a secret byte); wiped below.
+    let mut row = [Gf256::ZERO; MAX_THRESHOLD as usize];
+    for (byte_idx, src) in coeffs.chunks_exact(m).enumerate() {
+        for (slot, &b) in row[..m].iter_mut().zip(src.iter()) {
+            *slot = Gf256(b);
+        }
+        for (share_idx, &x) in xs.iter().enumerate() {
+            let v = Gf256::evaluate_polynomial(&row[..m], Gf256(x));
+            out_shares[share_idx][byte_idx] = v.as_u8();
+        }
+    }
+    wipe_coeffs(&mut row);
 
     Ok(())
 }
@@ -197,7 +320,10 @@ pub fn combine(xs: &[u8], share_values: &[&[u8]], out: &mut [u8]) -> Result<(), 
 mod tests {
     extern crate alloc;
 
-    use super::{combine, split, OsRng, RandomSource, SssError, MAX_THRESHOLD};
+    use super::{
+        combine, evaluate_shares, split, split_retaining_coeffs, OsRng, RandomSource, SssError,
+        MAX_THRESHOLD,
+    };
     use alloc::vec;
     use alloc::vec::Vec;
 
@@ -419,5 +545,103 @@ mod tests {
         let mut out = [0u8; 4];
         let err = combine(&[], &[], &mut out).unwrap_err();
         assert_eq!(err, SssError::InsufficientShares);
+    }
+
+    // Split with a fixed RNG two ways - discarding vs. retaining coefficients - and confirm
+    // the shares are byte-identical. Retention must not perturb the wire output.
+    #[test]
+    fn split_and_split_retaining_agree_on_shares() {
+        let secret = b"retain me exactly";
+        let pool = vec![0x93u8; secret.len() * (MAX_THRESHOLD as usize)];
+        let (m, n) = (3u8, 5u8);
+
+        let mut rng_a = DeterministicRng::new(&pool);
+        let (xs_a, shares_a) = do_split(secret, m, n, &mut rng_a).unwrap();
+
+        let mut rng_b = DeterministicRng::new(&pool);
+        let mut xs_b: Vec<u8> = (1..=n).collect();
+        let mut shares_b: Vec<Vec<u8>> = vec![vec![0u8; secret.len()]; n as usize];
+        let mut coeffs = vec![0u8; secret.len() * usize::from(m)];
+        {
+            let mut refs: Vec<&mut [u8]> = shares_b.iter_mut().map(Vec::as_mut_slice).collect();
+            split_retaining_coeffs(secret, m, n, &mut rng_b, &mut xs_b, &mut refs, &mut coeffs)
+                .unwrap();
+        }
+        assert_eq!(xs_a, xs_b);
+        assert_eq!(shares_a, shares_b, "retained-coeff split must match plain split");
+
+        // The retained constant terms ARE the secret bytes (row-major, M per byte).
+        for (i, &b) in secret.iter().enumerate() {
+            assert_eq!(coeffs[i * usize::from(m)], b, "constant term = secret byte {i}");
+        }
+    }
+
+    // `evaluate_shares` on the retained matrix reproduces the split's shares byte-for-byte
+    // at the same x, and produces a fresh point that Lagrange-recovers the secret.
+    #[test]
+    fn evaluate_shares_reproduces_and_extends() {
+        let secret = b"extend via retained coeffs";
+        let pool = vec![0x2fu8; secret.len() * (MAX_THRESHOLD as usize)];
+        let (m, n) = (3u8, 4u8);
+
+        let mut rng = DeterministicRng::new(&pool);
+        let mut xs: Vec<u8> = (1..=n).collect();
+        let mut shares: Vec<Vec<u8>> = vec![vec![0u8; secret.len()]; n as usize];
+        let mut coeffs = vec![0u8; secret.len() * usize::from(m)];
+        {
+            let mut refs: Vec<&mut [u8]> = shares.iter_mut().map(Vec::as_mut_slice).collect();
+            split_retaining_coeffs(secret, m, n, &mut rng, &mut xs, &mut refs, &mut coeffs)
+                .unwrap();
+        }
+
+        // Re-evaluating at the already-issued x's must reproduce the original shares exactly.
+        let mut reeval: Vec<Vec<u8>> = vec![vec![0u8; secret.len()]; n as usize];
+        {
+            let mut refs: Vec<&mut [u8]> = reeval.iter_mut().map(Vec::as_mut_slice).collect();
+            evaluate_shares(&coeffs, m, &xs, &mut refs).unwrap();
+        }
+        assert_eq!(reeval, shares, "evaluate_shares must reproduce split output");
+
+        // Issue a brand-new share at an unused x, then recover from it plus (m-1) originals.
+        let new_x = 30u8;
+        assert!(!xs.contains(&new_x));
+        let mut fresh = vec![0u8; secret.len()];
+        evaluate_shares(&coeffs, m, &[new_x], &mut [fresh.as_mut_slice()]).unwrap();
+
+        let mix_xs = [new_x, xs[0], xs[1]];
+        let mix = [fresh.clone(), shares[0].clone(), shares[1].clone()];
+        let recovered = do_combine(&mix_xs, &mix, secret.len()).unwrap();
+        assert_eq!(recovered.as_slice(), secret, "original + extended shares recover");
+    }
+
+    #[test]
+    fn evaluate_shares_rejects_zero_x_and_bad_shapes() {
+        let coeffs = [0x11u8, 0x22, 0x33, 0x44]; // body_len 2, threshold 2
+        let mut a = [0u8; 2];
+        let mut b = [0u8; 2];
+        // x = 0 would evaluate to the constant term (the secret) - rejected.
+        {
+            let mut refs: Vec<&mut [u8]> = vec![a.as_mut_slice(), b.as_mut_slice()];
+            assert_eq!(
+                evaluate_shares(&coeffs, 2, &[0, 5], &mut refs).unwrap_err(),
+                SssError::DuplicateXCoordinate
+            );
+        }
+        // out_shares length must match xs length.
+        {
+            let mut refs: Vec<&mut [u8]> = vec![a.as_mut_slice()];
+            assert_eq!(
+                evaluate_shares(&coeffs, 2, &[5, 6], &mut refs).unwrap_err(),
+                SssError::InconsistentLength
+            );
+        }
+        // coeffs length must be a multiple of threshold.
+        {
+            let mut refs: Vec<&mut [u8]> = vec![a.as_mut_slice()];
+            assert_eq!(
+                evaluate_shares(&[1, 2, 3], 2, &[5], &mut refs).unwrap_err(),
+                SssError::InconsistentLength
+            );
+        }
     }
 }

@@ -10,7 +10,8 @@ use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 
-use chela_sss::{combine, split, OsRng, RandomSource, SssError};
+use chela_primitives::zeroize::Zeroizing;
+use chela_sss::{combine, evaluate_shares, split, split_retaining_coeffs, OsRng, RandomSource, SssError};
 
 /// Public-API view of a share's payload kind. The finer-grained internal kind byte
 /// (word count, passphrase presence) is appended to the body and split with the secret.
@@ -29,6 +30,13 @@ pub enum OutputMode {
 
 const MAX_PASSPHRASE_LEN: usize = 255;
 const MAX_TEXT_LEN: usize = 255;
+
+/// Largest legitimate SSS body: 32 entropy + 255 passphrase + 1 integrity tag + 1 kind byte.
+const MAX_BODY_LEN: usize = MAX_PASSPHRASE_LEN + 32 + 2;
+
+/// Wire version of the [`SplitState`] byte layout (`SplitState::to_bytes`). Bump only on an
+/// incompatible layout change so sealed blobs from older versions are cleanly rejected.
+const STATE_VERSION: u8 = 1;
 
 /// Minimum reconstruction threshold. A threshold of 1 (any single share rebuilds the
 /// secret) gives no secret-sharing security, so the engine refuses to produce it.
@@ -218,6 +226,88 @@ impl From<chela_bip39::Bip39Error> for EngineError {
     }
 }
 
+/// Failure modes of [`extend`]. Kept separate from [`EngineError`] so adding extendable-split
+/// errors never perturbs the exhaustive `EngineError` handling in the other crates.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExtendError {
+    /// `count` was zero - nothing to issue.
+    ZeroCount,
+    /// The supplied secret does not match the retained state (wrong secret or wrong state).
+    /// The state's constant terms are the original body; a recomputed body that differs
+    /// means the caller paired the wrong secret with this state.
+    WrongSecret,
+    /// No coordinates remain: `count` exceeds the `32 − issued_count` shares still available
+    /// on this polynomial (SPEC § 3.3 caps lifetime issuance at 32).
+    Exhausted,
+    /// Issuing would push lifetime issuance past the soft cap of `3·M − 1` shares (rev-3 § 5).
+    /// Re-split with a larger threshold, or pass `allow_over_cap` to proceed deliberately.
+    OverSoftCap,
+    /// The secret could not be bundled (invalid input, too large, or a BIP-39 error).
+    Bundle(EngineError),
+    /// The underlying SSS evaluation or the RNG rejected its inputs.
+    Sss(SssError),
+}
+
+impl core::fmt::Display for ExtendError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::ZeroCount => f.write_str("count must be at least 1"),
+            Self::WrongSecret => f.write_str(
+                "the supplied secret does not match this split-state (wrong secret or wrong state file)",
+            ),
+            Self::Exhausted => f.write_str(
+                "no share coordinates remain: this split has already issued all 32 possible shares",
+            ),
+            Self::OverSoftCap => f.write_str(
+                "issuing these shares would exceed the recommended limit of 3*M-1 shares; re-split with a larger threshold, or set allow_over_cap to proceed",
+            ),
+            Self::Bundle(e) => e.fmt(f),
+            Self::Sss(e) => e.fmt(f),
+        }
+    }
+}
+
+/// Failure modes of [`SplitState::from_bytes`]. Every variant is reached without panicking on
+/// arbitrary input - the parser is fuzz-robust by construction.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StateError {
+    /// Fewer than the fixed-size header (7 bytes).
+    TooShort,
+    /// Unknown layout version - a blob from an incompatible (usually newer) build.
+    UnsupportedVersion(u8),
+    /// Threshold outside `2..=32`.
+    BadThreshold,
+    /// Recovery set id has bits set above the 11-bit range.
+    BadRecoverySetId,
+    /// Issued count above the 32-share ceiling.
+    BadIssuedCount,
+    /// Body length zero or above the 289-byte maximum.
+    BadBodyLen,
+    /// Total length does not match the header's declared field sizes.
+    LengthMismatch,
+    /// An issued x-coordinate is out of `1..=32` or repeated.
+    BadXCoordinate,
+}
+
+impl core::fmt::Display for StateError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::TooShort => f.write_str("split-state is too short to contain a header"),
+            Self::UnsupportedVersion(v) => {
+                write!(f, "unsupported split-state version {v} (this build understands {STATE_VERSION})")
+            }
+            Self::BadThreshold => f.write_str("split-state threshold is outside 2..=32"),
+            Self::BadRecoverySetId => f.write_str("split-state recovery set id exceeds 11 bits"),
+            Self::BadIssuedCount => f.write_str("split-state issued count exceeds 32"),
+            Self::BadBodyLen => f.write_str("split-state body length is zero or exceeds 289"),
+            Self::LengthMismatch => f.write_str("split-state length does not match its header"),
+            Self::BadXCoordinate => {
+                f.write_str("split-state contains an out-of-range or duplicate x-coordinate")
+            }
+        }
+    }
+}
+
 /// A single share. The words carry `x`, `threshold`, and `recovery_set_id`; `total` and `kind` are
 /// known only at split time or from an advisory header, never from a lone share's words.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -236,6 +326,167 @@ impl Drop for Share {
     fn drop(&mut self) {
         // `word_indices` is share material: a threshold of shares reconstructs the secret.
         chela_primitives::zeroize::Zeroize::zeroize(&mut self.word_indices);
+    }
+}
+
+/// Retained polynomial state for chela's *extendable-split* profile (rev-3). It pins the
+/// exact polynomials a split drew, so [`extend`] can issue further shares on the same
+/// `recovery_set_id` and threshold at fresh x-coordinates, byte-identical to what the
+/// original split would have emitted.
+///
+/// # Secret-equivalence
+///
+/// `coeffs` stores every polynomial's coefficients constant-term-first, and those constant
+/// terms ARE the secret body. State alone therefore reconstructs the secret; it is *as
+/// sensitive as the secret*. This type wipes `coeffs` on drop, hides its contents from
+/// `Debug`, and is deliberately **not** `Serialize`: persisting it is an explicit act via
+/// [`SplitState::to_bytes`], after which the embedder MUST seal the bytes under an AEAD
+/// (binding `rsid ‖ M` as associated data) with a key at least as protected as the secret.
+/// Chela never persists, encrypts, or sees a state file - sealing is the embedder's job.
+pub struct SplitState {
+    recovery_set_id: u16,
+    threshold: u8,
+    /// Every x-coordinate ever issued on this polynomial (1..=32, no duplicates), including
+    /// lost and replaced ones - the cap in [`extend`] counts all of them.
+    issued_x: Vec<u8>,
+    /// Row-major `body_len × threshold` field elements, one polynomial per body byte, each
+    /// row `[constant_term, c_1, …, c_{M-1}]`. Wiped on drop.
+    coeffs: Vec<u8>,
+}
+
+impl SplitState {
+    /// Number of body bytes (polynomials) this state pins. Invariant: `coeffs.len()` is an
+    /// exact multiple of `threshold`, and `threshold >= 2`, so this never divides by zero.
+    fn body_len(&self) -> usize {
+        self.coeffs.len() / usize::from(self.threshold)
+    }
+
+    /// The recovery set id shared by every share of this split (11-bit, word 1 on the wire).
+    pub fn recovery_set_id(&self) -> u16 {
+        self.recovery_set_id
+    }
+
+    /// The reconstruction threshold `M`.
+    pub fn threshold(&self) -> u8 {
+        self.threshold
+    }
+
+    /// How many shares have been issued over this split's lifetime (originals plus every
+    /// extension, including lost and replaced cards). The soft cap in [`extend`] is `3·M − 1`.
+    pub fn issued_count(&self) -> usize {
+        self.issued_x.len()
+    }
+
+    /// Serialize to a stable, versioned little byte layout for sealing. **Secret-equivalent:**
+    /// the caller MUST encrypt the result before persisting it (see the type docs). The
+    /// returned buffer self-zeroizes on drop.
+    ///
+    /// Layout (all multi-byte fields big-endian):
+    /// ```text
+    /// [0]      version = 1
+    /// [1]      threshold (M)
+    /// [2..4]   recovery_set_id (u16)
+    /// [4]      issued_count
+    /// [5..7]   body_len (u16)
+    /// [7..]    issued_x (issued_count bytes) ‖ coeffs (body_len * M bytes)
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// Never in practice: it panics only if the state's construction invariants were violated
+    /// (issued count > 32 or body length > 289), which both constructors ([`split_extendable`]
+    /// and [`SplitState::from_bytes`]) enforce.
+    pub fn to_bytes(&self) -> Zeroizing<Vec<u8>> {
+        let body_len = self.body_len();
+        // Exact capacity: `extend_from_slice` must never realloc and orphan an un-wiped copy
+        // of the secret-bearing coefficients.
+        let mut out = Zeroizing::new(Vec::with_capacity(
+            7 + self.issued_x.len() + self.coeffs.len(),
+        ));
+        out.push(STATE_VERSION);
+        out.push(self.threshold);
+        out.extend_from_slice(&self.recovery_set_id.to_be_bytes());
+        out.push(u8::try_from(self.issued_x.len()).expect("issued_x len <= 32 by construction"));
+        out.extend_from_slice(
+            &u16::try_from(body_len)
+                .expect("body_len <= 289 by construction")
+                .to_be_bytes(),
+        );
+        out.extend_from_slice(&self.issued_x);
+        out.extend_from_slice(&self.coeffs);
+        out
+    }
+
+    /// Parse the bytes produced by [`SplitState::to_bytes`]. Rejects any malformed or
+    /// out-of-range input without panicking (fuzz-robust). The caller is responsible for
+    /// having decrypted and integrity-checked the bytes first (the AEAD is the embedder's).
+    pub fn from_bytes(b: &[u8]) -> Result<Self, StateError> {
+        // Fixed 7-byte header: version, M, rsid(2), issued_count, body_len(2). Direct indexing
+        // is bounds-checked by this guard (matches `decode_share_parts`'s style).
+        if b.len() < 7 {
+            return Err(StateError::TooShort);
+        }
+        if b[0] != STATE_VERSION {
+            return Err(StateError::UnsupportedVersion(b[0]));
+        }
+        let threshold = b[1];
+        if !(MIN_THRESHOLD..=MAX_SHARES).contains(&threshold) {
+            return Err(StateError::BadThreshold);
+        }
+        let recovery_set_id = u16::from_be_bytes([b[2], b[3]]);
+        if recovery_set_id > 0x7FF {
+            return Err(StateError::BadRecoverySetId);
+        }
+        let issued_count = usize::from(b[4]);
+        if issued_count > usize::from(MAX_SHARES) {
+            return Err(StateError::BadIssuedCount);
+        }
+        let body_len = usize::from(u16::from_be_bytes([b[5], b[6]]));
+        if body_len == 0 || body_len > MAX_BODY_LEN {
+            return Err(StateError::BadBodyLen);
+        }
+
+        let coeffs_len = body_len * usize::from(threshold); // <= 289 * 32, no overflow
+        let expected = 7 + issued_count + coeffs_len;
+        if b.len() != expected {
+            return Err(StateError::LengthMismatch);
+        }
+
+        let issued_x = b[7..7 + issued_count].to_vec();
+        for (i, &x) in issued_x.iter().enumerate() {
+            if !(1..=MAX_SHARES).contains(&x) || issued_x[i + 1..].contains(&x) {
+                return Err(StateError::BadXCoordinate);
+            }
+        }
+        let coeffs = b[7 + issued_count..].to_vec();
+
+        Ok(Self {
+            recovery_set_id,
+            threshold,
+            issued_x,
+            coeffs,
+        })
+    }
+}
+
+impl Drop for SplitState {
+    fn drop(&mut self) {
+        use chela_primitives::zeroize::Zeroize as _;
+        // `coeffs` is secret-equivalent (its constant terms are the body); `issued_x` is not
+        // secret, but wiping it too costs nothing and matches the "wipes on drop" contract.
+        self.coeffs.zeroize();
+        self.issued_x.zeroize();
+    }
+}
+
+// Manual `Debug` (never derived): the derived form would print `coeffs`, i.e. the secret.
+impl core::fmt::Debug for SplitState {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("SplitState")
+            .field("recovery_set_id", &self.recovery_set_id)
+            .field("threshold", &self.threshold)
+            .field("issued_count", &self.issued_x.len())
+            .finish_non_exhaustive()
     }
 }
 
@@ -614,14 +865,57 @@ pub fn split_with_rng(
     mode: OutputMode,
     rng: &mut dyn RandomSource,
 ) -> Result<Vec<Share>, EngineError> {
+    let (shares, _state) = split_core(input, threshold, total, mode, rng, false)?;
+    Ok(shares)
+}
+
+/// As [`split_secret`], but also returns the retained polynomial state so further shares can
+/// be issued later on the same polynomial (same `recovery_set_id`, same threshold) via
+/// [`extend`]. The returned shares are exactly those [`split_secret`] would produce; uses the
+/// OS RNG. The [`SplitState`] is secret-equivalent and MUST be sealed before persistence -
+/// see the [`SplitState`] docs.
+pub fn split_extendable(
+    input: &SplitInput<'_>,
+    threshold: u8,
+    total: u8,
+    mode: OutputMode,
+) -> Result<(Vec<Share>, SplitState), EngineError> {
+    split_extendable_with_rng(input, threshold, total, mode, &mut OsRng)
+}
+
+/// As [`split_extendable`] but with an injectable RNG for testing.
+pub fn split_extendable_with_rng(
+    input: &SplitInput<'_>,
+    threshold: u8,
+    total: u8,
+    mode: OutputMode,
+    rng: &mut dyn RandomSource,
+) -> Result<(Vec<Share>, SplitState), EngineError> {
+    let (shares, state) = split_core(input, threshold, total, mode, rng, true)?;
+    // `retain = true` always yields `Some`; surface the broken invariant as an error rather
+    // than panicking (keeps this pub fn panic-free).
+    let state = state.ok_or(EngineError::InvalidInput("internal: split-state not retained"))?;
+    Ok((shares, state))
+}
+
+/// Shared body of [`split_with_rng`] and [`split_extendable_with_rng`]. When `retain` is set,
+/// the polynomial coefficients are captured into a [`SplitState`]; otherwise the behavior -
+/// RNG consumption, share bytes, wire encoding - is byte-identical to the original `split`.
+fn split_core(
+    input: &SplitInput<'_>,
+    threshold: u8,
+    total: u8,
+    mode: OutputMode,
+    rng: &mut dyn RandomSource,
+    retain: bool,
+) -> Result<(Vec<Share>, Option<SplitState>), EngineError> {
     if threshold < MIN_THRESHOLD {
         return Err(EngineError::InvalidInput("threshold must be at least 2"));
     }
     // `body` is the full plaintext secret plus the appended kind byte, already `Zeroizing` so it
     // wipes on every exit, including the BundleTooLarge and split-error early returns below.
-    let (body, kind_byte) = build_bundle_v2(input)?;
-    if body.len() > MAX_PASSPHRASE_LEN + 32 + 2 {
-        // 32 entropy + 255 passphrase + 1 integrity tag + 1 kind byte is the largest legitimate body.
+    let (body, _kind_byte) = build_bundle_v2(input)?;
+    if body.len() > MAX_BODY_LEN {
         return Err(EngineError::BundleTooLarge);
     }
     if total > MAX_SHARES {
@@ -632,13 +926,36 @@ pub fn split_with_rng(
     let mut xs = sample_distinct_x(total, rng)?;
 
     let mut share_bytes: Vec<Vec<u8>> = vec![vec![0u8; body.len()]; total as usize];
+
+    // Retained coefficient matrix (body_len × M), only for the extendable path. Pre-sized to its
+    // exact length and wrapped in `Zeroizing` so it never reallocs (orphaning secret material)
+    // and always wipes on an early return; the non-retaining path allocates nothing.
+    let mut coeffs: Zeroizing<Vec<u8>> = Zeroizing::new(if retain {
+        vec![0u8; body.len() * usize::from(threshold)]
+    } else {
+        Vec::new()
+    });
+
     let split_result = {
         let mut share_refs: Vec<&mut [u8]> =
             share_bytes.iter_mut().map(Vec::as_mut_slice).collect();
-        split(&body[..], threshold, total, rng, &mut xs, &mut share_refs)
+        if retain {
+            split_retaining_coeffs(
+                &body[..],
+                threshold,
+                total,
+                rng,
+                &mut xs,
+                &mut share_refs,
+                &mut coeffs[..],
+            )
+        } else {
+            split(&body[..], threshold, total, rng, &mut xs, &mut share_refs)
+        }
     };
     if let Err(e) = split_result {
         // share_bytes holds partial share material after a mid-split RNG failure; wipe it.
+        // `coeffs` wipes itself on drop.
         for sb in &mut share_bytes {
             chela_primitives::zeroize::Zeroize::zeroize(sb);
         }
@@ -667,7 +984,160 @@ pub fn split_with_rng(
             word_indices,
         });
     }
-    let _ = kind_byte; // already inside `body`
+
+    let state = if retain {
+        // Move the coefficient bytes into the state (same allocation, no un-wiped copy); the
+        // now-empty `coeffs` wrapper drops harmlessly. `xs` are the coordinates just issued.
+        Some(SplitState {
+            recovery_set_id,
+            threshold,
+            issued_x: xs,
+            coeffs: core::mem::take(&mut *coeffs),
+        })
+    } else {
+        None
+    };
+
+    Ok((out, state))
+}
+
+/// Draw `count` distinct x-coordinates in `1..=32` from the CSPRNG that are not already in
+/// `issued` (rejection sampling, without replacement across the split's lifetime). The caller
+/// MUST ensure `count <= 32 - issued.len()` so this terminates.
+fn sample_fresh_x(
+    count: u8,
+    issued: &[u8],
+    rng: &mut dyn RandomSource,
+) -> Result<Vec<u8>, SssError> {
+    let count = usize::from(count);
+    let mut fresh: Vec<u8> = Vec::with_capacity(count);
+    let mut byte = [0u8; 1];
+    while fresh.len() < count {
+        rng.fill_random(&mut byte)?;
+        let x = (byte[0] & 0x1F) + 1; // field 0..31 -> x 1..32
+        if !issued.contains(&x) && !fresh.contains(&x) {
+            fresh.push(x);
+        }
+    }
+    Ok(fresh)
+}
+
+/// The soft-cap ceiling for a threshold: `3·M − 1` lifetime shares (rev-3 § 5). Beyond it any
+/// recovering coalition would be below one third of outstanding shares.
+fn soft_cap(threshold: u8) -> usize {
+    usize::from(threshold) * 3 - 1
+}
+
+/// Issue `count` additional shares on the polynomial pinned by `state`, at fresh CSPRNG-drawn
+/// x-coordinates from `1..=32` not already issued. Uses the OS RNG; the returned shares are
+/// byte-identical to what the original split would have emitted at those coordinates.
+///
+/// `input` is the same secret the split was made from: [`extend`] recomputes the body and
+/// checks it against the state's retained constant terms, so a wrong secret/state pairing is a
+/// clean [`ExtendError::WrongSecret`] rather than shares incompatible with the originals.
+///
+/// Issuance is capped: past the soft cap of `3·M − 1` lifetime shares this returns
+/// [`ExtendError::OverSoftCap`] unless `allow_over_cap` is set; there is a hard ceiling of 32
+/// ([`ExtendError::Exhausted`]). On success the new coordinates are recorded in `state`.
+pub fn extend(
+    state: &mut SplitState,
+    input: &SplitInput<'_>,
+    count: u8,
+    allow_over_cap: bool,
+    mode: OutputMode,
+) -> Result<Vec<Share>, ExtendError> {
+    extend_with_rng(state, input, count, allow_over_cap, mode, &mut OsRng)
+}
+
+/// As [`extend`] but with an injectable RNG for testing.
+pub fn extend_with_rng(
+    state: &mut SplitState,
+    input: &SplitInput<'_>,
+    count: u8,
+    allow_over_cap: bool,
+    mode: OutputMode,
+    rng: &mut dyn RandomSource,
+) -> Result<Vec<Share>, ExtendError> {
+    if count == 0 {
+        return Err(ExtendError::ZeroCount);
+    }
+
+    // Recompute the body from the supplied secret and constant-time-compare it against the
+    // retained constant terms. This catches a wrong secret/state pairing (the embedder's AEAD
+    // will usually catch it first; this also serves unsealed in-memory callers).
+    let (body, _kind_byte) = build_bundle_v2(input).map_err(ExtendError::Bundle)?;
+    let body_len = state.body_len();
+    let m = usize::from(state.threshold);
+    if body.len() != body_len {
+        return Err(ExtendError::WrongSecret);
+    }
+    let mut constants = Zeroizing::new(vec![0u8; body_len]);
+    for (slot, row) in constants.iter_mut().zip(state.coeffs.chunks_exact(m)) {
+        *slot = row[0]; // constant term = original body byte
+    }
+    if !chela_primitives::ct::ct_eq(&body[..], &constants[..]) {
+        return Err(ExtendError::WrongSecret);
+    }
+
+    // Hard cap: never exceed 32 lifetime coordinates. Check before drawing so exhaustion is a
+    // clean error, not an infinite rejection loop.
+    let issued = state.issued_x.len();
+    let available = usize::from(MAX_SHARES) - issued;
+    if usize::from(count) > available {
+        return Err(ExtendError::Exhausted);
+    }
+
+    // Soft cap: require an explicit override once lifetime issuance would pass `3·M − 1`.
+    let projected = issued + usize::from(count);
+    if projected > soft_cap(state.threshold) && !allow_over_cap {
+        return Err(ExtendError::OverSoftCap);
+    }
+
+    let new_xs = sample_fresh_x(count, &state.issued_x, rng).map_err(ExtendError::Sss)?;
+
+    // Evaluate the retained polynomials at the new coordinates - byte-identical to split time.
+    let mut share_bytes: Vec<Vec<u8>> = vec![vec![0u8; body_len]; usize::from(count)];
+    let eval_result = {
+        let mut refs: Vec<&mut [u8]> = share_bytes.iter_mut().map(Vec::as_mut_slice).collect();
+        evaluate_shares(&state.coeffs, state.threshold, &new_xs, &mut refs)
+    };
+    if let Err(e) = eval_result {
+        for sb in &mut share_bytes {
+            chela_primitives::zeroize::Zeroize::zeroize(sb);
+        }
+        return Err(ExtendError::Sss(e));
+    }
+
+    let coarse_kind = match input {
+        SplitInput::Bip39 { .. } => PayloadKind::Bip39,
+        SplitInput::Text { .. } => PayloadKind::Text,
+    };
+
+    let mut out = Vec::with_capacity(usize::from(count));
+    for (idx, mut sb) in share_bytes.into_iter().enumerate() {
+        let x = new_xs[idx];
+        let word_indices = match mode {
+            OutputMode::Bip39Wordlist => {
+                encode_share_bip39_v2(&sb, state.recovery_set_id, x, state.threshold)
+            }
+        };
+        chela_primitives::zeroize::Zeroize::zeroize(&mut sb);
+        out.push(Share {
+            scheme: mode,
+            x,
+            threshold: state.threshold,
+            recovery_set_id: state.recovery_set_id,
+            // `total` (= N) is not carried in the words and is no longer well-defined once a
+            // split grows; a decoder never needs it.
+            total: None,
+            kind: Some(coarse_kind),
+            word_indices,
+        });
+    }
+
+    // Commit the new coordinates only after every share issued successfully.
+    state.issued_x.extend_from_slice(&new_xs);
+
     Ok(out)
 }
 
@@ -739,9 +1209,12 @@ pub fn recover_secret(shares: &[Share]) -> Result<RecoveredSecret, EngineError> 
 #[cfg(test)]
 mod tests {
     use super::{
-        recover_secret, split_secret, split_with_rng, OutputMode, RecoveredSecret, SplitInput,
+        extend, extend_with_rng, recover_secret, split_extendable, split_extendable_with_rng,
+        split_secret, split_with_rng, ExtendError, OutputMode, RecoveredSecret, SplitInput,
+        SplitState, StateError,
     };
     use alloc::string::String;
+    use alloc::vec;
     use alloc::vec::Vec;
     use chela_sss::{RandomSource, SssError};
 
@@ -1239,5 +1712,345 @@ mod tests {
             OutputMode::Bip39Wordlist,
         );
         assert!(result.is_err());
+    }
+
+    // ---- Extendable-split profile (rev-3) ----------------------------------------------
+
+    const EXT_TEXT: &str = "extendable split secret";
+
+    fn ext_input() -> SplitInput<'static> {
+        SplitInput::Text { text: EXT_TEXT }
+    }
+
+    // Recover from a chosen subset of shares (cloning, since recovery borrows).
+    fn recover_subset(shares: &[super::Share], idxs: &[usize]) -> RecoveredSecret {
+        let subset: Vec<super::Share> = idxs.iter().map(|&i| shares[i].clone()).collect();
+        recover_secret(&subset).unwrap()
+    }
+
+    fn assert_is_ext_text(rec: &RecoveredSecret) {
+        match rec {
+            RecoveredSecret::Text { text } => assert_eq!(text, EXT_TEXT),
+            RecoveredSecret::Bip39 { .. } => panic!("expected text"),
+        }
+    }
+
+    #[test]
+    fn split_extendable_shares_recover_like_a_plain_split() {
+        let (shares, state) =
+            split_extendable(&ext_input(), 2, 3, OutputMode::Bip39Wordlist).unwrap();
+        assert_eq!(shares.len(), 3);
+        assert_eq!(state.issued_count(), 3);
+        assert_eq!(state.threshold(), 2);
+        for s in &shares {
+            assert_eq!(s.recovery_set_id, state.recovery_set_id());
+            assert!((1..=32).contains(&s.x));
+        }
+        assert_is_ext_text(&recover_subset(&shares, &[0, 1]));
+    }
+
+    #[test]
+    fn mixed_original_and_extended_shares_recover() {
+        let (orig, mut state) =
+            split_extendable(&ext_input(), 3, 3, OutputMode::Bip39Wordlist).unwrap();
+        // 3 + 2 = 5 issued, soft cap for M=3 is 8, so no override needed.
+        let extra = extend(&mut state, &ext_input(), 2, false, OutputMode::Bip39Wordlist).unwrap();
+        assert_eq!(extra.len(), 2);
+        assert_eq!(state.issued_count(), 5);
+
+        // Every share shares the split's rsid/threshold; x's are all distinct.
+        let mut all = orig.clone();
+        all.extend(extra.iter().cloned());
+        let mut xs: Vec<u8> = all.iter().map(|s| s.x).collect();
+        xs.sort_unstable();
+        xs.dedup();
+        assert_eq!(xs.len(), 5, "all issued x are distinct");
+        for s in &all {
+            assert_eq!(s.recovery_set_id, state.recovery_set_id());
+            assert_eq!(s.threshold, 3);
+        }
+
+        // A quorum mixing originals and extended shares recovers the secret.
+        assert_is_ext_text(&recover_subset(&all, &[0, 3, 4])); // 1 original + 2 extended
+        assert_is_ext_text(&recover_subset(&all, &[1, 2, 3])); // 2 originals + 1 extended
+    }
+
+    #[test]
+    fn every_m_subset_recovers_after_extension() {
+        // Split 2-of-3, extend by 2 -> 5 lifetime shares on one polynomial; every 2-subset of
+        // the full set must recover (the repo's round_trip_for_every_subset pattern).
+        let (orig, mut state) =
+            split_extendable(&ext_input(), 2, 3, OutputMode::Bip39Wordlist).unwrap();
+        let extra = extend(&mut state, &ext_input(), 2, false, OutputMode::Bip39Wordlist).unwrap();
+        let mut all = orig.clone();
+        all.extend(extra.iter().cloned());
+        assert_eq!(all.len(), 5);
+
+        let n = all.len();
+        for mask in 0u32..(1u32 << n) {
+            if mask.count_ones() != 2 {
+                continue;
+            }
+            let idxs: Vec<usize> = (0..n).filter(|i| mask & (1 << i) != 0).collect();
+            assert_is_ext_text(&recover_subset(&all, &idxs));
+        }
+    }
+
+    #[test]
+    fn extended_share_is_byte_identical_to_split_output() {
+        // Re-evaluating the retained polynomial at any *already issued* x must reproduce that
+        // original share byte-for-byte - proving the state pins the exact split polynomial, and
+        // hence that a later share at a fresh x is what split would have emitted there.
+        let (orig, mut state) =
+            split_extendable(&ext_input(), 3, 4, OutputMode::Bip39Wordlist).unwrap();
+        let m = usize::from(state.threshold);
+        let body_len = state.coeffs.len() / m;
+        for (i, &x) in state.issued_x.clone().iter().enumerate() {
+            let mut sb = vec![0u8; body_len];
+            chela_sss::evaluate_shares(&state.coeffs, state.threshold, &[x], &mut [sb.as_mut_slice()])
+                .unwrap();
+            let words = super::encode_share_bip39_v2(&sb, state.recovery_set_id, x, state.threshold);
+            assert_eq!(
+                words, orig[i].word_indices,
+                "re-evaluated share at issued x={x} matches original"
+            );
+        }
+
+        // And a freshly extended share equals an independent evaluate+encode at its own x.
+        let extra = extend(&mut state, &ext_input(), 1, false, OutputMode::Bip39Wordlist).unwrap();
+        let e = &extra[0];
+        let mut sb = vec![0u8; body_len];
+        chela_sss::evaluate_shares(&state.coeffs, state.threshold, &[e.x], &mut [sb.as_mut_slice()])
+            .unwrap();
+        let words = super::encode_share_bip39_v2(&sb, state.recovery_set_id, e.x, state.threshold);
+        assert_eq!(words, e.word_indices);
+    }
+
+    #[test]
+    fn extend_rejects_wrong_secret() {
+        let (_orig, mut state) =
+            split_extendable(&ext_input(), 2, 3, OutputMode::Bip39Wordlist).unwrap();
+
+        // Same length, different content -> constant terms differ.
+        let wrong_text = "Extendable split secret"; // capital E; same byte length
+        assert_eq!(wrong_text.len(), EXT_TEXT.len());
+        let wrong_same_len = SplitInput::Text { text: wrong_text };
+        assert_eq!(
+            extend(&mut state, &wrong_same_len, 1, false, OutputMode::Bip39Wordlist),
+            Err(ExtendError::WrongSecret)
+        );
+
+        // Different length -> body-length mismatch.
+        let wrong_len = SplitInput::Text { text: "short" };
+        assert_eq!(
+            extend(&mut state, &wrong_len, 1, false, OutputMode::Bip39Wordlist),
+            Err(ExtendError::WrongSecret)
+        );
+
+        // The correct secret still extends, and the count is untouched by the rejections above.
+        assert_eq!(state.issued_count(), 3);
+        let ok = extend(&mut state, &ext_input(), 1, false, OutputMode::Bip39Wordlist).unwrap();
+        assert_eq!(ok.len(), 1);
+        assert_eq!(state.issued_count(), 4);
+    }
+
+    #[test]
+    fn extend_enforces_soft_cap_and_override() {
+        // M=2 -> soft cap 3*2-1 = 5.
+        let (_orig, mut state) =
+            split_extendable(&ext_input(), 2, 3, OutputMode::Bip39Wordlist).unwrap();
+        assert_eq!(state.issued_count(), 3);
+
+        // 3 + 3 = 6 > 5 without override -> distinguishable OverSoftCap, nothing issued.
+        assert_eq!(
+            extend(&mut state, &ext_input(), 3, false, OutputMode::Bip39Wordlist),
+            Err(ExtendError::OverSoftCap)
+        );
+        assert_eq!(state.issued_count(), 3, "a rejected extend issues nothing");
+
+        // 3 + 2 = 5 == cap -> allowed without override.
+        extend(&mut state, &ext_input(), 2, false, OutputMode::Bip39Wordlist).unwrap();
+        assert_eq!(state.issued_count(), 5);
+
+        // 5 + 1 = 6 > 5 -> requires override; with it, succeeds.
+        assert_eq!(
+            extend(&mut state, &ext_input(), 1, false, OutputMode::Bip39Wordlist),
+            Err(ExtendError::OverSoftCap)
+        );
+        extend(&mut state, &ext_input(), 1, true, OutputMode::Bip39Wordlist).unwrap();
+        assert_eq!(state.issued_count(), 6);
+    }
+
+    #[test]
+    fn extend_hard_caps_at_x_exhaustion() {
+        // Fill 30 of 32 coordinates, then ask for 3 more: only 2 remain -> Exhausted.
+        let (_orig, mut state) =
+            split_extendable(&ext_input(), 2, 30, OutputMode::Bip39Wordlist).unwrap();
+        assert_eq!(state.issued_count(), 30);
+        assert_eq!(
+            extend(&mut state, &ext_input(), 3, true, OutputMode::Bip39Wordlist),
+            Err(ExtendError::Exhausted)
+        );
+        // The 2 that fit still issue (with override, since we're far past the soft cap).
+        let last = extend(&mut state, &ext_input(), 2, true, OutputMode::Bip39Wordlist).unwrap();
+        assert_eq!(last.len(), 2);
+        assert_eq!(state.issued_count(), 32);
+        // Now truly exhausted: not one more.
+        assert_eq!(
+            extend(&mut state, &ext_input(), 1, true, OutputMode::Bip39Wordlist),
+            Err(ExtendError::Exhausted)
+        );
+    }
+
+    #[test]
+    fn extend_rejects_zero_count() {
+        let (_orig, mut state) =
+            split_extendable(&ext_input(), 2, 3, OutputMode::Bip39Wordlist).unwrap();
+        assert_eq!(
+            extend(&mut state, &ext_input(), 0, false, OutputMode::Bip39Wordlist),
+            Err(ExtendError::ZeroCount)
+        );
+    }
+
+    #[test]
+    fn split_state_round_trips_through_bytes() {
+        let (orig, mut state) =
+            split_extendable(&ext_input(), 2, 3, OutputMode::Bip39Wordlist).unwrap();
+        // Extend once so issued_x has a non-trivial length to serialize.
+        let extra = extend(&mut state, &ext_input(), 1, false, OutputMode::Bip39Wordlist).unwrap();
+
+        let bytes = state.to_bytes();
+        let restored = SplitState::from_bytes(&bytes).unwrap();
+
+        // Serialization is stable: re-serializing the restored state is byte-identical.
+        assert_eq!(&restored.to_bytes()[..], &bytes[..]);
+        assert_eq!(restored.recovery_set_id(), state.recovery_set_id());
+        assert_eq!(restored.threshold(), state.threshold());
+        assert_eq!(restored.issued_count(), state.issued_count());
+
+        // The restored state is functionally equivalent: it extends onto the same polynomial,
+        // and the new share recovers together with the originals.
+        let mut restored = restored;
+        let more = extend(&mut restored, &ext_input(), 1, false, OutputMode::Bip39Wordlist).unwrap();
+        let mut all = orig.clone();
+        all.extend(extra.iter().cloned());
+        all.extend(more.iter().cloned());
+        // Recover using the original share 0, the pre-serialization extension, and the
+        // post-serialization extension - all must lie on one polynomial.
+        assert_is_ext_text(&recover_subset(&all, &[0, 3]));
+        assert_is_ext_text(&recover_subset(&all, &[0, 4]));
+        assert_is_ext_text(&recover_subset(&all, &[3, 4]));
+    }
+
+    #[test]
+    fn from_bytes_rejects_malformed_input() {
+        let (_orig, state) =
+            split_extendable(&ext_input(), 2, 3, OutputMode::Bip39Wordlist).unwrap();
+        let good = state.to_bytes().as_slice().to_vec();
+
+        // Sanity: the genuine bytes parse.
+        SplitState::from_bytes(&good).unwrap();
+
+        // Too short (header is 7 bytes). `SplitState` has no `PartialEq` (it holds secret
+        // material), so compare the error side via `unwrap_err`.
+        assert_eq!(SplitState::from_bytes(&[]).unwrap_err(), StateError::TooShort);
+        assert_eq!(
+            SplitState::from_bytes(&good[..6]).unwrap_err(),
+            StateError::TooShort
+        );
+
+        // Wrong version.
+        let mut bad = good.clone();
+        bad[0] = 2;
+        assert_eq!(
+            SplitState::from_bytes(&bad).unwrap_err(),
+            StateError::UnsupportedVersion(2)
+        );
+
+        // Bad threshold (1 and 33 both out of 2..=32).
+        for m in [1u8, 33] {
+            let mut bad = good.clone();
+            bad[1] = m;
+            assert_eq!(
+                SplitState::from_bytes(&bad).unwrap_err(),
+                StateError::BadThreshold
+            );
+        }
+
+        // Recovery set id with a high bit set.
+        let mut bad = good.clone();
+        bad[2] |= 0x80; // top byte of the u16 -> value > 0x7FF
+        assert_eq!(
+            SplitState::from_bytes(&bad).unwrap_err(),
+            StateError::BadRecoverySetId
+        );
+
+        // Truncated body (drop a coeff byte) -> length mismatch.
+        let mut bad = good.clone();
+        bad.pop();
+        assert_eq!(
+            SplitState::from_bytes(&bad).unwrap_err(),
+            StateError::LengthMismatch
+        );
+
+        // Corrupt an issued x to 0 (first issued-x byte sits right after the 7-byte header).
+        let mut bad = good.clone();
+        bad[7] = 0;
+        assert_eq!(
+            SplitState::from_bytes(&bad).unwrap_err(),
+            StateError::BadXCoordinate
+        );
+    }
+
+    #[test]
+    fn from_bytes_never_panics_on_arbitrary_bytes() {
+        // Fuzz-style: feed a spread of lengths and byte patterns; from_bytes must always return
+        // a Result, never panic. Also mutate a valid serialization at every byte position.
+        for len in 0usize..300 {
+            for &fill in &[0x00u8, 0x01, 0x7f, 0x80, 0xff] {
+                let buf = vec![fill; len];
+                let _ = SplitState::from_bytes(&buf);
+            }
+            // A pseudo-random-ish pattern (no external RNG needed).
+            let buf: Vec<u8> = (0..len)
+                .map(|i| u8::try_from((i.wrapping_mul(131).wrapping_add(17)) & 0xff).unwrap())
+                .collect();
+            let _ = SplitState::from_bytes(&buf);
+        }
+
+        let (_orig, state) =
+            split_extendable(&ext_input(), 2, 4, OutputMode::Bip39Wordlist).unwrap();
+        let good = state.to_bytes().as_slice().to_vec();
+        for i in 0..good.len() {
+            for delta in [1u8, 0x40, 0x80, 0xff] {
+                let mut m = good.clone();
+                m[i] = m[i].wrapping_add(delta);
+                // Round-trips or errors, but never panics; if it parses, re-serialize is stable.
+                if let Ok(s) = SplitState::from_bytes(&m) {
+                    assert_eq!(&s.to_bytes()[..], &m[..]);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn extend_with_deterministic_rng_draws_fresh_distinct_x() {
+        // A varied pool lets both x-sampling passes find distinct coordinates.
+        let pool: Vec<u8> = (0..255u16).map(|i| u8::try_from(i).unwrap()).collect();
+        let mut rng = DeterministicRng::new(&pool);
+        let (orig, mut state) =
+            split_extendable_with_rng(&ext_input(), 2, 3, OutputMode::Bip39Wordlist, &mut rng)
+                .unwrap();
+        let mut rng2 = DeterministicRng::new(&pool);
+        let extra =
+            extend_with_rng(&mut state, &ext_input(), 2, false, OutputMode::Bip39Wordlist, &mut rng2)
+                .unwrap();
+        // Fresh x's avoid every already-issued coordinate.
+        for e in &extra {
+            assert!(!orig.iter().any(|o| o.x == e.x));
+        }
+        let mut all = orig.clone();
+        all.extend(extra.iter().cloned());
+        assert_is_ext_text(&recover_subset(&all, &[0, 3]));
     }
 }
