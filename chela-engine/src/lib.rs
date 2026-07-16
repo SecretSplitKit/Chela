@@ -11,7 +11,9 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use chela_primitives::zeroize::Zeroizing;
-use chela_sss::{combine, evaluate_shares, split, split_retaining_coeffs, OsRng, RandomSource, SssError};
+use chela_sss::{
+    combine, evaluate_shares, split, split_retaining_coeffs, OsRng, RandomSource, SssError,
+};
 
 /// Public-API view of a share's payload kind. The finer-grained internal kind byte
 /// (word count, passphrase presence) is appended to the body and split with the secret.
@@ -294,7 +296,10 @@ impl core::fmt::Display for StateError {
         match self {
             Self::TooShort => f.write_str("split-state is too short to contain a header"),
             Self::UnsupportedVersion(v) => {
-                write!(f, "unsupported split-state version {v} (this build understands {STATE_VERSION})")
+                write!(
+                    f,
+                    "unsupported split-state version {v} (this build understands {STATE_VERSION})"
+                )
             }
             Self::BadThreshold => f.write_str("split-state threshold is outside 2..=32"),
             Self::BadRecoverySetId => f.write_str("split-state recovery set id exceeds 11 bits"),
@@ -894,7 +899,9 @@ pub fn split_extendable_with_rng(
     let (shares, state) = split_core(input, threshold, total, mode, rng, true)?;
     // `retain = true` always yields `Some`; surface the broken invariant as an error rather
     // than panicking (keeps this pub fn panic-free).
-    let state = state.ok_or(EngineError::InvalidInput("internal: split-state not retained"))?;
+    let state = state.ok_or(EngineError::InvalidInput(
+        "internal: split-state not retained",
+    ))?;
     Ok((shares, state))
 }
 
@@ -1754,7 +1761,14 @@ mod tests {
         let (orig, mut state) =
             split_extendable(&ext_input(), 3, 3, OutputMode::Bip39Wordlist).unwrap();
         // 3 + 2 = 5 issued, soft cap for M=3 is 8, so no override needed.
-        let extra = extend(&mut state, &ext_input(), 2, false, OutputMode::Bip39Wordlist).unwrap();
+        let extra = extend(
+            &mut state,
+            &ext_input(),
+            2,
+            false,
+            OutputMode::Bip39Wordlist,
+        )
+        .unwrap();
         assert_eq!(extra.len(), 2);
         assert_eq!(state.issued_count(), 5);
 
@@ -1781,7 +1795,14 @@ mod tests {
         // the full set must recover (the repo's round_trip_for_every_subset pattern).
         let (orig, mut state) =
             split_extendable(&ext_input(), 2, 3, OutputMode::Bip39Wordlist).unwrap();
-        let extra = extend(&mut state, &ext_input(), 2, false, OutputMode::Bip39Wordlist).unwrap();
+        let extra = extend(
+            &mut state,
+            &ext_input(),
+            2,
+            false,
+            OutputMode::Bip39Wordlist,
+        )
+        .unwrap();
         let mut all = orig.clone();
         all.extend(extra.iter().cloned());
         assert_eq!(all.len(), 5);
@@ -1807,9 +1828,15 @@ mod tests {
         let body_len = state.coeffs.len() / m;
         for (i, &x) in state.issued_x.clone().iter().enumerate() {
             let mut sb = vec![0u8; body_len];
-            chela_sss::evaluate_shares(&state.coeffs, state.threshold, &[x], &mut [sb.as_mut_slice()])
-                .unwrap();
-            let words = super::encode_share_bip39_v2(&sb, state.recovery_set_id, x, state.threshold);
+            chela_sss::evaluate_shares(
+                &state.coeffs,
+                state.threshold,
+                &[x],
+                &mut [sb.as_mut_slice()],
+            )
+            .unwrap();
+            let words =
+                super::encode_share_bip39_v2(&sb, state.recovery_set_id, x, state.threshold);
             assert_eq!(
                 words, orig[i].word_indices,
                 "re-evaluated share at issued x={x} matches original"
@@ -1817,11 +1844,23 @@ mod tests {
         }
 
         // And a freshly extended share equals an independent evaluate+encode at its own x.
-        let extra = extend(&mut state, &ext_input(), 1, false, OutputMode::Bip39Wordlist).unwrap();
+        let extra = extend(
+            &mut state,
+            &ext_input(),
+            1,
+            false,
+            OutputMode::Bip39Wordlist,
+        )
+        .unwrap();
         let e = &extra[0];
         let mut sb = vec![0u8; body_len];
-        chela_sss::evaluate_shares(&state.coeffs, state.threshold, &[e.x], &mut [sb.as_mut_slice()])
-            .unwrap();
+        chela_sss::evaluate_shares(
+            &state.coeffs,
+            state.threshold,
+            &[e.x],
+            &mut [sb.as_mut_slice()],
+        )
+        .unwrap();
         let words = super::encode_share_bip39_v2(&sb, state.recovery_set_id, e.x, state.threshold);
         assert_eq!(words, e.word_indices);
     }
@@ -1836,7 +1875,13 @@ mod tests {
         assert_eq!(wrong_text.len(), EXT_TEXT.len());
         let wrong_same_len = SplitInput::Text { text: wrong_text };
         assert_eq!(
-            extend(&mut state, &wrong_same_len, 1, false, OutputMode::Bip39Wordlist),
+            extend(
+                &mut state,
+                &wrong_same_len,
+                1,
+                false,
+                OutputMode::Bip39Wordlist
+            ),
             Err(ExtendError::WrongSecret)
         );
 
@@ -1849,7 +1894,14 @@ mod tests {
 
         // The correct secret still extends, and the count is untouched by the rejections above.
         assert_eq!(state.issued_count(), 3);
-        let ok = extend(&mut state, &ext_input(), 1, false, OutputMode::Bip39Wordlist).unwrap();
+        let ok = extend(
+            &mut state,
+            &ext_input(),
+            1,
+            false,
+            OutputMode::Bip39Wordlist,
+        )
+        .unwrap();
         assert_eq!(ok.len(), 1);
         assert_eq!(state.issued_count(), 4);
     }
@@ -1863,18 +1915,37 @@ mod tests {
 
         // 3 + 3 = 6 > 5 without override -> distinguishable OverSoftCap, nothing issued.
         assert_eq!(
-            extend(&mut state, &ext_input(), 3, false, OutputMode::Bip39Wordlist),
+            extend(
+                &mut state,
+                &ext_input(),
+                3,
+                false,
+                OutputMode::Bip39Wordlist
+            ),
             Err(ExtendError::OverSoftCap)
         );
         assert_eq!(state.issued_count(), 3, "a rejected extend issues nothing");
 
         // 3 + 2 = 5 == cap -> allowed without override.
-        extend(&mut state, &ext_input(), 2, false, OutputMode::Bip39Wordlist).unwrap();
+        extend(
+            &mut state,
+            &ext_input(),
+            2,
+            false,
+            OutputMode::Bip39Wordlist,
+        )
+        .unwrap();
         assert_eq!(state.issued_count(), 5);
 
         // 5 + 1 = 6 > 5 -> requires override; with it, succeeds.
         assert_eq!(
-            extend(&mut state, &ext_input(), 1, false, OutputMode::Bip39Wordlist),
+            extend(
+                &mut state,
+                &ext_input(),
+                1,
+                false,
+                OutputMode::Bip39Wordlist
+            ),
             Err(ExtendError::OverSoftCap)
         );
         extend(&mut state, &ext_input(), 1, true, OutputMode::Bip39Wordlist).unwrap();
@@ -1907,7 +1978,13 @@ mod tests {
         let (_orig, mut state) =
             split_extendable(&ext_input(), 2, 3, OutputMode::Bip39Wordlist).unwrap();
         assert_eq!(
-            extend(&mut state, &ext_input(), 0, false, OutputMode::Bip39Wordlist),
+            extend(
+                &mut state,
+                &ext_input(),
+                0,
+                false,
+                OutputMode::Bip39Wordlist
+            ),
             Err(ExtendError::ZeroCount)
         );
     }
@@ -1917,7 +1994,14 @@ mod tests {
         let (orig, mut state) =
             split_extendable(&ext_input(), 2, 3, OutputMode::Bip39Wordlist).unwrap();
         // Extend once so issued_x has a non-trivial length to serialize.
-        let extra = extend(&mut state, &ext_input(), 1, false, OutputMode::Bip39Wordlist).unwrap();
+        let extra = extend(
+            &mut state,
+            &ext_input(),
+            1,
+            false,
+            OutputMode::Bip39Wordlist,
+        )
+        .unwrap();
 
         let bytes = state.to_bytes();
         let restored = SplitState::from_bytes(&bytes).unwrap();
@@ -1931,7 +2015,14 @@ mod tests {
         // The restored state is functionally equivalent: it extends onto the same polynomial,
         // and the new share recovers together with the originals.
         let mut restored = restored;
-        let more = extend(&mut restored, &ext_input(), 1, false, OutputMode::Bip39Wordlist).unwrap();
+        let more = extend(
+            &mut restored,
+            &ext_input(),
+            1,
+            false,
+            OutputMode::Bip39Wordlist,
+        )
+        .unwrap();
         let mut all = orig.clone();
         all.extend(extra.iter().cloned());
         all.extend(more.iter().cloned());
@@ -1953,7 +2044,10 @@ mod tests {
 
         // Too short (header is 7 bytes). `SplitState` has no `PartialEq` (it holds secret
         // material), so compare the error side via `unwrap_err`.
-        assert_eq!(SplitState::from_bytes(&[]).unwrap_err(), StateError::TooShort);
+        assert_eq!(
+            SplitState::from_bytes(&[]).unwrap_err(),
+            StateError::TooShort
+        );
         assert_eq!(
             SplitState::from_bytes(&good[..6]).unwrap_err(),
             StateError::TooShort
@@ -2042,9 +2136,15 @@ mod tests {
             split_extendable_with_rng(&ext_input(), 2, 3, OutputMode::Bip39Wordlist, &mut rng)
                 .unwrap();
         let mut rng2 = DeterministicRng::new(&pool);
-        let extra =
-            extend_with_rng(&mut state, &ext_input(), 2, false, OutputMode::Bip39Wordlist, &mut rng2)
-                .unwrap();
+        let extra = extend_with_rng(
+            &mut state,
+            &ext_input(),
+            2,
+            false,
+            OutputMode::Bip39Wordlist,
+            &mut rng2,
+        )
+        .unwrap();
         // Fresh x's avoid every already-issued coordinate.
         for e in &extra {
             assert!(!orig.iter().any(|o| o.x == e.x));

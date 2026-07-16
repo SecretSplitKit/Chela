@@ -568,11 +568,18 @@ mod tests {
                 .unwrap();
         }
         assert_eq!(xs_a, xs_b);
-        assert_eq!(shares_a, shares_b, "retained-coeff split must match plain split");
+        assert_eq!(
+            shares_a, shares_b,
+            "retained-coeff split must match plain split"
+        );
 
         // The retained constant terms ARE the secret bytes (row-major, M per byte).
         for (i, &b) in secret.iter().enumerate() {
-            assert_eq!(coeffs[i * usize::from(m)], b, "constant term = secret byte {i}");
+            assert_eq!(
+                coeffs[i * usize::from(m)],
+                b,
+                "constant term = secret byte {i}"
+            );
         }
     }
 
@@ -600,7 +607,10 @@ mod tests {
             let mut refs: Vec<&mut [u8]> = reeval.iter_mut().map(Vec::as_mut_slice).collect();
             evaluate_shares(&coeffs, m, &xs, &mut refs).unwrap();
         }
-        assert_eq!(reeval, shares, "evaluate_shares must reproduce split output");
+        assert_eq!(
+            reeval, shares,
+            "evaluate_shares must reproduce split output"
+        );
 
         // Issue a brand-new share at an unused x, then recover from it plus (m-1) originals.
         let new_x = 30u8;
@@ -611,7 +621,11 @@ mod tests {
         let mix_xs = [new_x, xs[0], xs[1]];
         let mix = [fresh.clone(), shares[0].clone(), shares[1].clone()];
         let recovered = do_combine(&mix_xs, &mix, secret.len()).unwrap();
-        assert_eq!(recovered.as_slice(), secret, "original + extended shares recover");
+        assert_eq!(
+            recovered.as_slice(),
+            secret,
+            "original + extended shares recover"
+        );
     }
 
     #[test]
