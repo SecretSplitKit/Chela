@@ -376,7 +376,7 @@ jobs:
         run: ls -la out/
 
       - name: Create GitHub release
-        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda  # v3.0.0 (Node 24)
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228  # v3.0.0 (Node 24)
         with:
           files: |
             out/chela-${{ github.ref_name }}.zip
