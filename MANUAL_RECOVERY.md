@@ -1008,8 +1008,9 @@ cards tell you. (You can still sanity-check against what you expected.)
 
 The next byte in from the end - here `0x96` - is the **integrity byte**. It's
 a one-byte check the chela tool computes with SHA-256 over the rest of the
-body, so that combining the *wrong* set of cards is caught instead of handing
-back a plausible-but-wrong secret. By hand you **can't** recompute it (it
+body, so that combining a random *wrong* set of cards is caught with a
+255-in-256 probability instead of usually handing back a plausible-but-wrong
+secret. By hand you **can't** recompute it (it
 needs SHA-256), so just strip it off, the same way you skipped the checksum
 word. What remains is the **payload**: `0x68 0x69`.
 

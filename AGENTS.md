@@ -56,7 +56,8 @@ chela-primitives --> chela-bip39 --/                                 \-> chela-c
   Shamir-splits the whole thing, and encodes each share into the wire format
   ([`SPEC.md`](SPEC.md)): word 0 packs `[x, M]`, word 1 is the recovery set id, the middle
   words are the Shamir output, the last word is an 11-bit CRC. Recovery is the
-  inverse, with the integrity tag rejecting a wrong set of shares.
+  inverse. The 11-bit recovery set id and one-byte integrity tag detect accidental
+  use of a wrong set with high probability. They are not authentication checks.
 
 ### The user-facing half
 

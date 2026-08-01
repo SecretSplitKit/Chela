@@ -14,15 +14,14 @@ chela defends against:
   `< M` reveals nothing about the secret.
 - **A single transcription error** in a recovered card - per-share checksums
   catch this before Lagrange is invoked.
-- **Cross-split share contamination** - shares from two unrelated splits never
-  silently combine. Each split carries a random recovery set id (a per-split nonce, § 9); a
-  mismatch is `MismatchedShares`. Because the recovery set id is drawn per generation, even
-  two splits of the *same* secret carry different recovery set ids and are correctly
-  refused (SPEC.md § 3.2).
-- **A wrong recombination returning a wrong secret.** A one-byte body integrity tag
-  (§ 9) binds the reconstructed secret, so a wrong share subset that slips past the
-  recovery set id check (for instance a ~1/2048 recovery set id collision) fails closed as `BundleCorrupt`
-  rather than decoding into a plausible wrong secret (SPEC.md § 5).
+- **Accidental cross-split share contamination.** Each split carries a random 11-bit
+  recovery set id (a per-split nonce, § 9). A mismatch is `MismatchedShares`. Two
+  independent splits have a 1-in-2048 chance of an id collision.
+- **Most wrong recombinations returning a wrong secret.** A one-byte body integrity
+  tag (§ 9) binds the reconstructed secret. A random wrong body has a 1-in-256 chance
+  of matching the tag. The recovery set id and tag give a false-accept probability of
+  at most about 1 in 524,288 for independent sets, before the kind and length checks.
+  This is a deliberate word-count trade-off, not an authentication guarantee.
 
 chela does **not** defend against:
 
@@ -30,6 +29,9 @@ chela does **not** defend against:
   verification below) or build from the tagged commit.
 - **A coalition of ≥ `M` cardholders.** Any `M` shares reconstruct the secret.
   That's the design.
+- **Deliberate share forgery.** The recovery set id, CRC, and one-byte integrity tag
+  detect accidental errors. They are public, unkeyed checks and do not authenticate a
+  share against a malicious change.
 - **A compromised process on the same machine** - argv copies, screen captures,
   swap files, hibernation files, and clipboard sniffers are out of scope.
 - **A compromised browser** loading the standalone bundle. The WASM is only as
@@ -175,11 +177,11 @@ tag is a random recovery set id, not a hash. Six things matter here:
    version. For BIP-39 the payload is raw entropy followed by optional passphrase
    bytes; for text, raw UTF-8.
 2. **The integrity tag is `SHA-256(payload ‖ kind_byte)[0]` (one byte).** It binds
-   the whole reconstructed secret: combine the wrong shares and the recovered tag
-   won't match, so recovery fails (`BundleCorrupt`) instead of returning a plausible
-   wrong secret. This is the only place the secret is hashed, and it is the only guard
-   that protects a *text* payload - a BIP-39 mnemonic re-derives from its entropy and
-   so has no checksum of its own to fall back on.
+   the whole reconstructed secret and rejects 255 of every 256 random wrong bodies.
+   The one-byte size is a deliberate trade-off that limits the number of words on a
+   share. This is the only place the secret is hashed, and it is the only guard that
+   protects a *text* payload - a BIP-39 mnemonic re-derives from its entropy and so has
+   no checksum of its own to fall back on. It is not an authentication tag.
 3. **Recovery trims by the kind terminator, then checks the tag.** After combine
    reconstructs `body`, `kind = body[len-1]`, `tag = body[len-2]`, and `payload =
    body[..len-2]`. Reject (`BundleCorrupt`) unless the kind decodes, the payload length
@@ -308,14 +310,16 @@ grep -rn 'volatile_set\|\.zeroize()\|impl Drop' chela-*/src
 | `chela-tui/src/term.rs::raw_termios`  | `tcgetattr` / `tcsetattr` / `ioctl(TIOCGWINSZ)` FFI |
 | `chela-wasm/src/lib.rs`               | `slice::from_raw_parts` to view JS-allocated linear-memory buffers |
 
-### No crates.io dependencies
+### No third-party libraries in release artifacts
 
 ```sh
 grep '^name = ' Cargo.lock | sort -u
 ```
-Only workspace members. `chela-share/fuzz` is its own workspace, excluded from
-the main one; its sole dep (`libfuzzer-sys`) is a fuzz-only test harness and
-never reaches a release artifact.
+Only workspace members appear. Release binaries and the standalone browser file use
+only in-tree code and operating-system services. `chela-share/fuzz` is its own
+workspace, excluded from the main one; its sole dependency (`libfuzzer-sys`) is a
+fuzz-only development tool and never reaches a release artifact. CI also uses
+external GitHub Actions, which do not reach release artifacts.
 
 ## Carrier parsing details
 

@@ -654,8 +654,8 @@ fn parse_bundle(body: &[u8]) -> Result<RecoveredSecret, EngineError> {
     if !body_len_fits(dec, payload.len()) {
         return Err(EngineError::BundleCorrupt);
     }
-    // The integrity tag binds the whole reconstructed secret; a wrong recombination fails this
-    // constant-time check instead of decoding into a different, valid-looking secret.
+    // The integrity tag binds the whole reconstructed secret. It rejects 255 of every 256
+    // random wrong bodies instead of decoding them into a different, valid-looking secret.
     if !chela_primitives::ct::ct_eq(&[tag], &[body_integrity_tag(payload, kind_byte)]) {
         return Err(EngineError::BundleCorrupt);
     }
@@ -1678,7 +1678,7 @@ mod tests {
         )
         .unwrap();
         let mixed = alloc::vec![shares_a[0].clone(), shares_b[1].clone()];
-        assert!(recover_secret(&mixed).is_err()); // never silently recovers a wrong secret
+        assert!(recover_secret(&mixed).is_err()); // this mixed set fails its integrity checks
     }
 
     #[test]

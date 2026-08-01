@@ -60,6 +60,11 @@
         every crate name in the lock file and auditing each one, or by inspecting each
         crate's <code>Cargo.toml</code> directly.
       </p>
+      <p>
+        Release binaries and the standalone browser file contain no third-party libraries.
+        The optional fuzz harness and CI workflows use external development tools. These
+        tools are not linked into release artifacts.
+      </p>
       <pre><code>grep '^name = ' Cargo.lock | sort -u</code></pre>
       <p><a class="src" data-file="Cargo.lock">Cargo.lock</a></p>
 

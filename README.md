@@ -17,10 +17,19 @@ Each card is a short list of ordinary words, and a card recovers from those word
 - no account, no server, nothing kept online.
 
 The method is Shamir's Secret Sharing, the standard approach for exactly this problem.
-chela implements it - and everything it needs, the field arithmetic, BIP-39, the
-checksums - from scratch in this repository, with no outside dependencies, so every
-line can be read and checked. **[SPEC.md](./SPEC.md)** explains how it works, in plain
+chela implements it - and everything its release programs need, including the field
+arithmetic, BIP-39, and checksums - from scratch in this repository. Release binaries
+and the standalone browser file contain no third-party libraries. The optional fuzz
+harness and CI workflows use external development tools; these tools are not linked
+into release artifacts. **[SPEC.md](./SPEC.md)** explains how it works, in plain
 language and in full detail.
+
+Each split has an 11-bit random recovery set id that catches most accidental attempts
+to mix unrelated shares. A one-byte integrity tag gives a second check after recovery.
+For independent sets with the same id, a random wrong body has a 1-in-256 chance of
+matching that tag. Together, the id and tag give a false-accept probability of at most
+about 1 in 524,288 before the kind and length checks. These checks detect accidental
+mixing and corruption; they do not authenticate shares against deliberate forgery.
 
 ## I was handed a card and need to recover a secret
 

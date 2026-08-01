@@ -189,11 +189,12 @@ word0   = (x_field &lt;&lt; 6) | (m_field &lt;&lt; 1)</code></pre>
       <h3>The integrity tag: catching the wrong shares</h3>
       <p>
         The tag is one byte: the first byte of <code>SHA-256(payload ‖ kind-byte)</code>. It
-        binds the whole secret. Combine shares from two different splits whose recovery set
-        ids happened to collide (a 1-in-2048 chance), or otherwise reconstruct a body that
-        isn't the original, and the recovered tag won't match - so recovery <em>fails</em>
-        rather than handing back a plausible-looking wrong secret. It is checked in constant
-        time.
+        binds the whole secret and rejects 255 of every 256 random wrong bodies. Two
+        independent splits have a 1-in-2048 chance of the same recovery set id. Together,
+        the id and tag give a false-accept probability of at most about 1 in 524,288 before
+        the kind and length checks. The one-byte tag is a deliberate trade-off that keeps
+        shares short. It is checked in constant time. The CRC and tag detect accidental
+        errors; they do not authenticate shares against deliberate forgery.
       </p>
 
       <h3>The last word: the checksum</h3>

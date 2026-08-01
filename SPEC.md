@@ -71,7 +71,7 @@ in the section that introduces the mechanism delivering it:
 | You only need any `M` shares; the other `N − M` can be lost | [§ 3 (How Shamir's Secret Sharing Works)](#3-how-shamirs-secret-sharing-works) |
 | A share recovers from its words alone - no other knowledge is needed | [§ 4 (The Share Layout)](#4-a-share-word-by-word), [§ 5 (Recovery)](#5-recovery-from-words-alone) |
 | A mistyped or swapped word is caught, never silently mis-recovered | [§ 4.5 (The Checksum)](#45-the-last-word--the-checksum-crc) |
-| The wrong set of shares is caught, never returned as a wrong secret | [§ 5 (Recovery)](#5-recovery-from-words-alone) |
+| Accidental use of the wrong shares is detected with high probability | [§ 5 (Recovery)](#5-recovery-from-words-alone) |
 
 ---
 
@@ -406,9 +406,11 @@ body = payload ‖ tag ‖ kind_byte
 ```
 
 The **payload** is the raw secret bytes. The **tag** is a one-byte integrity check,
-`SHA-256(payload ‖ kind_byte)[0]`, that binds the whole secret: combine the wrong
-shares and the recovered tag won't match, so recovery fails ([§ 5, recovery](#5-recovery-from-words-alone)) instead of
-handing back a plausible wrong secret. The **kind byte** ([§ 4.4, the kind byte](#44-the-kind-byte--what-the-secret-is-and-where-it-ends)) is the
+`SHA-256(payload ‖ kind_byte)[0]`, that binds the whole secret. It rejects 255 of
+every 256 random wrong bodies. This is a deliberate trade-off: a longer tag would
+make shares longer and more difficult to record. The tag detects accidental wrong
+recombination with high probability; it is not an authentication tag and does not
+protect against deliberate forgery. The **kind byte** ([§ 4.4, the kind byte](#44-the-kind-byte--what-the-secret-is-and-where-it-ends)) is the
 body's last byte. (The symbol `‖` means **concatenation**: the bytes on either side joined
 end to end, nothing in between.) SSS ([§ 3.2, one polynomial per byte](#32-chelas-construction-one-polynomial-per-byte)) turns the body into this share's `Y`
 values - one output byte per body byte - so the `Y` vector is exactly `body_len` bytes long
@@ -587,15 +589,17 @@ algorithm:
    known, the payload length fits it (no-pass BIP-39 = exactly `entropy_bytes`;
    with-pass = `entropy_bytes + 1 .. entropy_bytes + 255`; text = `1..=255`), and the
    tag equals `SHA-256(payload ‖ kind_byte)[0]` (compared in constant time). The tag
-   is what makes a wrong share subset fail here instead of decoding into a different,
-   valid-looking secret.
+   rejects 255 of every 256 random wrong bodies instead of decoding them into a
+   different, valid-looking secret.
 
-The recovery set id ([§ 4.2, the recovery set id](#42-word-1--the-recovery-set-id)) keeps two different splits from being mixed. In the ≈ 1/2048
-case where two *unrelated* splits collide on the same recovery set id with a matching `M` and
-length, the interpolated body is garbage and is rejected at step 6: its kind byte and
-its integrity tag almost never both check out (the tag alone fails a wrong body with
-probability ≈ 255/256). So recovery **never silently returns a wrong secret**; the
-worst case is a clear error.
+The recovery set id ([§ 4.2, the recovery set id](#42-word-1--the-recovery-set-id))
+detects most attempts to mix two different splits. Two independent splits have a
+1-in-2048 chance of the same recovery set id. If `M` and length also match, a random
+wrong body has a 1-in-256 chance of matching the integrity tag. The id and tag
+therefore give a false-accept probability of at most about 1 in 524,288 for
+independent sets, before the kind and length checks. This check is probabilistic.
+The CRC and integrity tag are public and unkeyed, so they do not protect against
+deliberate forgery.
 
 ---
 
